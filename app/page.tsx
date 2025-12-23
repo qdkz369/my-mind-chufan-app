@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
 
 // Header Component
 function Header() {
@@ -71,13 +72,64 @@ function Header() {
 function IoTDashboard() {
   const [fuelLevel, setFuelLevel] = useState(68)
   const [consumption, setConsumption] = useState(12.5)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // 加载燃料剩余百分比
+    const loadFuelPercentage = async () => {
+      try {
+        setIsLoading(true)
+        const { data, error } = await supabase
+          .from("fuel_level")
+          .select("percentage")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single()
+
+        if (error && error.code !== "PGRST116") {
+          console.error("加载燃料百分比失败:", error)
+          return
+        }
+
+        if (data) {
+          setFuelLevel(data.percentage)
+        }
+      } catch (error) {
+        console.error("加载燃料百分比失败:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadFuelPercentage()
+
+    // 实时订阅数据库更新
+    const channel = supabase
+      .channel("fuel_level_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "fuel_level",
+        },
+        (payload) => {
+          if (payload.new && "percentage" in payload.new) {
+            setFuelLevel(payload.new.percentage as number)
+          }
+        }
+      )
+      .subscribe()
+
+    // 模拟消耗（可选，如果需要实时递减）
     const interval = setInterval(() => {
-      setFuelLevel((prev) => Math.max(0, prev - 0.1))
       setConsumption((prev) => 12 + Math.random() * 2)
     }, 3000)
-    return () => clearInterval(interval)
+
+    return () => {
+      clearInterval(interval)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   return (
@@ -103,8 +155,14 @@ function IoTDashboard() {
           <div className="flex justify-between items-end mb-2">
             <span className="text-sm text-slate-300">当前剩余量</span>
             <div className="text-right">
-              <span className="text-4xl font-bold text-white">{fuelLevel.toFixed(1)}</span>
-              <span className="text-xl text-slate-400 ml-1">%</span>
+              {isLoading ? (
+                <span className="text-4xl font-bold text-slate-500">加载中...</span>
+              ) : (
+                <>
+                  <span className="text-4xl font-bold text-white">{fuelLevel.toFixed(1)}</span>
+                  <span className="text-xl text-slate-400 ml-1">%</span>
+                </>
+              )}
             </div>
           </div>
           <Progress value={fuelLevel} className="h-3 bg-slate-800" />
