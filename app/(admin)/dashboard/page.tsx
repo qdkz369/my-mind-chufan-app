@@ -382,8 +382,9 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             {viewMode === "map" ? (
-              /* 地图视图 */
-              <div className="h-[600px] rounded-lg overflow-hidden border border-slate-800">
+              <>
+                {/* 地图视图 */}
+                <div className="h-[600px] rounded-lg overflow-hidden border border-slate-800">
                 {restaurants.filter((r) => r.latitude && r.longitude).length === 0 ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="text-center">
@@ -439,20 +440,22 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+              </>
             ) : (
-              /* 列表视图 */
-            {isLoading ? (
-              <div className="text-center py-12">
-                <div className="inline-block h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-slate-400 mt-4">加载中...</p>
-              </div>
-            ) : restaurants.length === 0 ? (
-              <div className="text-center py-12">
-                <Building2 className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-                <p className="text-slate-400">暂无餐厅数据</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
+              <>
+                {/* 列表视图 */}
+                {isLoading ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-slate-400 mt-4">加载中...</p>
+                  </div>
+                ) : restaurants.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Building2 className="h-12 w-12 text-slate-600 mx-auto mb-4" />
+                    <p className="text-slate-400">暂无餐厅数据</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-slate-800">
@@ -584,7 +587,9 @@ export default function AdminDashboard() {
                     })}
                   </tbody>
                 </table>
-              </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
