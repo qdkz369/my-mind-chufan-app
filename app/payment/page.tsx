@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Suspense, useMemo, useEffect } from "react"
+import { useState, Suspense, useMemo, useEffect, useRef } from "react"
 import { Header } from "@/components/header"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { Card } from "@/components/ui/card"
@@ -8,12 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Slider } from "@/components/ui/slider"
 import { Truck, ArrowLeft, CheckCircle2, CreditCard, Smartphone, Wallet, MapPin, Calculator, Navigation, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 
 // 液化气和醇基燃料的固定规格
-const bottleSpecs = [5, 11, 15, 50] // KG
+const bottleSpecs = [5, 15, 50] // KG
 
 // 热能清洁燃料的规格（起订200L，最小增加单位为50L）
 const getCleanFuelOptions = () => {
@@ -177,11 +178,7 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return Math.round(R * c)
 }
 
-// 昆明市坐标（作为配送中心）
-const KUNMING_COORDS = {
-  lat: 25.0389,
-  lon: 102.7183,
-}
+// 注意：距离计算已改为基于配送员实际位置，不再使用固定坐标
 
 function PaymentContent() {
   const searchParams = useSearchParams()
@@ -192,6 +189,7 @@ function PaymentContent() {
   const [selectedSpec, setSelectedSpec] = useState<number>(50) // 规格（公斤），默认50KG
   const [bottleCount, setBottleCount] = useState<number>(1) // 瓶数，默认1瓶
   const [cleanFuelIndex, setCleanFuelIndex] = useState<number>(0) // 热能清洁燃料当前显示的索引
+  const [isSliderPulsing, setIsSliderPulsing] = useState<boolean>(false) // 滑块呼吸灯闪烁状态
   const [deliveryCity, setDeliveryCity] = useState<string>("昆明市")
   const [deliveryAddress, setDeliveryAddress] = useState<string>("张记餐厅 · 昆明市五华区xxx路123号")
   
@@ -206,6 +204,22 @@ function PaymentContent() {
   const [locationError, setLocationError] = useState<string>("")
   const [useGPS, setUseGPS] = useState<boolean>(false)
   const [isLoadedFromMemory, setIsLoadedFromMemory] = useState<boolean>(false)
+  
+  // 配送员和商户位置相关状态
+  const [deliveryLocation, setDeliveryLocation] = useState<{
+    lat: number
+    lon: number
+    deliveryId: string
+    updatedAt?: string
+  } | null>(null)
+  const [merchantLocation, setMerchantLocation] = useState<{
+    lat: number
+    lon: number
+    address?: string
+    city?: string
+    merchantId: string
+  } | null>(null)
+  const [isLoadingLocations, setIsLoadingLocations] = useState<boolean>(false)
 
   // 从localStorage加载上一次的订单信息
   useEffect(() => {
@@ -271,19 +285,97 @@ function PaymentContent() {
     }
   }, [cleanFuelIndex, selectedFuel])
 
-  // 计算距离
+  // 获取配送员和商户位置
+  useEffect(() => {
+    const fetchLocations = async () => {
+      setIsLoadingLocations(true)
+      try {
+        // 获取配送员实时位置
+        const deliveryResponse = await fetch("/api/delivery/location?deliveryId=default")
+        if (deliveryResponse.ok) {
+          const deliveryData = await deliveryResponse.json()
+          setDeliveryLocation({
+            lat: deliveryData.lat,
+            lon: deliveryData.lon,
+            deliveryId: deliveryData.deliveryId,
+            updatedAt: deliveryData.updatedAt,
+          })
+        }
+
+        // 获取商户注册位置（从localStorage或API）
+        const merchantId = localStorage.getItem("merchantId") || "default"
+        const merchantResponse = await fetch(`/api/merchant/location?merchantId=${merchantId}`)
+        if (merchantResponse.ok) {
+          const merchantData = await merchantResponse.json()
+          if (merchantData.lat && merchantData.lon) {
+            setMerchantLocation({
+              lat: merchantData.lat,
+              lon: merchantData.lon,
+              address: merchantData.address,
+              city: merchantData.city,
+              merchantId: merchantData.merchantId,
+            })
+          }
+        }
+      } catch (error) {
+        console.error("获取位置信息失败:", error)
+      } finally {
+        setIsLoadingLocations(false)
+      }
+    }
+
+    fetchLocations()
+    
+    // 定期更新配送员位置（每30秒）
+    const interval = setInterval(() => {
+      fetch("/api/delivery/location?deliveryId=default")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.lat && data.lon) {
+            setDeliveryLocation({
+              lat: data.lat,
+              lon: data.lon,
+              deliveryId: data.deliveryId,
+              updatedAt: data.updatedAt,
+            })
+          }
+        })
+        .catch((error) => console.error("更新配送员位置失败:", error))
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  // 计算距离：根据服务端配送员的实际位置到下单客户的实际距离
   const distance = useMemo(() => {
-    if (useGPS && gpsLocation) {
-      // 使用GPS计算距离
+    // 1. 如果配送员位置和商户位置都存在，计算两者之间的距离
+    if (deliveryLocation && merchantLocation) {
+      return calculateDistance(
+        deliveryLocation.lat,
+        deliveryLocation.lon,
+        merchantLocation.lat,
+        merchantLocation.lon
+      )
+    }
+    
+    // 2. 如果使用GPS定位，计算GPS位置与配送员位置的距离
+    if (useGPS && gpsLocation && deliveryLocation) {
       return calculateDistance(
         gpsLocation.lat,
         gpsLocation.lon,
-        KUNMING_COORDS.lat,
-        KUNMING_COORDS.lon
+        deliveryLocation.lat,
+        deliveryLocation.lon
       )
     }
-    return cityDistances[deliveryCity] || 0
-  }, [deliveryCity, gpsLocation, useGPS])
+    
+    // 3. 如果配送员位置存在但没有客户位置，返回0（等待客户位置）
+    if (deliveryLocation) {
+      return 0
+    }
+    
+    // 4. 如果都没有位置信息，返回0
+    return 0
+  }, [gpsLocation, useGPS, deliveryLocation, merchantLocation])
 
   // GPS定位功能
   const handleGPSLocation = () => {
@@ -329,6 +421,34 @@ function PaymentContent() {
           setDeliveryCity(city)
           setUseGPS(true)
           setIsLocating(false)
+          
+          // 保存商户位置到数据库
+          try {
+            const merchantId = localStorage.getItem("merchantId") || "default"
+            await fetch("/api/merchant/location", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                merchantId: merchantId,
+                lat: latitude,
+                lon: longitude,
+                address: address,
+                city: city,
+              }),
+            })
+            // 更新本地商户位置状态
+            setMerchantLocation({
+              lat: latitude,
+              lon: longitude,
+              address: address,
+              city: city,
+              merchantId: merchantId,
+            })
+          } catch (error) {
+            console.error("保存商户位置失败:", error)
+          }
         } catch (error) {
           // 如果API调用失败，使用坐标作为地址
           const address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
@@ -342,6 +462,34 @@ function PaymentContent() {
           setDeliveryCity("GPS定位")
           setUseGPS(true)
           setIsLocating(false)
+          
+          // 保存商户位置到数据库（即使地址解析失败）
+          try {
+            const merchantId = localStorage.getItem("merchantId") || "default"
+            await fetch("/api/merchant/location", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                merchantId: merchantId,
+                lat: latitude,
+                lon: longitude,
+                address: address,
+                city: "GPS定位",
+              }),
+            })
+            // 更新本地商户位置状态
+            setMerchantLocation({
+              lat: latitude,
+              lon: longitude,
+              address: address,
+              city: "GPS定位",
+              merchantId: merchantId,
+            })
+          } catch (error) {
+            console.error("保存商户位置失败:", error)
+          }
         }
       },
       (error) => {
@@ -387,10 +535,21 @@ function PaymentContent() {
     const safeQuantity = Math.max(0, actualQuantity)
     const safeDistance = Math.max(0, distance)
     
+    // 计算每100公里单价增加0.2元/L或0.2元/kg
+    // 例如：200公里 = 2个100公里 = 单价增加0.4元
+    const priceIncreasePer100km = 0.2 // 每100公里增加0.2元
+    const priceIncrease = Math.ceil(safeDistance / 100) * priceIncreasePer100km
+    
+    // 计算新的单价（基础单价 + 距离增加的单价）
+    const adjustedUnitPrice = fuel.basePrice + priceIncrease
+    
+    // 计算基础价格（使用原始单价）
     const basePrice = fuel.basePrice * safeQuantity
     
-    // 计算配送费：每100公里加2.5元/公斤或升
-    const distanceFee = Math.ceil(safeDistance / 100) * 2.5 * safeQuantity
+    // 计算距离增加的费用（单价增加 × 数量）
+    const distanceFee = priceIncrease * safeQuantity
+    
+    // 总价 = 基础价格 + 距离增加的费用
     const totalAmount = basePrice + distanceFee
 
     // 生成数量文本
@@ -415,6 +574,8 @@ function PaymentContent() {
       useGPS: useGPS,
       estimatedTime: distance <= 100 ? "预计2小时内送达" : distance <= 300 ? "预计4小时内送达" : "预计6-8小时送达",
       orderId: `ORD${Date.now()}`,
+      adjustedUnitPrice, // 调整后的单价（用于显示）
+      priceIncrease, // 单价增加量（用于显示）
     }
   }, [selectedFuel, actualQuantity, deliveryCity, deliveryAddress, distance, serviceType, useGPS, gpsLocation, selectedSpec, bottleCount])
 
@@ -514,131 +675,438 @@ function PaymentContent() {
             {(() => {
               const currentFuel = fuelTypes.find((f) => f.id === selectedFuel)
               if (currentFuel?.quantityType === "bottle") {
-                // 液化气和醇基燃料：规格选择 + 瓶数选择
+                // 液化气和醇基燃料：规格选择 + 数量选择器（分段预设 + 手动微调）
+                const totalQuantity = selectedSpec * bottleCount
+                const minBottles = 1
+                const maxBottles = 100
+                const stepBottles = 1
+                
+                // 快捷预设值（总公斤数）
+                const presetQuantities = [50, 100, 200] // 根据常用规格预设
+                
+                // 处理快捷按钮点击
+                const handlePresetClick = (targetQuantity: number) => {
+                  // 计算最接近的瓶数
+                  const targetBottles = Math.round(targetQuantity / selectedSpec)
+                  const finalBottles = Math.max(minBottles, Math.min(maxBottles, targetBottles))
+                  setBottleCount(finalBottles)
+                  // 触感反馈
+                  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                    navigator.vibrate(10)
+                  }
+                  // 触发呼吸灯闪烁
+                  setIsSliderPulsing(true)
+                  setTimeout(() => setIsSliderPulsing(false), 600)
+                }
+                
+                // 处理滑块变化
+                const handleSliderChange = (newValue: number[]) => {
+                  const newBottles = Math.round(newValue[0])
+                  if (newBottles !== bottleCount) {
+                    setBottleCount(Math.max(minBottles, Math.min(maxBottles, newBottles)))
+                    // 触感反馈
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                      navigator.vibrate(10)
+                    }
+                    // 触发呼吸灯闪烁
+                    setIsSliderPulsing(true)
+                    setTimeout(() => setIsSliderPulsing(false), 600)
+                  }
+                }
+                
+                // 计算滑块百分比
+                const sliderValue = ((bottleCount - minBottles) / (maxBottles - minBottles)) * 100
+                
                 return (
                   <>
                     <div>
-                      <Label className="text-slate-300 mb-2 block">规格（公斤/瓶）</Label>
-                      <div className="grid grid-cols-4 gap-2">
+                      <Label className="text-slate-300 mb-3 block">规格（公斤/瓶）</Label>
+                      <div className="grid grid-cols-3 gap-3">
                         {bottleSpecs.map((spec) => (
                           <button
                             key={spec}
                             onClick={() => {
                               setSelectedSpec(spec)
-                              // 重置瓶数，保持总数量不变（可选）
                             }}
-                            className={`p-3 rounded-lg border-2 transition-all ${
+                            className={`p-3 rounded-xl border-2 transition-all ${
                               selectedSpec === spec
-                                ? "border-orange-500 bg-orange-500/10 text-white"
-                                : "border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600"
+                                ? "border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/30"
+                                : "border-slate-700 bg-slate-800/50 text-slate-300 hover:border-blue-500/50 hover:bg-slate-700/50"
                             }`}
                           >
-                            <div className="font-semibold">{spec}KG</div>
+                            <div className={`font-bold text-lg ${selectedSpec === spec ? "text-blue-400" : "text-slate-300"}`}>
+                              {spec}KG
+                            </div>
                             <div className="text-xs text-slate-400 mt-1">瓶装</div>
                           </button>
                         ))}
                       </div>
                     </div>
+                    
                     <div>
-                      <Label className="text-slate-300 mb-2 block">数量（瓶）</Label>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => {
-                        const newCount = Math.max(1, bottleCount - 1)
-                        setBottleCount(newCount)
-                      }}
-                          className="w-10 h-10 rounded-lg border-2 border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-700/50 flex items-center justify-center font-semibold"
-                        >
-                          −
-                        </button>
-                        <div className="flex-1 text-center">
-                          <div className="text-2xl font-bold text-white">{bottleCount}</div>
-                          <div className="text-xs text-slate-400 mt-1">瓶</div>
-                          <div className="text-sm text-slate-500 mt-1">
-                            共 {selectedSpec * bottleCount}KG
+                      <Label className="text-slate-300 mb-3 block">数量（瓶）</Label>
+                      
+                      {/* 分段预设快捷按钮 */}
+                      <div className="grid grid-cols-3 gap-3 mb-6">
+                        {presetQuantities.map((preset) => {
+                          const presetBottles = Math.round(preset / selectedSpec)
+                          const isActive = Math.abs(totalQuantity - preset) < selectedSpec / 2
+                          return (
+                            <button
+                              key={preset}
+                              onClick={() => handlePresetClick(preset)}
+                              className={`relative p-4 rounded-xl border-2 transition-all duration-300 ${
+                                isActive
+                                  ? "border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/30"
+                                  : "border-slate-700 bg-slate-800/50 hover:border-blue-500/50 hover:bg-slate-700/50"
+                              }`}
+                            >
+                              {/* 选中时的发光效果 */}
+                              {isActive && (
+                                <div className="absolute inset-0 rounded-xl bg-blue-500/20 blur-md animate-pulse"></div>
+                              )}
+                              <div className="relative z-10">
+                                <div className={`text-2xl font-bold ${isActive ? "text-blue-400" : "text-slate-300"}`}>
+                                  {preset}KG
+                                </div>
+                                <div className="text-xs text-slate-400 mt-1">约 {presetBottles} 瓶</div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      
+                      {/* 手动微调滑块 */}
+                      <div className="space-y-4">
+                        {/* 当前值显示 */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-400">当前数量</span>
+                          <div className="text-right">
+                            <div className={`text-3xl font-bold transition-all duration-300 ${
+                              isSliderPulsing ? "text-blue-400 scale-110" : "text-white"
+                            }`}>
+                              {bottleCount} 瓶
+                            </div>
+                            <div className="text-sm text-slate-500 mt-1">
+                              共 {totalQuantity}KG
+                            </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => {
-                        const newCount = Math.min(999, bottleCount + 1) // 限制最大瓶数
-                        setBottleCount(newCount)
-                      }}
-                          className="w-10 h-10 rounded-lg border-2 border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-700/50 flex items-center justify-center font-semibold"
-                        >
-                          +
-                        </button>
+                        
+                        {/* 渐变蓝色进度条滑块 */}
+                        <div className="relative">
+                          <div className="relative">
+                            {/* 滑块轨道背景 */}
+                            <div className="relative h-4 bg-slate-800/50 rounded-full border border-slate-700/50 overflow-hidden backdrop-blur-sm">
+                              {/* 渐变蓝色进度条 - 带呼吸灯效果 */}
+                              <div 
+                                className={`absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-600 rounded-full transition-all duration-300 ${
+                                  isSliderPulsing ? "animate-pulse" : ""
+                                }`}
+                                style={{
+                                  width: `${sliderValue}%`,
+                                  boxShadow: isSliderPulsing 
+                                    ? "0 0 20px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.5), inset 0 0 20px rgba(59, 130, 246, 0.3)" 
+                                    : "0 0 10px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.2)",
+                                }}
+                              />
+                              
+                              {/* 滑块组件 - 自定义样式 */}
+                              <Slider
+                                value={[bottleCount]}
+                                min={minBottles}
+                                max={maxBottles}
+                                step={stepBottles}
+                                onValueChange={handleSliderChange}
+                                className="[&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:border-blue-500 [&_[data-slot=slider-thumb]]:bg-gradient-to-br [&_[data-slot=slider-thumb]]:from-blue-500 [&_[data-slot=slider-thumb]]:to-cyan-500 [&_[data-slot=slider-thumb]]:shadow-lg [&_[data-slot=slider-thumb]]:shadow-blue-500/50 [&_[data-slot=slider-thumb]]:size-5 [&_[data-slot=slider-thumb]]:ring-2 [&_[data-slot=slider-thumb]]:ring-blue-500/30 hover:[&_[data-slot=slider-thumb]]:shadow-blue-500/70 hover:[&_[data-slot=slider-thumb]]:scale-110"
+                              />
+                            </div>
+                            
+                            {/* 范围标签 */}
+                            <div className="flex justify-between mt-3 text-xs text-slate-500">
+                              <span>{minBottles} 瓶</span>
+                              <span>{maxBottles} 瓶</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* 提示信息 */}
+                        <p className="text-xs text-slate-500 text-center">
+                          可手动微调瓶数，范围 1-100 瓶
+                        </p>
                       </div>
                     </div>
                   </>
                 )
               } else if (currentFuel?.quantityType === "incremental") {
-                // 热能清洁燃料：只显示一个选项，通过上下翻动查看
+                // 热能清洁燃料：数量选择器（分段预设 + 手动微调）
                 const options = getCleanFuelOptions()
-                // 确保索引在有效范围内
                 const validIndex = Math.max(0, Math.min(cleanFuelIndex, options.length - 1))
-                const currentOption = options[validIndex] || options[0]
+                const currentValue = options[validIndex] || 200
+                const minValue = 200
+                const maxValue = 2000
+                const step = 50
+                
+                // 快捷预设值
+                const presetValues = [200, 300, 500]
+                
+                // 处理快捷按钮点击
+                const handlePresetClick = (value: number) => {
+                  const targetIndex = options.findIndex(opt => opt === value)
+                  if (targetIndex !== -1) {
+                    setCleanFuelIndex(targetIndex)
+                    // 触感反馈
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                      navigator.vibrate(10)
+                    }
+                    // 触发呼吸灯闪烁
+                    setIsSliderPulsing(true)
+                    setTimeout(() => setIsSliderPulsing(false), 600)
+                  }
+                }
+                
+                // 处理滑块变化
+                const handleSliderChange = (newValue: number[]) => {
+                  const value = newValue[0]
+                  // 找到最接近的选项索引
+                  const targetIndex = options.findIndex(opt => opt >= value)
+                  const finalIndex = targetIndex !== -1 ? targetIndex : options.length - 1
+                  
+                  if (finalIndex !== validIndex) {
+                    setCleanFuelIndex(finalIndex)
+                    // 触感反馈
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                      navigator.vibrate(10)
+                    }
+                    // 触发呼吸灯闪烁
+                    setIsSliderPulsing(true)
+                    setTimeout(() => setIsSliderPulsing(false), 600)
+                  }
+                }
+                
+                // 计算滑块百分比
+                const sliderValue = ((currentValue - minValue) / (maxValue - minValue)) * 100
+                
                 return (
                   <div>
-                    <Label className="text-slate-300 mb-2 block">
+                    <Label className="text-slate-300 mb-3 block">
                       数量 ({currentFuel.unitLabel})
                     </Label>
-                    <div className="relative">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => {
-                            const newIndex = Math.max(0, validIndex - 1)
-                            setCleanFuelIndex(newIndex)
-                          }}
-                          disabled={validIndex === 0}
-                          className="w-12 h-12 rounded-lg border-2 border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-700/50 flex items-center justify-center font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                        >
-                          ↑
-                        </button>
-                        <div className="flex-1 text-center py-4 rounded-lg border-2 border-slate-700 bg-slate-800/50">
-                          <div className="text-3xl font-bold text-white">{currentOption}L</div>
-                          <div className="text-xs text-slate-400 mt-2">
-                            {validIndex + 1} / {options.length}
+                    
+                    {/* 分段预设快捷按钮 */}
+                    <div className="grid grid-cols-3 gap-3 mb-6">
+                      {presetValues.map((preset) => {
+                        const isActive = currentValue === preset
+                        return (
+                          <button
+                            key={preset}
+                            onClick={() => handlePresetClick(preset)}
+                            className={`relative p-4 rounded-xl border-2 transition-all duration-300 ${
+                              isActive
+                                ? "border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/30"
+                                : "border-slate-700 bg-slate-800/50 hover:border-blue-500/50 hover:bg-slate-700/50"
+                            }`}
+                          >
+                            {/* 选中时的发光效果 */}
+                            {isActive && (
+                              <div className="absolute inset-0 rounded-xl bg-blue-500/20 blur-md animate-pulse"></div>
+                            )}
+                            <div className="relative z-10">
+                              <div className={`text-2xl font-bold ${isActive ? "text-blue-400" : "text-slate-300"}`}>
+                                {preset}L
+                              </div>
+                              <div className="text-xs text-slate-400 mt-1">快捷选择</div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    
+                    {/* 手动微调滑块 */}
+                    <div className="space-y-4">
+                      {/* 当前值显示 */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-400">当前数量</span>
+                        <div className={`text-3xl font-bold transition-all duration-300 ${
+                          isSliderPulsing ? "text-blue-400 scale-110" : "text-white"
+                        }`}>
+                          {currentValue}L
+                        </div>
+                      </div>
+                      
+                      {/* 渐变蓝色进度条滑块 */}
+                      <div className="relative">
+                        {/* 自定义滑块容器 */}
+                        <div className="relative">
+                          {/* 滑块轨道背景 */}
+                          <div className="relative h-4 bg-slate-800/50 rounded-full border border-slate-700/50 overflow-hidden backdrop-blur-sm">
+                            {/* 渐变蓝色进度条 - 带呼吸灯效果 */}
+                            <div 
+                              className={`absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-600 rounded-full transition-all duration-300 ${
+                                isSliderPulsing ? "animate-pulse" : ""
+                              }`}
+                              style={{
+                                width: `${sliderValue}%`,
+                                boxShadow: isSliderPulsing 
+                                  ? "0 0 20px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.5), inset 0 0 20px rgba(59, 130, 246, 0.3)" 
+                                  : "0 0 10px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.2)",
+                              }}
+                            />
+                            
+                            {/* 滑块组件 - 自定义样式 */}
+                            <Slider
+                              value={[currentValue]}
+                              min={minValue}
+                              max={maxValue}
+                              step={step}
+                              onValueChange={handleSliderChange}
+                              className="[&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:border-blue-500 [&_[data-slot=slider-thumb]]:bg-gradient-to-br [&_[data-slot=slider-thumb]]:from-blue-500 [&_[data-slot=slider-thumb]]:to-cyan-500 [&_[data-slot=slider-thumb]]:shadow-lg [&_[data-slot=slider-thumb]]:shadow-blue-500/50 [&_[data-slot=slider-thumb]]:size-5 [&_[data-slot=slider-thumb]]:ring-2 [&_[data-slot=slider-thumb]]:ring-blue-500/30 hover:[&_[data-slot=slider-thumb]]:shadow-blue-500/70 hover:[&_[data-slot=slider-thumb]]:scale-110"
+                            />
+                          </div>
+                          
+                          {/* 范围标签 */}
+                          <div className="flex justify-between mt-3 text-xs text-slate-500">
+                            <span>{minValue}L</span>
+                            <span>{maxValue}L</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => {
-                            const newIndex = Math.min(options.length - 1, validIndex + 1)
-                            setCleanFuelIndex(newIndex)
-                          }}
-                          disabled={validIndex === options.length - 1}
-                          className="w-12 h-12 rounded-lg border-2 border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-700/50 flex items-center justify-center font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                        >
-                          ↓
-                        </button>
                       </div>
-                      <p className="text-xs text-slate-500 mt-2 text-center">
-                        起订200L，以50L为增量单位（使用上下箭头翻动查看）
+                      
+                      {/* 提示信息 */}
+                      <p className="text-xs text-slate-500 text-center">
+                        起订200L，以50L为增量单位，可手动微调
                       </p>
                     </div>
                   </div>
                 )
               } else {
-                // 户外环保燃料：自由输入
+                // 户外环保燃料：数量选择器（分段预设 + 手动微调）
+                const minValue = 1
+                const maxValue = 1000
+                const step = 1
+                
+                // 快捷预设值
+                const presetValues = [50, 100, 200]
+                
+                // 处理快捷按钮点击
+                const handlePresetClick = (value: number) => {
+                  setFuelQuantity(value)
+                  // 触感反馈
+                  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                    navigator.vibrate(10)
+                  }
+                  // 触发呼吸灯闪烁
+                  setIsSliderPulsing(true)
+                  setTimeout(() => setIsSliderPulsing(false), 600)
+                }
+                
+                // 处理滑块变化
+                const handleSliderChange = (newValue: number[]) => {
+                  const value = Math.round(newValue[0])
+                  if (value !== fuelQuantity) {
+                    setFuelQuantity(Math.max(minValue, Math.min(maxValue, value)))
+                    // 触感反馈
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                      navigator.vibrate(10)
+                    }
+                    // 触发呼吸灯闪烁
+                    setIsSliderPulsing(true)
+                    setTimeout(() => setIsSliderPulsing(false), 600)
+                  }
+                }
+                
+                // 计算滑块百分比
+                const sliderValue = ((fuelQuantity - minValue) / (maxValue - minValue)) * 100
+                
                 return (
                   <div>
-                    <Label className="text-slate-300 mb-2 block">
+                    <Label className="text-slate-300 mb-3 block">
                       数量 ({currentFuel?.unitLabel})
                     </Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={fuelQuantity}
-                      onChange={(e) => {
-                        const value = Number(e.target.value)
-                        if (!isNaN(value) && value > 0) {
-                          setFuelQuantity(Math.min(99999, value)) // 限制最大数量
-                        } else if (e.target.value === "") {
-                          setFuelQuantity(1) // 空值时设为1
-                        }
-                      }}
-                      className="bg-slate-800/50 border-slate-700 text-white"
-                      placeholder="请输入数量"
-                    />
+                    
+                    {/* 分段预设快捷按钮 */}
+                    <div className="grid grid-cols-3 gap-3 mb-6">
+                      {presetValues.map((preset) => {
+                        const isActive = fuelQuantity === preset
+                        return (
+                          <button
+                            key={preset}
+                            onClick={() => handlePresetClick(preset)}
+                            className={`relative p-4 rounded-xl border-2 transition-all duration-300 ${
+                              isActive
+                                ? "border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/30"
+                                : "border-slate-700 bg-slate-800/50 hover:border-blue-500/50 hover:bg-slate-700/50"
+                            }`}
+                          >
+                            {/* 选中时的发光效果 */}
+                            {isActive && (
+                              <div className="absolute inset-0 rounded-xl bg-blue-500/20 blur-md animate-pulse"></div>
+                            )}
+                            <div className="relative z-10">
+                              <div className={`text-2xl font-bold ${isActive ? "text-blue-400" : "text-slate-300"}`}>
+                                {preset}{currentFuel?.unitLabel}
+                              </div>
+                              <div className="text-xs text-slate-400 mt-1">快捷选择</div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    
+                    {/* 手动微调滑块 */}
+                    <div className="space-y-4">
+                      {/* 当前值显示 */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-400">当前数量</span>
+                        <div className={`text-3xl font-bold transition-all duration-300 ${
+                          isSliderPulsing ? "text-blue-400 scale-110" : "text-white"
+                        }`}>
+                          {fuelQuantity}{currentFuel?.unitLabel}
+                        </div>
+                      </div>
+                      
+                      {/* 渐变蓝色进度条滑块 */}
+                      <div className="relative">
+                        <div className="relative">
+                          {/* 滑块轨道背景 */}
+                          <div className="relative h-4 bg-slate-800/50 rounded-full border border-slate-700/50 overflow-hidden backdrop-blur-sm">
+                            {/* 渐变蓝色进度条 - 带呼吸灯效果 */}
+                            <div 
+                              className={`absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-600 rounded-full transition-all duration-300 ${
+                                isSliderPulsing ? "animate-pulse" : ""
+                              }`}
+                              style={{
+                                width: `${sliderValue}%`,
+                                boxShadow: isSliderPulsing 
+                                  ? "0 0 20px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.5), inset 0 0 20px rgba(59, 130, 246, 0.3)" 
+                                  : "0 0 10px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.2)",
+                              }}
+                            />
+                            
+                            {/* 滑块组件 - 自定义样式 */}
+                            <Slider
+                              value={[fuelQuantity]}
+                              min={minValue}
+                              max={maxValue}
+                              step={step}
+                              onValueChange={handleSliderChange}
+                              className="[&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:border-blue-500 [&_[data-slot=slider-thumb]]:bg-gradient-to-br [&_[data-slot=slider-thumb]]:from-blue-500 [&_[data-slot=slider-thumb]]:to-cyan-500 [&_[data-slot=slider-thumb]]:shadow-lg [&_[data-slot=slider-thumb]]:shadow-blue-500/50 [&_[data-slot=slider-thumb]]:size-5 [&_[data-slot=slider-thumb]]:ring-2 [&_[data-slot=slider-thumb]]:ring-blue-500/30 hover:[&_[data-slot=slider-thumb]]:shadow-blue-500/70 hover:[&_[data-slot=slider-thumb]]:scale-110"
+                            />
+                          </div>
+                          
+                          {/* 范围标签 */}
+                          <div className="flex justify-between mt-3 text-xs text-slate-500">
+                            <span>{minValue}{currentFuel?.unitLabel}</span>
+                            <span>{maxValue}{currentFuel?.unitLabel}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 提示信息 */}
+                      <p className="text-xs text-slate-500 text-center">
+                        可手动微调数量，范围 {minValue}-{maxValue}{currentFuel?.unitLabel}
+                      </p>
+                    </div>
                   </div>
                 )
               }
@@ -679,10 +1147,20 @@ function PaymentContent() {
                   <p className="text-xs text-red-400 mt-1">{locationError}</p>
                 )}
                 {useGPS && gpsLocation && (
-                  <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    已使用GPS定位，距离昆明 {distance}公里
-                  </p>
+                  <>
+                    {deliveryLocation && (
+                      <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        已使用GPS定位，距离配送员 {distance}公里
+                      </p>
+                    )}
+                    {!deliveryLocation && (
+                      <p className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        已使用GPS定位，等待配送员位置信息
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -697,41 +1175,55 @@ function PaymentContent() {
                   >
                     {Object.keys(cityDistances).map((city) => (
                       <option key={city} value={city} className="bg-slate-800">
-                        {city} {cityDistances[city] > 0 ? `(${cityDistances[city]}km)` : ""}
+                        {city}
                       </option>
                     ))}
                   </select>
                 </div>
               )}
 
-              {/* 详细地址（GPS定位时只读） */}
+              {/* 详细地址（可修改） */}
               <div>
                 <Label className="text-slate-300 mb-2 block text-sm">详细地址</Label>
                 <Input
                   type="text"
                   value={deliveryAddress}
-                  onChange={(e) => !useGPS && setDeliveryAddress(e.target.value)}
-                  disabled={useGPS}
-                  readOnly={useGPS}
-                  className={`bg-slate-800/50 border-slate-700 text-white ${
-                    useGPS ? "opacity-60 cursor-not-allowed" : ""
-                  }`}
-                  placeholder={useGPS ? "GPS定位地址（不可修改）" : "请输入详细地址"}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  className="bg-slate-800/50 border-slate-700 text-white"
+                  placeholder="请输入详细地址"
                 />
-                {useGPS && (
-                  <p className="text-xs text-slate-500 mt-1">GPS定位地址，不可修改</p>
+                {useGPS && gpsLocation && (
+                  <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    GPS定位地址已自动填充，可手动修改
+                  </p>
                 )}
               </div>
 
               {/* 显示距离信息 */}
               {distance > 0 && (
-                <div className="mt-2 p-2 bg-slate-800/30 rounded-lg">
+                <div className="mt-2 p-2 bg-slate-800/30 rounded-lg space-y-2">
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400">配送距离</span>
                     <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
                       {distance}公里
                     </Badge>
                   </div>
+                  {deliveryLocation && merchantLocation && (
+                    <div className="text-xs text-slate-500">
+                      ✓ 基于配送员实时位置与商户注册地址计算
+                    </div>
+                  )}
+                  {deliveryLocation && !merchantLocation && (
+                    <div className="text-xs text-slate-500">
+                      ⚠ 使用配送员位置，商户位置未注册
+                    </div>
+                  )}
+                  {!deliveryLocation && (
+                    <div className="text-xs text-slate-500">
+                      ⚠ 等待配送员位置信息，距离暂未计算
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -786,12 +1278,30 @@ function PaymentContent() {
             </div>
             <div className="bg-slate-800/30 rounded-lg p-3 space-y-2 mt-4">
               <div className="flex justify-between items-center">
+                <span className="text-slate-400">燃料单价</span>
+                <span className="text-white">
+                  ¥{orderInfo.adjustedUnitPrice.toFixed(2)}/{orderInfo.fuelUnit}
+                  {orderInfo.priceIncrease > 0 && (
+                    <span className="text-xs text-orange-400 ml-1">
+                      (含距离加价¥{orderInfo.priceIncrease.toFixed(2)})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-slate-400">燃料费用</span>
                 <span className="text-white">¥{orderInfo.basePrice.toFixed(2)}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-400">配送费用</span>
-                <span className="text-white">¥{orderInfo.distanceFee.toFixed(2)}</span>
+                <span className="text-slate-400">距离加价费用</span>
+                <span className="text-white">
+                  ¥{orderInfo.distanceFee.toFixed(2)}
+                  {orderInfo.distance > 0 && (
+                    <span className="text-xs text-slate-500 ml-1">
+                      ({Math.ceil(orderInfo.distance / 100)}个100公里 × ¥0.2/{orderInfo.fuelUnit})
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
             <div className="flex justify-between items-center pt-3 border-t border-slate-800">

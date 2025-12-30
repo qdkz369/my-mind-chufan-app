@@ -156,3 +156,29 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
+
+/* 呼吸灯动画 - 亮绿色光晕效果（轻微发光） */
+@keyframes breathe-glow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.25;
+  }
+}
+
+/* 滚筒选择器选中项轻微脉冲动画 */
+@keyframes pulse-subtle {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}

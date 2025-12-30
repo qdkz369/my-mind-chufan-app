@@ -26,6 +26,10 @@ import {
   Percent,
   Gauge,
   Truck,
+  Lock,
+  Unlock,
+  QrCode,
+  X,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -35,36 +39,401 @@ import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { motion, AnimatePresence } from "framer-motion"
+import { QRCodeSVG } from "qrcode.react"
+
+// No Device Dialog Component - 无设备提示对话框
+function NoDeviceDialog({ isOpen, onClose }: {
+  isOpen: boolean
+  onClose: () => void
+}) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* 遮罩层 */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+            onClick={onClose}
+          />
+          
+          {/* 弹出层内容 */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="fixed inset-0 z-[101] flex items-center justify-center p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-900/95 backdrop-blur-md rounded-2xl p-6 max-w-sm w-full border border-slate-700/50 shadow-2xl">
+              {/* 关闭按钮 */}
+              <div className="flex justify-end mb-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  className="text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* 图标和标题 */}
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-gradient-to-br from-zinc-500/20 to-zinc-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-zinc-500/30">
+                  <Package className="h-8 w-8 text-zinc-400" />
+                </div>
+                <h2 className="text-xl font-bold text-white mb-2">欢迎！</h2>
+                <p className="text-sm text-slate-400">您的餐厅已建立数字档案</p>
+              </div>
+
+              {/* 提示内容 */}
+              <div className="bg-slate-800/50 rounded-lg p-4 mb-6">
+                <p className="text-sm text-slate-300 leading-relaxed text-center">
+                  请联系服务商绑定设备以开启完整功能。
+                </p>
+              </div>
+
+              {/* 确认按钮 */}
+              <Button
+                onClick={onClose}
+                className="w-full bg-gradient-to-r from-slate-700 to-slate-600 hover:from-slate-600 hover:to-slate-500 text-white"
+              >
+                我知道了
+              </Button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// QR Code Modal Component - 餐厅专属通行码弹窗
+function QRCodeModal({ isOpen, onClose, qrToken }: {
+  isOpen: boolean
+  onClose: () => void
+  qrToken: string | null
+}) {
+  if (!isOpen) return null
+
+  // 二维码内容：使用 qr_token（如果为空则显示提示）
+  const qrCodeValue = qrToken || ""
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* 遮罩层 */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+            onClick={onClose}
+          />
+          
+          {/* 弹出层内容 */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="fixed inset-0 z-[101] flex items-center justify-center p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-900/95 backdrop-blur-md rounded-2xl p-8 max-w-md w-full border border-[#4ade80]/30 shadow-2xl shadow-[#4ade80]/20">
+              {/* 关闭按钮 */}
+              <div className="flex justify-end mb-6">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  className="text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* 顶部标题 */}
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold text-white mb-2">您的餐厅专属通行码</h2>
+              </div>
+
+              {/* 中间二维码 - 白底黑码，尺寸够大 */}
+              <div className="flex justify-center mb-8">
+                {qrToken ? (
+                  <div className="bg-white p-6 rounded-xl shadow-2xl border-2 border-slate-700">
+                    <QRCodeSVG
+                      value={qrCodeValue}
+                      size={280}
+                      level="H"
+                      includeMargin={true}
+                      fgColor="#000000"
+                      bgColor="#ffffff"
+                    />
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
+                    <p className="text-slate-400 text-center">二维码令牌生成中...</p>
+                  </div>
+                )}
+              </div>
+
+              {/* 底部提示文字 */}
+              <div className="text-center">
+                <p className="text-sm text-slate-300 leading-relaxed">
+                  请向配送员出示此码以进行燃料加注
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
 
 // Header Component
 function Header() {
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false)
+  const [isNoDeviceDialogOpen, setIsNoDeviceDialogOpen] = useState(false)
+  const [restaurantId, setRestaurantId] = useState<string | null>(null)
+  const [qrToken, setQrToken] = useState<string | null>(null)
+  const [restaurantName, setRestaurantName] = useState<string | null>(null)
+  const [restaurantStatus, setRestaurantStatus] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false)
+  const [deviceCount, setDeviceCount] = useState<number>(0) // 设备数量
+
+  // 检查登录状态并获取餐厅信息 - 防空逻辑：只要页面加载就显示图标
+  useEffect(() => {
+    const loadRestaurantInfo = async () => {
+      try {
+        setIsLoading(true)
+        // 从 localStorage 获取餐厅ID（优先使用注册信息）
+        const restaurantId = localStorage.getItem("restaurantId")
+        
+        console.log("[QR Code] 检查餐厅ID:", restaurantId)
+        
+        // 防空逻辑：只要页面加载就显示二维码图标，不检查是否已登录
+        // 如果未登录，点击时会提示"请先完成注册"
+        setIsLoggedIn(true) // 始终显示图标
+        if (restaurantId) {
+          setRestaurantId(restaurantId)
+        }
+        
+        // 如果没有 restaurantId，直接返回（图标仍然显示，点击时会提示注册）
+        if (!restaurantId) {
+          console.log("[QR Code] 未找到餐厅ID，图标仍显示，点击时会提示注册")
+          setDeviceCount(0) // 默认设备数为0，图标显示为灰色
+          setIsLoading(false)
+          return
+        }
+
+        // 如果 Supabase 未配置，使用临时数据
+        if (!supabase) {
+          console.warn("[QR Code] Supabase未配置，使用临时数据")
+          setRestaurantName("未设置")
+          setRestaurantStatus("unactivated")
+          setDeviceCount(0) // 未配置时默认设备数为0，图标显示为灰色
+          setIsLoading(false)
+          return
+        }
+
+        // 获取餐厅详细信息
+        const { data: restaurantData, error: restaurantError } = await supabase!
+          .from("restaurants")
+          .select("id, name, qr_token, status")
+          .eq("id", restaurantId)
+          .single()
+
+        console.log("[QR Code] 餐厅查询结果:", { restaurantData, restaurantError })
+
+        if (!restaurantError && restaurantData) {
+          setRestaurantId(restaurantData.id)
+          setQrToken(restaurantData.qr_token || null)
+          setRestaurantName(restaurantData.name || null)
+          setRestaurantStatus(restaurantData.status || "unactivated")
+          console.log("[QR Code] 餐厅信息加载成功:", {
+            id: restaurantData.id,
+            name: restaurantData.name,
+            status: restaurantData.status,
+            hasToken: !!restaurantData.qr_token
+          })
+        } else {
+          // 如果餐厅信息不存在，至少设置基本信息
+          setRestaurantName("未设置")
+          setRestaurantStatus("unactivated")
+          console.log("[QR Code] 使用餐厅ID（未找到详细信息）:", restaurantId)
+        }
+
+        // 查询当前餐厅的设备数量
+        const { count, error: deviceCountError } = await supabase!
+          .from("devices")
+          .select("*", { count: "exact", head: true })
+          .eq("restaurant_id", restaurantId)
+
+        if (!deviceCountError && count !== null) {
+          setDeviceCount(count)
+          console.log("[QR Code] 设备数量:", count)
+        } else {
+          console.error("[QR Code] 查询设备数量失败:", deviceCountError)
+          setDeviceCount(0) // 默认设为0
+        }
+      } catch (error) {
+        console.error("[QR Code] 加载餐厅信息失败:", error)
+        // 防空逻辑：即使加载失败，图标仍然显示
+        setDeviceCount(0) // 默认设备数为0，图标显示为灰色
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadRestaurantInfo()
+  }, [])
+
+  // 处理二维码图标点击 - 点击绿色呼吸灯图标时弹出二维码弹窗
+  const handleQRCodeClick = async () => {
+    // 防空逻辑：如果点击时还没登录，弹窗提示
+    const currentRestaurantId = restaurantId || localStorage.getItem("restaurantId")
+    
+    if (!currentRestaurantId) {
+      alert("请先完成注册")
+      return
+    }
+
+    console.log("[QR Code] 点击二维码按钮，餐厅ID:", currentRestaurantId, "当前Token:", qrToken)
+    
+    // 如果没有 qr_token，先生成一个
+    if (!qrToken) {
+      setIsGeneratingToken(true)
+      try {
+        const response = await fetch("/api/restaurant/generate-token", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            restaurant_id: currentRestaurantId,
+          }),
+        })
+
+        const result = await response.json()
+
+        if (result.success && result.data) {
+          console.log("[QR Code] Token生成成功:", result.data.qr_token)
+          setQrToken(result.data.qr_token)
+          if (result.data.name) {
+            setRestaurantName(result.data.name)
+          }
+          // Token生成成功后打开弹窗
+          setIsQRModalOpen(true)
+        } else {
+          console.error("[QR Code] Token生成失败:", result.error)
+          alert("生成二维码令牌失败: " + (result.error || "未知错误"))
+        }
+      } catch (error) {
+        console.error("[QR Code] 生成Token时出错:", error)
+        alert("生成二维码令牌时出错，请重试")
+      } finally {
+        setIsGeneratingToken(false)
+      }
+    } else {
+      // 如果已有 token，直接打开弹窗
+      setIsQRModalOpen(true)
+    }
+  }
+
   return (
-    <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 backdrop-blur-lg border-b border-blue-800/30">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg shadow-red-500/30">
-              <Zap className="h-6 w-6 text-white" />
+    <>
+      <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 backdrop-blur-lg border-b border-blue-800/30">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg shadow-red-500/30">
+                <Zap className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex items-center gap-2">
+                <div>
+                  <h1 className="text-lg font-bold leading-tight text-white">我的智能餐厅</h1>
+                  <p className="text-xs text-blue-400">IoT智能餐饮服务平台</p>
+                </div>
+                {/* 调试信息 - 开发时可见 */}
+                {process.env.NODE_ENV === "development" && (
+                  <div className="ml-2 text-xs text-slate-500">
+                    {isLoading ? "加载中..." : isLoggedIn ? "已登录" : "未登录"}
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg font-bold leading-tight text-white">我的智能餐厅</h1>
-              <p className="text-xs text-blue-400">IoT智能餐饮服务平台</p>
+            <div className="flex items-center gap-2">
+              {/* 二维码图标 - 放在搜索图标左侧，带亮绿色呼吸灯特效 */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleQRCodeClick}
+                disabled={isGeneratingToken}
+                className="relative text-white hover:bg-white/10 transition-all overflow-visible group"
+                title={isGeneratingToken ? "正在生成令牌..." : deviceCount === 0 ? "查看提示信息" : "查看身份二维码"}
+              >
+                {/* 呼吸灯光晕效果 - 亮绿色，轻微发光 */}
+                <div 
+                  className="absolute inset-0 rounded-full bg-[#4ade80] blur-md"
+                  style={{
+                    animation: 'breathe-glow 3s ease-in-out infinite',
+                    opacity: 0.15,
+                  }}
+                ></div>
+                <div 
+                  className="absolute inset-0 rounded-full bg-[#4ade80] blur-sm"
+                  style={{
+                    animation: 'breathe-glow 3s ease-in-out infinite 0.5s',
+                    opacity: 0.1,
+                  }}
+                ></div>
+                
+                {isGeneratingToken ? (
+                  <div className="h-5 w-5 border-2 border-[#4ade80] border-t-transparent rounded-full animate-spin relative z-10" />
+                ) : (
+                  <QrCode className="h-5 w-5 text-[#4ade80] relative z-10 drop-shadow-[0_0_12px_rgba(74,222,128,0.8)] transition-all group-hover:scale-110" />
+                )}
+              </Button>
+              
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+                <Search className="h-5 w-5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative">
+                <Bell className="h-5 w-5" />
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-gradient-to-r from-red-500 to-red-600 text-white text-xs border-0">
+                  3
+                </Badge>
+              </Button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
-              <Search className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative">
-              <Bell className="h-5 w-5" />
-              <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-gradient-to-r from-red-500 to-red-600 text-white text-xs border-0">
-                3
-              </Badge>
-            </Button>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* 二维码弹出层 - 餐厅专属通行码 */}
+      <QRCodeModal
+        isOpen={isQRModalOpen}
+        onClose={() => setIsQRModalOpen(false)}
+        qrToken={qrToken}
+      />
+
+      {/* 无设备提示对话框 */}
+      <NoDeviceDialog
+        isOpen={isNoDeviceDialogOpen}
+        onClose={() => setIsNoDeviceDialogOpen(false)}
+      />
+    </>
   )
 }
 
@@ -73,62 +442,111 @@ function IoTDashboard() {
   const [fuelLevel, setFuelLevel] = useState(68)
   const [consumption, setConsumption] = useState(12.5)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLocked, setIsLocked] = useState(false)
+  const [deviceId, setDeviceId] = useState<string>("default")
 
   useEffect(() => {
-    // 加载燃料剩余百分比
-    const loadFuelPercentage = async () => {
+    // 加载燃料剩余百分比和锁机状态
+    const loadFuelData = async () => {
       try {
         setIsLoading(true)
-        const { data, error } = await supabase
-          .from("fuel_level")
-          .select("percentage")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single()
+        // 从 localStorage 获取设备ID，如果没有则尝试获取第一个设备
+        let currentDeviceId = localStorage.getItem("deviceId") || null
+        
+        // 移除 deviceId === 'default' 判断：如果没有设备ID，尝试获取第一个设备
+        if (!currentDeviceId) {
+          // 尝试获取第一个设备（只有在 Supabase 配置有效时）
+          if (supabase) {
+            try {
+              const { data: devicesData } = await supabase
+                .from("devices")
+                .select("device_id")
+                .limit(1)
+                .single()
 
-        if (error && error.code !== "PGRST116") {
-          console.error("加载燃料百分比失败:", error)
-          return
+              if (devicesData && devicesData.device_id) {
+                currentDeviceId = devicesData.device_id
+                localStorage.setItem("deviceId", currentDeviceId)
+                setDeviceId(currentDeviceId)
+              }
+            } catch (error) {
+              console.log("[IoT Dashboard] 未找到设备，跳过设备数据加载")
+            }
+          }
+        } else {
+          setDeviceId(currentDeviceId)
         }
 
-        if (data) {
-          setFuelLevel(data.percentage)
+        // 如果有有效的设备ID，查询该设备的燃料数据
+        // 只有在 Supabase 配置有效时才查询
+        if (currentDeviceId && supabase) {
+          const { data, error } = await supabase
+            .from("fuel_level")
+            .select("percentage, is_locked")
+            .eq("device_id", currentDeviceId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()
+
+          if (error) {
+            // PGRST116 表示没有找到数据，这是正常的
+            if (error.code !== "PGRST116") {
+              console.error("加载燃料数据失败:", error)
+            }
+            return
+          }
+
+          if (data) {
+            setFuelLevel(data.percentage || 68)
+            setIsLocked(data.is_locked || false)
+          }
         }
       } catch (error) {
-        console.error("加载燃料百分比失败:", error)
+        console.error("加载燃料数据失败:", error)
       } finally {
         setIsLoading(false)
       }
     }
 
-    loadFuelPercentage()
+    loadFuelData()
 
-    // 实时订阅数据库更新
-    const channel = supabase
-      .channel("fuel_level_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "fuel_level",
-        },
-        (payload) => {
-          if (payload.new && "percentage" in payload.new) {
-            setFuelLevel(payload.new.percentage as number)
+    // 实时订阅数据库更新 - 只有在 Supabase 配置有效时才开启
+    if (supabase && process.env.NEXT_PUBLIC_SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")) {
+      const channel = supabase
+        .channel("fuel_level_changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "fuel_level",
+          },
+          (payload) => {
+            if (payload.new) {
+              if ("percentage" in payload.new) {
+                setFuelLevel(payload.new.percentage as number)
+              }
+              if ("is_locked" in payload.new) {
+                setIsLocked(payload.new.is_locked as boolean)
+              }
+            }
           }
+        )
+        .subscribe()
+
+      // 模拟消耗（可选，如果需要实时递减）
+      const interval = setInterval(() => {
+        setConsumption((prev) => 12 + Math.random() * 2)
+      }, 3000)
+
+      return () => {
+        clearInterval(interval)
+        if (supabase) {
+          supabase.removeChannel(channel)
         }
-      )
-      .subscribe()
-
-    // 模拟消耗（可选，如果需要实时递减）
-    const interval = setInterval(() => {
-      setConsumption((prev) => 12 + Math.random() * 2)
-    }, 3000)
-
-    return () => {
-      clearInterval(interval)
-      supabase.removeChannel(channel)
+      }
+    } else {
+      console.warn("[IoT Dashboard] Supabase未配置，跳过实时订阅")
     }
   }, [])
 
@@ -145,11 +563,28 @@ function IoTDashboard() {
               <p className="text-xs text-slate-400">IoT智能传感器</p>
             </div>
           </div>
-          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-            <Activity className="h-3 w-3 mr-1 animate-pulse" />
-            在线
-          </Badge>
+          <div className="flex items-center gap-2">
+            {isLocked ? (
+              <Badge className="bg-red-500/20 text-red-400 border-red-500/30">
+                <Lock className="h-3 w-3 mr-1" />
+                已锁定
+              </Badge>
+            ) : (
+              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                <Activity className="h-3 w-3 mr-1 animate-pulse" />
+                在线
+              </Badge>
+            )}
+          </div>
         </div>
+
+        {/* 锁机状态提示 */}
+        {isLocked && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+            <Lock className="h-4 w-4 text-red-400" />
+            <span className="text-sm text-red-400">设备已被远程锁定，请联系管理员解锁</span>
+          </div>
+        )}
 
         <div className="mb-6">
           <div className="flex justify-between items-end mb-2">
