@@ -579,34 +579,67 @@ function PaymentContent() {
     }
   }, [selectedFuel, actualQuantity, deliveryCity, deliveryAddress, distance, serviceType, useGPS, gpsLocation, selectedSpec, bottleCount])
 
-  const handlePayment = () => {
-    // 保存当前订单信息到localStorage
-    try {
-      const orderDataToSave = {
-        selectedFuel,
-        fuelQuantity,
-        selectedSpec: (selectedFuel === "lpg" || selectedFuel === "alcohol") ? selectedSpec : undefined,
-        bottleCount: (selectedFuel === "lpg" || selectedFuel === "alcohol") ? bottleCount : undefined,
-        cleanFuelIndex: selectedFuel === "clean" ? cleanFuelIndex : undefined,
-        deliveryCity,
-        deliveryAddress,
-        selectedPayment,
-        gpsLocation: gpsLocation ? {
-          lat: gpsLocation.lat,
-          lon: gpsLocation.lon,
-          address: gpsLocation.address,
-          city: gpsLocation.city,
-        } : null,
-        useGPS,
-        savedAt: Date.now(),
-      }
-      localStorage.setItem("lastSuccessfulOrder", JSON.stringify(orderDataToSave))
-    } catch (error) {
-      console.error("保存订单信息失败:", error)
+  const handlePayment = async () => {
+    // 获取当前用户的 restaurant_id
+    const restaurantId = localStorage.getItem("restaurantId")
+    
+    if (!restaurantId) {
+      alert("请先登录或注册餐厅")
+      return
     }
 
-    // 这里可以添加实际的支付逻辑
-    alert(`使用${paymentMethods.find((p) => p.id === selectedPayment)?.name}支付 ¥${orderInfo.amount.toFixed(2)}`)
+    try {
+      // 创建订单
+      const response = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          restaurant_id: restaurantId,
+          service_type: `${fuelTypes.find((f) => f.id === selectedFuel)?.name || "燃料配送"} - ${actualQuantity}${fuelTypes.find((f) => f.id === selectedFuel)?.unitLabel || "kg"}`,
+          status: "pending",
+          amount: orderInfo.amount,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "创建订单失败")
+      }
+
+      // 保存当前订单信息到localStorage
+      try {
+        const orderDataToSave = {
+          selectedFuel,
+          fuelQuantity,
+          selectedSpec: (selectedFuel === "lpg" || selectedFuel === "alcohol") ? selectedSpec : undefined,
+          bottleCount: (selectedFuel === "lpg" || selectedFuel === "alcohol") ? bottleCount : undefined,
+          cleanFuelIndex: selectedFuel === "clean" ? cleanFuelIndex : undefined,
+          deliveryCity,
+          deliveryAddress,
+          selectedPayment,
+          gpsLocation: gpsLocation ? {
+            lat: gpsLocation.lat,
+            lon: gpsLocation.lon,
+            address: gpsLocation.address,
+            city: gpsLocation.city,
+          } : null,
+          useGPS,
+          savedAt: Date.now(),
+        }
+        localStorage.setItem("lastSuccessfulOrder", JSON.stringify(orderDataToSave))
+      } catch (error) {
+        console.error("保存订单信息失败:", error)
+      }
+
+      // 显示支付提示
+      alert(`订单已创建！使用${paymentMethods.find((p) => p.id === selectedPayment)?.name}支付 ¥${orderInfo.amount.toFixed(2)}`)
+    } catch (error: any) {
+      console.error("创建订单失败:", error)
+      alert("创建订单失败: " + (error.message || "未知错误"))
+    }
   }
 
   return (

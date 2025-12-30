@@ -22,12 +22,7 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!worker_id) {
-      return NextResponse.json(
-        { error: "缺少必要参数: worker_id" },
-        { status: 400 }
-      )
-    }
+    // worker_id 是可选的（客户提交时可能没有，管理员指派时才有）
 
     // 验证餐厅是否存在
     const { data: restaurantData, error: restaurantError } = await supabase
@@ -46,12 +41,16 @@ export async function POST(request: Request) {
     // 创建订单
     const orderData: any = {
       restaurant_id: restaurant_id,
-      worker_id: worker_id,
       service_type: service_type || "燃料配送",
       status: status || "pending",
       amount: amount || 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+    }
+    
+    // 如果有 worker_id，则添加
+    if (worker_id) {
+      orderData.worker_id = worker_id
     }
 
     const { data: newOrder, error: createError } = await supabase

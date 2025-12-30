@@ -19,6 +19,9 @@ import {
   Truck,
   User,
   CheckCircle2,
+  Clock,
+  Bell,
+  Zap,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -63,6 +66,20 @@ interface Restaurant {
   latitude: number | null
   longitude: number | null
   address: string | null
+  qr_token: string | null
+}
+
+// 订单类型
+interface Order {
+  id: string
+  restaurant_id: string
+  restaurant_name?: string
+  service_type: string
+  status: string
+  amount: number
+  created_at: string
+  updated_at: string
+  worker_id?: string | null
 }
 
 // 工人类型
@@ -92,6 +109,8 @@ export default function AdminDashboard() {
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>("")
   const [isAssigning, setIsAssigning] = useState(false)
+  const [recentOrders, setRecentOrders] = useState<Order[]>([])
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false)
 
   // 加载所有餐厅数据
   const loadRestaurants = useCallback(async () => {
@@ -106,7 +125,7 @@ export default function AdminDashboard() {
 
       const { data, error } = await supabase
         .from("restaurants")
-        .select("id, name, contact_name, contact_phone, total_refilled, status, created_at, latitude, longitude, address")
+        .select("id, name, contact_name, contact_phone, total_refilled, status, created_at, latitude, longitude, address, qr_token")
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -308,56 +327,175 @@ export default function AdminDashboard() {
     setSelectedWorkerId("")
   }
 
+  // 加载最新订单
+  const loadRecentOrders = useCallback(async () => {
+    if (!supabase) return
+
+    try {
+      setIsLoadingOrders(true)
+      
+      // 获取最近20条订单
+      const { data: ordersData, error: ordersError } = await supabase
+        .from("orders")
+        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, worker_id")
+        .order("created_at", { ascending: false })
+        .limit(20)
+
+      if (ordersError) {
+        console.error("[Admin Dashboard] 加载订单失败:", ordersError)
+        return
+      }
+
+      if (ordersData) {
+        // 获取所有相关的餐厅名称
+        const restaurantIds = [...new Set(ordersData.map((o: any) => o.restaurant_id).filter(Boolean))]
+        let restaurantMap: Record<string, string> = {}
+        
+        if (restaurantIds.length > 0) {
+          const { data: restaurantsData } = await supabase
+            .from("restaurants")
+            .select("id, name")
+            .in("id", restaurantIds)
+          
+          if (restaurantsData) {
+            restaurantMap = restaurantsData.reduce((acc: Record<string, string>, r: any) => {
+              acc[r.id] = r.name
+              return acc
+            }, {})
+          }
+        }
+
+        // 格式化订单数据
+        const formattedOrders: Order[] = ordersData.map((order: any) => ({
+          id: order.id,
+          restaurant_id: order.restaurant_id,
+          restaurant_name: restaurantMap[order.restaurant_id] || "未知餐厅",
+          service_type: order.service_type || "燃料配送",
+          status: order.status || "pending",
+          amount: order.amount || 0,
+          created_at: order.created_at,
+          updated_at: order.updated_at,
+          worker_id: order.worker_id,
+        }))
+        setRecentOrders(formattedOrders)
+      }
+    } catch (error) {
+      console.error("[Admin Dashboard] 加载订单时出错:", error)
+    } finally {
+      setIsLoadingOrders(false)
+    }
+  }, [])
+
   useEffect(() => {
     loadRestaurants()
     loadWorkers()
-  }, [loadRestaurants, loadWorkers])
+    loadRecentOrders()
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-6">
-      <div className="max-w-7xl mx-auto">
+    // 实时订阅订单变化
+    if (supabase) {
+      const channel = supabase
+        .channel("orders_changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "orders",
+          },
+          (payload) => {
+            console.log("[Admin Dashboard] 订单变化:", payload)
+            // 重新加载订单列表
+            loadRecentOrders()
+            // 重新加载餐厅数据（因为 total_refilled 可能更新）
+            loadRestaurants()
+          }
+        )
+        .subscribe()
+
+      return () => {
+        if (supabase) {
+          supabase.removeChannel(channel)
+        }
+      }
+    }
+  }, [loadRestaurants, loadWorkers, loadRecentOrders])
+
+  // 格式化时间显示
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+    const minutes = Math.floor(diff / 60000)
+    
+    if (minutes < 1) return "刚刚"
+    if (minutes < 60) return `${minutes}分钟前`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}小时前`
+    return date.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  }
+
+  // 获取订单状态样式
+  // 获取订单状态样式
+// 获取订单状态样式
+const getOrderStatusStyle = (status: string) => {
+  if (status === "pending" || status === "待处理") {
+    return "border-blue-500/50 bg-blue-500/10 shadow-lg shadow-blue-500/30";
+  } else if (status === "delivering" || status === "配送中" || status === "进行中") {
+    return "border-yellow-500/50 bg-yellow-500/10 shadow-lg shadow-yellow-500/30";
+  } else if (status === "completed" || status === "已完成") {
+    return "border-green-500/50 bg-green-500/10";
+  }
+  return "border-slate-700/50 bg-slate-800/50";
+};
+
+return (
+  <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-6">
+      <div className="max-w-[1600px] mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 左侧主内容区 */}
+          <div className="lg:col-span-2 space-y-6">
         {/* 页面标题 */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">客户概览面板</h1>
           <p className="text-slate-400">管理所有已注册餐厅的信息和状态</p>
         </div>
 
-        {/* 统计卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card className="bg-slate-900/90 border-slate-800">
-            <CardHeader className="pb-3">
-              <CardDescription className="text-slate-400">总餐厅数</CardDescription>
-              <CardTitle className="text-3xl text-white">{restaurants.length}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="bg-slate-900/90 border-slate-800">
-            <CardHeader className="pb-3">
-              <CardDescription className="text-slate-400">已激活</CardDescription>
-              <CardTitle className="text-3xl text-white">
-                {restaurants.filter((r) => r.status === "activated").length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="bg-slate-900/90 border-slate-800">
-            <CardHeader className="pb-3">
-              <CardDescription className="text-slate-400">待激活</CardDescription>
-              <CardTitle className="text-3xl text-white">
-                {restaurants.filter((r) => r.status === "unactivated").length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="bg-slate-900/90 border-slate-800">
-            <CardHeader className="pb-3">
-              <CardDescription className="text-slate-400">预警餐厅</CardDescription>
-              <CardTitle className="text-3xl text-red-400">
-                {restaurants.filter((r) => shouldShowWarning(r.total_refilled)).length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
+            {/* 统计卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">总餐厅数</CardDescription>
+                  <CardTitle className="text-3xl text-white">{restaurants.length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">已激活</CardDescription>
+                  <CardTitle className="text-3xl text-white">
+                    {restaurants.filter((r) => r.status === "activated").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">待激活</CardDescription>
+                  <CardTitle className="text-3xl text-white">
+                    {restaurants.filter((r) => r.status === "unactivated").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">预警餐厅</CardDescription>
+                  <CardTitle className="text-3xl text-red-400">
+                    {restaurants.filter((r) => shouldShowWarning(r.total_refilled)).length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
 
-        {/* 餐厅列表/地图 */}
-        <Card className="bg-slate-900/90 border-slate-800">
+            {/* 餐厅列表/地图 */}
+            <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -490,7 +628,7 @@ export default function AdminDashboard() {
                       return (
                         <tr
                           key={restaurant.id}
-                          className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
+                          className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors group"
                         >
                           <td className="py-4 px-4">
                             <div className="flex items-center gap-2">
@@ -593,6 +731,96 @@ export default function AdminDashboard() {
             )}
           </CardContent>
         </Card>
+          </div>
+
+          {/* 右侧最新动态栏 */}
+          <div className="lg:col-span-1">
+            <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm sticky top-6">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                    <Bell className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-white">最新动态</CardTitle>
+                    <CardDescription className="text-slate-400">实时订单流</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoadingOrders ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block h-6 w-6 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-slate-400 mt-2 text-sm">加载中...</p>
+                  </div>
+                ) : recentOrders.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Clock className="h-8 w-8 text-slate-600 mx-auto mb-2" />
+                    <p className="text-slate-400 text-sm">暂无订单动态</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[800px] overflow-y-auto">
+                    {recentOrders.map((order) => {
+                      const isPending = order.status === "pending" || order.status === "待处理"
+                      return (
+                        <div
+                          key={order.id}
+                          className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+                            isPending 
+                              ? getOrderStatusStyle(order.status) + " animate-pulse-subtle"
+                              : "border-slate-700/50 bg-slate-800/50"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Building2 className="h-4 w-4 text-blue-400" />
+                                <span className="font-semibold text-white text-sm">
+                                  {order.restaurant_name}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-400 ml-6">
+                                {order.service_type}
+                              </div>
+                            </div>
+                            <Badge
+                              className={
+                                isPending
+                                  ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                                  : order.status === "delivering" || order.status === "配送中"
+                                    ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                                    : "bg-green-500/20 text-green-400 border-green-500/30"
+                              }
+                            >
+                              {isPending ? "待处理" : order.status === "delivering" || order.status === "配送中" ? "配送中" : "已完成"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700/50">
+                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                              <Clock className="h-3 w-3" />
+                              {formatTime(order.created_at)}
+                            </div>
+                            {order.amount > 0 && (
+                              <div className="text-sm font-semibold text-white">
+                                ¥{order.amount.toFixed(2)}
+                              </div>
+                            )}
+                          </div>
+                          {order.worker_id && (
+                            <div className="mt-2 text-xs text-slate-500 flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              已指派工人
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         {/* 指派配送对话框 */}
         <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
