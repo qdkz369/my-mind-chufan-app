@@ -64,10 +64,19 @@ export function ProfileContent() {
 
   // 从 localStorage 加载餐厅ID
   useEffect(() => {
-    const restaurantId = localStorage.getItem("restaurantId")
-    if (restaurantId) {
-      loadRestaurantInfo(restaurantId)
+    const loadRestaurant = async () => {
+      const restaurantId = localStorage.getItem("restaurantId")
+      console.log('[ProfileContent] 初始化检查，restaurantId:', restaurantId)
+      if (restaurantId) {
+        console.log('[ProfileContent] 找到restaurantId，开始加载餐厅信息')
+        await loadRestaurantInfo(restaurantId)
+      } else {
+        console.log('[ProfileContent] 未找到restaurantId，显示注册表单')
+        // 确保 restaurantInfo 为 null，显示注册表单
+        setRestaurantInfo(null)
+      }
     }
+    loadRestaurant()
   }, [])
 
   // 加载高德地图定位插件
@@ -136,6 +145,17 @@ export function ProfileContent() {
   // 加载餐厅信息
   const loadRestaurantInfo = async (restaurantId: string) => {
     if (!supabase || !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")) {
+      console.warn('[加载餐厅信息] Supabase未配置，使用localStorage数据')
+      // 即使Supabase未配置，也尝试从localStorage恢复基本信息
+      const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
+      if (cachedData) {
+        try {
+          const data = JSON.parse(cachedData)
+          setRestaurantInfo(data)
+        } catch (e) {
+          console.error('[加载餐厅信息] 解析缓存数据失败:', e)
+        }
+      }
       return
     }
 
@@ -144,10 +164,12 @@ export function ProfileContent() {
         .from("restaurants")
         .select("id, name, contact_name, contact_phone, address, latitude, longitude, status")
         .eq("id", restaurantId)
-        .single()
+        .maybeSingle()
 
       if (!error && data) {
         setRestaurantInfo(data)
+        // 缓存到localStorage
+        localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(data))
         setFormData({
           name: data.contact_name || "",
           phone: data.contact_phone || "",
@@ -156,9 +178,31 @@ export function ProfileContent() {
           longitude: data.longitude || 0,
           address: data.address || "",
         })
+      } else if (error) {
+        console.error("加载餐厅信息失败:", error)
+        // 如果加载失败，尝试从localStorage恢复
+        const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
+        if (cachedData) {
+          try {
+            const data = JSON.parse(cachedData)
+            setRestaurantInfo(data)
+          } catch (e) {
+            console.error('[加载餐厅信息] 解析缓存数据失败:', e)
+          }
+        }
       }
     } catch (error) {
-      console.error("加载餐厅信息失败:", error)
+      console.error("加载餐厅信息异常:", error)
+      // 如果加载失败，尝试从localStorage恢复
+      const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
+      if (cachedData) {
+        try {
+          const data = JSON.parse(cachedData)
+          setRestaurantInfo(data)
+        } catch (e) {
+          console.error('[加载餐厅信息] 解析缓存数据失败:', e)
+        }
+      }
     }
   }
 
@@ -362,6 +406,16 @@ export function ProfileContent() {
           setIsEditing(false)
           if (result.data) {
             setRestaurantInfo(result.data)
+            // 更新缓存
+            const updatedRestaurantId = result.data.id || restaurantId
+            if (updatedRestaurantId) {
+              localStorage.setItem(`restaurant_${updatedRestaurantId}`, JSON.stringify(result.data))
+            }
+          } else {
+            // 如果没有返回数据，重新加载
+            if (restaurantId) {
+              loadRestaurantInfo(restaurantId)
+            }
           }
           // 强制清除缓存并刷新
           router.refresh()
@@ -404,9 +458,12 @@ export function ProfileContent() {
         if (!result.error) {
           // 保存餐厅ID到localStorage（如果返回了数据）
           if (result.data && result.data.restaurant_id) {
-            localStorage.setItem("restaurantId", result.data.restaurant_id)
-            setRestaurantInfo({
-              id: result.data.restaurant_id,
+            const restaurantId = result.data.restaurant_id
+            localStorage.setItem("restaurantId", restaurantId)
+            
+            // 构建完整的餐厅信息对象
+            const newRestaurantInfo = {
+              id: restaurantId,
               name: result.data.name || formData.restaurant_name,
               contact_name: formData.name,
               contact_phone: formData.phone,
@@ -414,10 +471,24 @@ export function ProfileContent() {
               latitude: hasLocation ? formData.latitude : null,
               longitude: hasLocation ? formData.longitude : null,
               status: result.data.status || "unactivated",
-            })
+            }
+            
+            // 立即设置状态，确保UI更新
+            setRestaurantInfo(newRestaurantInfo)
+            
+            // 缓存到localStorage，以便页面刷新后能快速恢复
+            localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(newRestaurantInfo))
+            
+            console.log('[注册表单] 注册成功，已保存餐厅信息:', newRestaurantInfo)
           } else {
             // 即使没有返回完整数据，也尝试保存基本信息
             console.warn('[注册表单] API返回数据不完整，但操作可能已成功')
+            // 尝试从localStorage获取之前保存的ID
+            const existingId = localStorage.getItem("restaurantId")
+            if (existingId) {
+              // 重新加载数据
+              loadRestaurantInfo(existingId)
+            }
           }
           setSubmitSuccess(true)
           setIsEditing(false)
