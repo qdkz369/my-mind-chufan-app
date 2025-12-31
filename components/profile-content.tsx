@@ -1,7 +1,16 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { MapPin, CreditCard, Settings, HelpCircle, FileText, Shield, ChevronRight, Star, User, Phone, Building2, Navigation, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+// 高德地图安全密钥配置
+if (typeof window !== 'undefined') {
+  (window as any)._AMapSecurityConfig = {
+    securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
+  }
+}
+
+import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
+import { MapPin, CreditCard, Settings, HelpCircle, FileText, Shield, ChevronRight, Star, User, Phone, Building2, Navigation, Loader2, CheckCircle2, AlertCircle, Locate } from "lucide-react"
+import AMapLoader from '@amap/amap-jsapi-loader'
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -21,11 +30,15 @@ const menuItems = [
 ]
 
 export function ProfileContent() {
+  const router = useRouter()
   const [isEditing, setIsEditing] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [locationError, setLocationError] = useState("")
+  const [amapLoaded, setAmapLoaded] = useState(false)
+  const geolocationRef = useRef<any>(null)
+  const geocoderRef = useRef<any>(null)
   
   // 表单状态
   const [formData, setFormData] = useState({
@@ -57,6 +70,69 @@ export function ProfileContent() {
     }
   }, [])
 
+  // 加载高德地图定位插件
+  useEffect(() => {
+    const loadAMapPlugins = async () => {
+      if (amapLoaded) return
+
+      const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
+      if (!amapKey) {
+        console.warn('[定位] AMAP_KEY未配置')
+        return
+      }
+
+      // 确保安全密钥已配置
+      if (typeof window !== 'undefined' && !(window as any)._AMapSecurityConfig) {
+        (window as any)._AMapSecurityConfig = {
+          securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
+        }
+      }
+
+      try {
+        const AMap = await AMapLoader.load({
+          key: amapKey,
+          version: '2.0',
+          plugins: ['AMap.Geolocation', 'AMap.Geocoder'],
+        })
+
+        // 初始化定位插件
+        geolocationRef.current = new AMap.Geolocation({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+          convert: true,
+          showButton: false,
+          buttonOffset: new AMap.Pixel(10, 20),
+          zoomToAccuracy: true,
+          buttonPosition: 'RB',
+        })
+
+        // 添加定位成功事件监听
+        geolocationRef.current.on('complete', (data: any) => {
+          console.log('[定位] 定位成功事件:', data)
+        })
+
+        // 添加定位失败事件监听
+        geolocationRef.current.on('error', (data: any) => {
+          console.error('[定位] 定位失败事件:', data)
+        })
+
+        // 初始化地理编码插件
+        geocoderRef.current = new AMap.Geocoder({
+          city: '全国',
+        })
+
+        setAmapLoaded(true)
+        console.log('[定位] 高德地图插件加载成功')
+      } catch (error) {
+        console.error('[定位] 加载高德地图插件失败:', error)
+        setLocationError('地图服务加载失败，请刷新页面重试')
+      }
+    }
+
+    loadAMapPlugins()
+  }, [amapLoaded])
+
   // 加载餐厅信息
   const loadRestaurantInfo = async (restaurantId: string) => {
     if (!supabase || !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")) {
@@ -86,131 +162,132 @@ export function ProfileContent() {
     }
   }
 
-  // 地图定位（使用高德地图API）
-  const handleMapLocation = () => {
-    setIsLocating(true)
-    setLocationError("")
-
-    if (!navigator.geolocation) {
-      setLocationError("您的浏览器不支持GPS定位")
-      setIsLocating(false)
+  // 高德地图精确定位
+  const handleAMapLocation = async () => {
+    if (!amapLoaded || !geolocationRef.current || !geocoderRef.current) {
+      setLocationError("地图服务未加载完成，请稍候再试")
+      console.warn('[定位] 地图服务未就绪:', { amapLoaded, geolocation: !!geolocationRef.current, geocoder: !!geocoderRef.current })
       return
     }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const latitude = position.coords.latitude
-        const longitude = position.coords.longitude
+    setIsLocating(true)
+    setLocationError("")
 
-        try {
-          // 使用高德地图API进行反向地理编码（国内更准确）
-          // 注意：需要在高德开放平台申请Key，这里使用示例Key，实际使用时请替换
-          const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || "your-amap-key-here"
-          
-          // 如果配置了高德Key，使用高德API
-          if (amapKey && amapKey !== "your-amap-key-here") {
-            const response = await fetch(
-              `https://restapi.amap.com/v3/geocode/regeo?key=${amapKey}&location=${longitude},${latitude}&radius=1000&extensions=all`
-            )
+    // 设置超时处理，防止一直处于定位中
+    let isCompleted = false
+    const timeoutId = setTimeout(() => {
+      if (!isCompleted) {
+        console.error('[定位] 定位超时')
+        setLocationError("定位超时，请检查网络连接或定位权限")
+        setIsLocating(false)
+        isCompleted = true
+        // 移除可能的事件监听
+        if (geolocationRef.current) {
+          geolocationRef.current.off('complete')
+          geolocationRef.current.off('error')
+        }
+      }
+    }, 15000) // 15秒超时
 
-            if (!response.ok) {
-              throw new Error("高德地图API调用失败")
-            }
+    try {
+      console.log('[定位] 开始定位...')
+      
+      // 使用事件监听方式处理定位结果
+      const handleComplete = (data: any) => {
+        if (isCompleted) return // 防止重复处理
+        clearTimeout(timeoutId)
+        isCompleted = true
+        console.log('[定位] 定位成功:', data)
+        
+        if (data && data.position) {
+          const longitude = data.position.lng || data.position.longitude
+          const latitude = data.position.lat || data.position.latitude
 
-            const data = await response.json()
+          console.log('[定位] 获取到坐标:', { latitude, longitude })
+
+          // 使用逆地理编码将坐标转换为地址
+          geocoderRef.current.getAddress([longitude, latitude], (geocodeStatus: string, geocodeResult: any) => {
+            console.log('[定位] 逆地理编码回调:', { geocodeStatus, geocodeResult })
             
-            if (data.status === "1" && data.regeocode) {
-              const formattedAddress = data.regeocode.formatted_address || 
-                (data.regeocode.addressComponent ? 
-                  `${data.regeocode.addressComponent.province || ""}${data.regeocode.addressComponent.city || ""}${data.regeocode.addressComponent.district || ""}${data.regeocode.addressComponent.township || ""}${data.regeocode.addressComponent.street || ""}${data.regeocode.addressComponent.streetNumber || ""}` : 
+            if (geocodeStatus === 'complete' && geocodeResult.info === 'OK') {
+              const address = geocodeResult.regeocode.formattedAddress || 
+                (geocodeResult.regeocode.addressComponent ? 
+                  `${geocodeResult.regeocode.addressComponent.province || ""}${geocodeResult.regeocode.addressComponent.city || ""}${geocodeResult.regeocode.addressComponent.district || ""}${geocodeResult.regeocode.addressComponent.township || ""}${geocodeResult.regeocode.addressComponent.street || ""}${geocodeResult.regeocode.addressComponent.streetNumber || ""}` : 
                   `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`)
 
-              setFormData(prev => ({
-                ...prev,
-                latitude,
-                longitude,
-                address: formattedAddress,
-              }))
-              setLocationError("")
-              setIsLocating(false)
-              return
-            }
-          }
-
-          // 备用方案：使用百度地图API
-          const baiduKey = process.env.NEXT_PUBLIC_BAIDU_MAP_KEY || "your-baidu-key-here"
-          
-          if (baiduKey && baiduKey !== "your-baidu-key-here") {
-            // 百度地图需要将GPS坐标转换为百度坐标
-            const response = await fetch(
-              `https://api.map.baidu.com/geocoding/v3/?ak=${baiduKey}&location=${latitude},${longitude}&output=json&coordtype=wgs84ll`
-            )
-
-            if (!response.ok) {
-              throw new Error("百度地图API调用失败")
-            }
-
-            const data = await response.json()
-            
-            if (data.status === 0 && data.result) {
-              const formattedAddress = data.result.formatted_address || 
-                `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+              console.log('[定位] 地址解析成功:', address)
 
               setFormData(prev => ({
                 ...prev,
                 latitude,
                 longitude,
-                address: formattedAddress,
+                address: address,
               }))
               setLocationError("")
               setIsLocating(false)
-              return
-            }
-          }
-
-          // 如果都没有配置，使用OpenStreetMap作为备用
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
-            {
-              headers: {
-                'User-Agent': 'MyMindChufanApp/1.0'
+              
+              // 移除事件监听
+              if (geolocationRef.current) {
+                geolocationRef.current.off('complete', handleComplete)
+                geolocationRef.current.off('error', handleError)
+              }
+            } else {
+              // 如果逆地理编码失败，至少保存坐标
+              console.warn('[定位] 地址解析失败，但已保存坐标')
+              setFormData(prev => ({
+                ...prev,
+                latitude,
+                longitude,
+                address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+              }))
+              setLocationError("地址解析失败，已保存坐标")
+              setIsLocating(false)
+              
+              // 移除事件监听
+              if (geolocationRef.current) {
+                geolocationRef.current.off('complete', handleComplete)
+                geolocationRef.current.off('error', handleError)
               }
             }
-          )
-
-          if (!response.ok) {
-            throw new Error("地址解析失败")
-          }
-
-          const data = await response.json()
-          const address = data.display_name || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
-
-          setFormData(prev => ({
-            ...prev,
-            latitude,
-            longitude,
-            address,
-          }))
-          setLocationError("")
-        } catch (error) {
-          console.error("地址解析失败:", error)
-          setFormData(prev => ({
-            ...prev,
-            latitude,
-            longitude,
-            address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-          }))
-          setLocationError("地址解析失败，已保存坐标")
-        } finally {
+          })
+        } else {
+          console.error('[定位] 定位数据格式错误:', data)
+          setLocationError("定位数据格式错误")
           setIsLocating(false)
+          if (geolocationRef.current) {
+            geolocationRef.current.off('complete', handleComplete)
+            geolocationRef.current.off('error', handleError)
+          }
         }
-      },
-      (error) => {
-        console.error("GPS定位失败:", error)
-        setLocationError("定位失败，您可以稍后手动填写地址或跳过此步骤继续注册")
-        setIsLocating(false)
       }
-    )
+
+      const handleError = (data: any) => {
+        if (isCompleted) return // 防止重复处理
+        clearTimeout(timeoutId)
+        isCompleted = true
+        console.error('[定位] 定位失败:', data)
+        const errorMessage = data?.message || data?.info || "定位失败，请检查定位权限或稍后重试"
+        setLocationError(errorMessage)
+        setIsLocating(false)
+        if (geolocationRef.current) {
+          geolocationRef.current.off('complete', handleComplete)
+          geolocationRef.current.off('error', handleError)
+        }
+      }
+
+      // 添加事件监听
+      geolocationRef.current.on('complete', handleComplete)
+      geolocationRef.current.on('error', handleError)
+      
+      // 触发定位
+      geolocationRef.current.getCurrentPosition()
+      
+    } catch (error) {
+      clearTimeout(timeoutId)
+      console.error('[定位] 定位异常:', error)
+      setLocationError("定位服务异常，请稍后重试")
+      setIsLocating(false)
+    }
   }
 
   // 提交注册/更新
@@ -220,8 +297,10 @@ export function ProfileContent() {
       return
     }
 
-    // 地理位置为可选字段，如果未定位则使用默认值
-    const hasLocation = formData.latitude !== 0 && formData.longitude !== 0
+    // 地理位置为可选字段，检查是否有有效的定位信息
+    const hasLocation = formData.latitude !== 0 && formData.longitude !== 0 &&
+                       !isNaN(formData.latitude) && !isNaN(formData.longitude) &&
+                       formData.latitude !== null && formData.longitude !== null
     
     // 添加调试日志
     console.log('[注册表单] 提交数据:', {
@@ -231,7 +310,9 @@ export function ProfileContent() {
       hasLocation,
       latitude: formData.latitude,
       longitude: formData.longitude,
-      address: formData.address
+      address: formData.address,
+      latitudeType: typeof formData.latitude,
+      longitudeType: typeof formData.longitude,
     })
     console.log('[注册表单] 环境变量检查:', {
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ? '已配置' : '未配置',
@@ -256,26 +337,38 @@ export function ProfileContent() {
             name: formData.name,
             phone: formData.phone,
             restaurant_name: formData.restaurant_name,
-            latitude: hasLocation ? formData.latitude : undefined,
-            longitude: hasLocation ? formData.longitude : undefined,
+            // 确保经纬度以数字类型传递，如果没有定位则传递 null
+            latitude: hasLocation ? Number(formData.latitude) : null,
+            longitude: hasLocation ? Number(formData.longitude) : null,
             address: formData.address || undefined,
           }),
         })
+
+        // 检查 HTTP 状态码
+        if (!response.ok) {
+          const errorResult = await response.json().catch(() => ({ error: "网络请求失败" }))
+          console.error('[注册表单] 更新失败 - HTTP错误:', response.status, errorResult)
+          alert(`更新失败 (${response.status}): ${errorResult.error || "网络请求失败"}`)
+          return
+        }
 
         const result = await response.json()
         
         console.log('[注册表单] 更新API响应:', result)
 
-        if (result.success) {
+        // 松绑逻辑判断：只要没有 error 就执行成功逻辑
+        if (!result.error) {
           setSubmitSuccess(true)
           setIsEditing(false)
           if (result.data) {
             setRestaurantInfo(result.data)
           }
+          // 强制清除缓存并刷新
+          router.refresh()
           setTimeout(() => setSubmitSuccess(false), 3000)
         } else {
           console.error('[注册表单] 更新失败:', result.error, result.details)
-          alert("更新失败: " + (result.error || "未知错误") + (result.details ? `\n详情: ${JSON.stringify(result.details)}` : ""))
+          alert("更新失败: " + (result.error || "未知错误") + (result.details ? `\n详情: ${result.details}` : ""))
         }
       } else {
         // 注册新餐厅
@@ -288,40 +381,58 @@ export function ProfileContent() {
             name: formData.name,
             phone: formData.phone,
             restaurant_name: formData.restaurant_name,
-            latitude: hasLocation ? formData.latitude : undefined,
-            longitude: hasLocation ? formData.longitude : undefined,
+            // 确保经纬度以数字类型传递，如果没有定位则传递 null
+            latitude: hasLocation ? Number(formData.latitude) : null,
+            longitude: hasLocation ? Number(formData.longitude) : null,
             address: formData.address || undefined,
           }),
         })
+
+        // 检查 HTTP 状态码
+        if (!response.ok) {
+          const errorResult = await response.json().catch(() => ({ error: "网络请求失败" }))
+          console.error('[注册表单] 注册失败 - HTTP错误:', response.status, errorResult)
+          alert(`注册失败 (${response.status}): ${errorResult.error || "网络请求失败"}`)
+          return
+        }
 
         const result = await response.json()
         
         console.log('[注册表单] API响应:', result)
 
-        if (result.success && result.data) {
-          // 保存餐厅ID到localStorage
-          localStorage.setItem("restaurantId", result.data.restaurant_id)
-          setRestaurantInfo({
-            id: result.data.restaurant_id,
-            name: result.data.name,
-            contact_name: formData.name,
-            contact_phone: formData.phone,
-            address: formData.address || null,
-            latitude: hasLocation ? formData.latitude : null,
-            longitude: hasLocation ? formData.longitude : null,
-            status: result.data.status,
-          })
+        // 松绑逻辑判断：只要没有 error 就执行成功逻辑
+        if (!result.error) {
+          // 保存餐厅ID到localStorage（如果返回了数据）
+          if (result.data && result.data.restaurant_id) {
+            localStorage.setItem("restaurantId", result.data.restaurant_id)
+            setRestaurantInfo({
+              id: result.data.restaurant_id,
+              name: result.data.name || formData.restaurant_name,
+              contact_name: formData.name,
+              contact_phone: formData.phone,
+              address: formData.address || null,
+              latitude: hasLocation ? formData.latitude : null,
+              longitude: hasLocation ? formData.longitude : null,
+              status: result.data.status || "unactivated",
+            })
+          } else {
+            // 即使没有返回完整数据，也尝试保存基本信息
+            console.warn('[注册表单] API返回数据不完整，但操作可能已成功')
+          }
           setSubmitSuccess(true)
           setIsEditing(false)
+          // 强制清除缓存并刷新
+          router.refresh()
           setTimeout(() => setSubmitSuccess(false), 3000)
         } else {
           console.error('[注册表单] 注册失败:', result.error, result.details)
-          alert("注册失败: " + (result.error || "未知错误") + (result.details ? `\n详情: ${JSON.stringify(result.details)}` : ""))
+          alert("注册失败: " + (result.error || "未知错误") + (result.details ? `\n详情: ${result.details}` : ""))
         }
       }
     } catch (error) {
       console.error("提交失败:", error)
-      alert("提交失败，请重试")
+      const errorMessage = error instanceof Error ? error.message : "未知错误"
+      alert(`提交失败: ${errorMessage}\n\n请检查网络连接或稍后重试`)
     } finally {
       setIsSubmitting(false)
     }
@@ -411,62 +522,65 @@ export function ProfileContent() {
               </div>
             </div>
 
-            {/* 地图定位 */}
+            {/* 详细地址 */}
             <div>
-              <Label className="text-slate-300 mb-2 block">
-                地理位置 <span className="text-slate-500 text-xs">(可选)</span>
+              <Label htmlFor="address" className="text-slate-300 mb-2 block">
+                详细地址 <span className="text-slate-500 text-xs">(可选)</span>
               </Label>
-              <div className="space-y-2">
+              <div className="relative flex gap-2">
+                <div className="relative flex-1">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                    className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                    placeholder="请输入详细地址或点击右侧按钮自动获取"
+                  />
+                </div>
                 <Button
                   type="button"
-                  onClick={handleMapLocation}
-                  disabled={isLocating}
-                  className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white"
+                  onClick={handleAMapLocation}
+                  disabled={isLocating || !amapLoaded}
+                  className="px-4 bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white flex-shrink-0"
+                  title="自动获取位置"
                 >
                   {isLocating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      定位中...
-                    </>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <>
-                      <Navigation className="h-4 w-4 mr-2" />
-                      {formData.latitude && formData.longitude ? "重新定位" : "点击定位"}
-                    </>
+                    <Locate className="h-4 w-4" />
                   )}
                 </Button>
-                {locationError && (
-                  <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                    <p className="text-xs text-yellow-400 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {locationError}
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      提示：地理位置为可选信息，您可以跳过此步骤继续完成注册
-                    </p>
-                  </div>
-                )}
-                {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
-                  <div className="p-3 bg-slate-800/50 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm text-white">{formData.address}</p>
-                        <p className="text-xs text-slate-400 mt-1">
-                          坐标: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
-                        </p>
-                      </div>
+              </div>
+              {locationError && (
+                <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                  <p className="text-xs text-yellow-400 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {locationError}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    提示：地理位置为可选信息，您可以跳过此步骤继续完成注册
+                  </p>
+                </div>
+              )}
+              {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
+                <div className="mt-2 p-3 bg-slate-800/50 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm text-white">{formData.address}</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        坐标: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                      </p>
                     </div>
                   </div>
-                )}
-                {!formData.address && formData.latitude === 0 && formData.longitude === 0 && (
-                  <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                    <p className="text-xs text-slate-400 text-center">
-                      未获取位置信息，您可以稍后补充或跳过此步骤
-                    </p>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
+              {!amapLoaded && (
+                <p className="mt-2 text-xs text-slate-500">
+                  正在加载定位服务...
+                </p>
+              )}
             </div>
 
             {/* 提交按钮 */}
