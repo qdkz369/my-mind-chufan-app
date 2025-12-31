@@ -204,6 +204,7 @@ function PaymentContent() {
   const [locationError, setLocationError] = useState<string>("")
   const [useGPS, setUseGPS] = useState<boolean>(false)
   const [isLoadedFromMemory, setIsLoadedFromMemory] = useState<boolean>(false)
+  const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false)
   
   // 配送员和商户位置相关状态
   const [deliveryLocation, setDeliveryLocation] = useState<{
@@ -588,9 +589,11 @@ function PaymentContent() {
       return
     }
 
+    setIsProcessingPayment(true)
+
     try {
-      // 创建订单
-      const response = await fetch("/api/orders/create", {
+      // 第一步：创建订单
+      const orderResponse = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -603,10 +606,16 @@ function PaymentContent() {
         }),
       })
 
-      const result = await response.json()
+      const orderResult = await orderResponse.json()
 
-      if (!response.ok) {
-        throw new Error(result.error || "创建订单失败")
+      if (!orderResponse.ok) {
+        throw new Error(orderResult.error || "创建订单失败")
+      }
+
+      const orderId = orderResult.data?.id
+
+      if (!orderId) {
+        throw new Error("订单创建失败：未返回订单ID")
       }
 
       // 保存当前订单信息到localStorage
@@ -634,11 +643,52 @@ function PaymentContent() {
         console.error("保存订单信息失败:", error)
       }
 
-      // 显示支付提示
-      alert(`订单已创建！使用${paymentMethods.find((p) => p.id === selectedPayment)?.name}支付 ¥${orderInfo.amount.toFixed(2)}`)
+      // 第二步：根据支付方式处理支付
+      if (selectedPayment === "alipay") {
+        // 支付宝支付：创建支付订单并跳转
+        const paymentResponse = await fetch("/api/payment/alipay/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            orderId,
+            amount: orderInfo.amount,
+            subject: `${fuelTypes.find((f) => f.id === selectedFuel)?.name || "燃料配送"} - ${actualQuantity}${fuelTypes.find((f) => f.id === selectedFuel)?.unitLabel || "kg"}`,
+            returnUrl: `${window.location.origin}/payment/callback?status=success&out_trade_no=${orderId}`,
+            notifyUrl: `${window.location.origin}/api/payment/alipay/notify`,
+          }),
+        })
+
+        const paymentResult = await paymentResponse.json()
+
+        if (!paymentResponse.ok || !paymentResult.success) {
+          throw new Error(paymentResult.error || "创建支付订单失败")
+        }
+
+        // 跳转到支付宝支付页面
+        if (paymentResult.paymentUrl) {
+          window.location.href = paymentResult.paymentUrl
+        } else {
+          throw new Error("未获取到支付链接")
+        }
+      } else if (selectedPayment === "wechat") {
+        // 微信支付：TODO - 实现微信支付流程
+        alert(`订单已创建！微信支付功能开发中，订单号：${orderId}`)
+        setIsProcessingPayment(false)
+      } else if (selectedPayment === "bank") {
+        // 银行卡支付：TODO - 实现银行卡支付流程
+        alert(`订单已创建！银行卡支付功能开发中，订单号：${orderId}`)
+        setIsProcessingPayment(false)
+      } else {
+        // 其他支付方式
+        alert(`订单已创建！使用${paymentMethods.find((p) => p.id === selectedPayment)?.name}支付 ¥${orderInfo.amount.toFixed(2)}`)
+        setIsProcessingPayment(false)
+      }
     } catch (error: any) {
-      console.error("创建订单失败:", error)
-      alert("创建订单失败: " + (error.message || "未知错误"))
+      console.error("支付处理失败:", error)
+      alert("支付处理失败: " + (error.message || "未知错误"))
+      setIsProcessingPayment(false)
     }
   }
 
@@ -1387,11 +1437,22 @@ function PaymentContent() {
         <div className="sticky bottom-24 pb-4">
           <Button
             onClick={handlePayment}
-            className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white h-14 text-lg font-semibold shadow-lg shadow-orange-500/30"
+            disabled={isProcessingPayment}
+            className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white h-14 text-lg font-semibold shadow-lg shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            确认支付 ¥{orderInfo.amount.toFixed(2)}
+            {isProcessingPayment ? (
+              <>
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                处理中...
+              </>
+            ) : (
+              `确认支付 ¥${orderInfo.amount.toFixed(2)}`
+            )}
           </Button>
           <p className="text-xs text-slate-500 text-center mt-2">点击支付即表示同意《服务协议》和《支付协议》</p>
+          {process.env.NODE_ENV !== 'production' && selectedPayment === 'alipay' && (
+            <p className="text-xs text-orange-400 text-center mt-1">⚠️ 沙箱环境：请使用支付宝沙箱账号进行支付测试</p>
+          )}
         </div>
       </div>
       <BottomNavigation />

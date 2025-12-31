@@ -21,7 +21,6 @@ import {
   Menu,
   X,
   Search,
-  TrendingUp,
   AlertCircle,
   Flame,
   Zap,
@@ -47,6 +46,9 @@ import {
   Database,
   Play,
   Pause,
+  DollarSign,
+  TrendingUp,
+  Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -153,6 +155,7 @@ const menuItems = [
   { icon: Package, label: "订单管理", key: "orders" },
   { icon: Wrench, label: "设备监控", key: "devices" },
   { icon: Truck, label: "工人管理", key: "workers" },
+  { icon: DollarSign, label: "燃料实时价格监控", key: "fuelPricing" },
   { icon: Server, label: "API配置", key: "api" },
   { icon: BarChart3, label: "数据统计", key: "analytics" },
   { icon: Settings, label: "系统设置", key: "settings" },
@@ -186,10 +189,36 @@ export default function AdminDashboard() {
   const [isAddingApi, setIsAddingApi] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [selectedMarkerRestaurant, setSelectedMarkerRestaurant] = useState<Restaurant | null>(null)
+  const [showServicePoints, setShowServicePoints] = useState(false)
+  const [showHeatmap, setShowHeatmap] = useState(false)
+  
+  // 燃料价格相关状态
+  interface FuelPrice {
+    id: string
+    name: string
+    unit: string
+    unitLabel: string
+    basePrice: number
+    marketPrice?: number // 市场价格（从第三方获取）
+    lastUpdated?: string
+    autoSync: boolean // 是否自动同步市场价格
+  }
+  const [fuelPrices, setFuelPrices] = useState<FuelPrice[]>([
+    { id: "lpg", name: "液化气", unit: "kg", unitLabel: "公斤", basePrice: 11.5, autoSync: false },
+    { id: "clean", name: "热能清洁燃料", unit: "L", unitLabel: "升", basePrice: 7.5, autoSync: false },
+    { id: "alcohol", name: "醇基燃料", unit: "kg", unitLabel: "公斤", basePrice: 3.5, autoSync: false },
+    { id: "outdoor", name: "户外环保燃料", unit: "kg", unitLabel: "公斤", basePrice: 6, autoSync: false },
+  ])
+  const [isSavingPrice, setIsSavingPrice] = useState(false)
+  const [isSyncingPrice, setIsSyncingPrice] = useState(false)
+  
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const infoWindowsRef = useRef<any[]>([])
+  const serviceCirclesRef = useRef<any[]>([])
+  const markerMapRef = useRef<Map<string, { marker: any; infoWindow: any }>>(new Map())
+  const heatmapRef = useRef<any>(null)
 
   // 加载餐厅数据
   const loadRestaurants = useCallback(async () => {
@@ -471,28 +500,6 @@ export default function AdminDashboard() {
     }
   }, [loadRestaurants, loadWorkers, loadRecentOrders, loadDevices, loadServicePoints])
 
-  // 清理地图资源
-  useEffect(() => {
-    return () => {
-      if (mapInstanceRef.current) {
-        // 清除所有标记
-        markersRef.current.forEach(marker => {
-          mapInstanceRef.current.remove(marker)
-        })
-        markersRef.current = []
-        
-        // 清除所有信息窗口
-        infoWindowsRef.current.forEach(infoWindow => {
-          mapInstanceRef.current.remove(infoWindow)
-        })
-        infoWindowsRef.current = []
-        
-        // 销毁地图实例
-        mapInstanceRef.current.destroy()
-        mapInstanceRef.current = null
-      }
-    }
-  }, [])
 
   // 格式化时间
   const formatTime = (dateString: string) => {
@@ -513,105 +520,195 @@ export default function AdminDashboard() {
     const isPending = restaurant.status === "pending" || restaurant.status === "待激活"
     const isActivated = restaurant.status === "activated" || restaurant.status === "已激活"
     
-    // 待激活：黄色呼吸灯
-    // 已激活且有实时订单：高亮青蓝色+扩散光圈
-    // 已激活但无订单：普通青蓝色
-    let markerColor = "rgb(34, 211, 238)" // 默认青蓝色
+    // 夜晚城市灯光效果：温暖的橙黄色系
+    // 待激活：较暗的橙黄色（类似小城市灯光）
+    // 已激活且有实时订单：明亮的金黄色+扩散光圈（类似大城市灯光）
+    // 已激活但无订单：标准橙黄色（类似中等城市灯光）
+    let markerColor = "rgb(255, 200, 50)" // 标准橙黄色 - 夜晚城市灯光
+    let markerGlowColor = "rgba(255, 200, 50, 0.8)" // 发光颜色
     let markerClass = "marker-pulse"
     
     if (isPending) {
-      markerColor = "rgb(234, 179, 8)" // 黄色
+      markerColor = "rgb(255, 165, 80)" // 较暗的橙黄色 - 小城市灯光
+      markerGlowColor = "rgba(255, 165, 80, 0.6)"
     } else if (isActivated && hasActiveOrders) {
-      markerColor = "rgb(6, 182, 212)" // 高亮青蓝色
+      markerColor = "rgb(255, 255, 100)" // 明亮的金黄色 - 大城市灯光
+      markerGlowColor = "rgba(255, 255, 100, 0.9)"
       markerClass = "marker-pulse marker-ripple"
+    } else {
+      markerGlowColor = "rgba(255, 200, 50, 0.8)"
     }
 
     return `
       <div class="custom-marker-wrapper" style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
         ${isActivated && hasActiveOrders ? `
-          <div class="marker-ripple" style="position: absolute; width: 40px; height: 40px; border-radius: 50%; border: 2px solid ${markerColor}; opacity: 0.6;"></div>
+          <div class="marker-ripple" style="position: absolute; width: 40px; height: 40px; border-radius: 50%; border: 2px solid ${markerColor}; opacity: 0.6; animation: marker-ripple 2s ease-out infinite;"></div>
         ` : ''}
         <div class="${markerClass}" style="
           width: 20px;
           height: 20px;
           border-radius: 50%;
-          background: ${markerColor};
-          box-shadow: 0 0 15px ${markerColor}, 0 0 30px ${markerColor}80;
+          background: radial-gradient(circle, ${markerColor} 0%, ${markerColor}dd 50%, ${markerColor}aa 100%);
+          box-shadow: 0 0 20px ${markerGlowColor}, 0 0 40px ${markerGlowColor}, 0 0 60px ${markerGlowColor}60;
           position: relative;
           z-index: 10;
+          animation: marker-pulse 2s ease-in-out infinite;
         "></div>
       </div>
     `
   }
 
-  // 初始化地图
-  const initMap = useCallback(async () => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return
+  // 计算餐厅坐标的中心点和合适的缩放级别
+  const calculateMapCenterAndZoom = useCallback(() => {
+    const restaurantsWithLocation = restaurants.filter(
+      (r) => r.latitude && r.longitude && 
+      typeof r.latitude === 'number' && typeof r.longitude === 'number' &&
+      !isNaN(r.latitude) && !isNaN(r.longitude)
+    )
 
-    const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
-    if (!amapKey) {
-      console.error('[Map] AMAP_KEY未配置')
+    if (restaurantsWithLocation.length === 0) {
+      // 如果没有餐厅数据，返回默认的昆明中心
+      return {
+        center: [102.7183, 25.0389] as [number, number],
+        zoom: 12
+      }
+    }
+
+    // 如果只有一个餐厅，直接使用该餐厅的坐标
+    if (restaurantsWithLocation.length === 1) {
+      const firstRestaurant = restaurantsWithLocation[0]
+      console.log('[Map] 只有一个餐厅，聚焦到:', { 
+        center: [firstRestaurant.longitude!, firstRestaurant.latitude!], 
+        zoom: 15,
+        restaurant: firstRestaurant.name 
+      })
+      return {
+        center: [firstRestaurant.longitude!, firstRestaurant.latitude!] as [number, number],
+        zoom: 15
+      }
+    }
+
+    // 计算所有餐厅坐标的边界
+    const lngs = restaurantsWithLocation.map((r) => r.longitude!)
+    const lats = restaurantsWithLocation.map((r) => r.latitude!)
+    
+    const minLng = Math.min(...lngs)
+    const maxLng = Math.max(...lngs)
+    const minLat = Math.min(...lats)
+    const maxLat = Math.max(...lats)
+
+    // 计算经纬度范围
+    const lngDiff = maxLng - minLng
+    const latDiff = maxLat - minLat
+    const maxDiff = Math.max(lngDiff, latDiff)
+
+    // 如果所有餐厅都在同一个位置（范围非常小），使用第一个餐厅的坐标
+    if (maxDiff < 0.0001) {
+      const firstRestaurant = restaurantsWithLocation[0]
+      console.log('[Map] 所有餐厅位置相同，聚焦到第一个餐厅:', { 
+        center: [firstRestaurant.longitude!, firstRestaurant.latitude!], 
+        zoom: 15,
+        restaurant: firstRestaurant.name 
+      })
+      return {
+        center: [firstRestaurant.longitude!, firstRestaurant.latitude!] as [number, number],
+        zoom: 15
+      }
+    }
+
+    // 计算中心点（多个餐厅的平均位置）
+    const centerLng = (minLng + maxLng) / 2
+    const centerLat = (minLat + maxLat) / 2
+
+    // 计算合适的缩放级别
+    // 根据经纬度范围计算缩放级别
+    let zoom = 12 // 默认缩放级别
+    if (maxDiff > 0.5) {
+      zoom = 8 // 范围很大，缩小视图
+    } else if (maxDiff > 0.2) {
+      zoom = 10
+    } else if (maxDiff > 0.1) {
+      zoom = 11
+    } else if (maxDiff > 0.05) {
+      zoom = 12
+    } else if (maxDiff > 0.02) {
+      zoom = 13
+    } else if (maxDiff > 0.01) {
+      zoom = 14
+    } else {
+      zoom = 15 // 范围很小，放大视图
+    }
+
+    console.log('[Map] 计算地图中心点（多个餐厅）:', { 
+      center: [centerLng, centerLat], 
+      zoom, 
+      restaurantCount: restaurantsWithLocation.length,
+      range: { lngDiff, latDiff, maxDiff }
+    })
+
+    return {
+      center: [centerLng, centerLat] as [number, number],
+      zoom
+    }
+  }, [restaurants])
+
+  // 清理地图实例
+  const destroyMap = useCallback(() => {
+    // 确保只在客户端环境中执行
+    if (typeof window === 'undefined') {
       return
     }
 
-    // 确保安全密钥已配置
-    if (typeof window !== 'undefined' && !(window as any)._AMapSecurityConfig) {
-      (window as any)._AMapSecurityConfig = {
-        securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
+    if (mapInstanceRef.current) {
+      try {
+        // 清除所有标记
+        markersRef.current.forEach(marker => {
+          try {
+            mapInstanceRef.current.remove(marker)
+            marker.setMap(null)
+          } catch (e) {
+            console.warn('[Map] 清除标记时出错:', e)
+          }
+        })
+        markersRef.current = []
+
+        // 清除所有信息窗口
+        infoWindowsRef.current.forEach(infoWindow => {
+          try {
+            mapInstanceRef.current.remove(infoWindow)
+            infoWindow.close()
+          } catch (e) {
+            console.warn('[Map] 清除信息窗口时出错:', e)
+          }
+        })
+        infoWindowsRef.current = []
+
+        // 清除所有服务点圆圈
+        serviceCirclesRef.current.forEach(circle => {
+          try {
+            mapInstanceRef.current.remove(circle)
+            circle.setMap(null)
+          } catch (e) {
+            console.warn('[Map] 清除服务点圆圈时出错:', e)
+          }
+        })
+        serviceCirclesRef.current = []
+
+        // 销毁地图实例
+        mapInstanceRef.current.destroy()
+        mapInstanceRef.current = null
+        console.log('[Map] 地图实例已销毁')
+      } catch (error) {
+        console.error('[Map] 销毁地图实例时出错:', error)
       }
     }
-
-    try {
-      // 动态加载高德地图JS API
-      const script = document.createElement('script')
-      script.src = `https://webapi.amap.com/maps?v=2.0&key=${amapKey}&callback=initAMapCallback`
-      script.async = true
-      
-      // 创建全局回调函数
-      ;(window as any).initAMapCallback = () => {
-        const AMap = (window as any).AMap
-        if (!AMap) {
-          console.error('[Map] AMap未加载')
-          setMapLoaded(true)
-          return
-        }
-
-        // 创建地图实例
-        const map = new AMap.Map(mapContainerRef.current, {
-          mapStyle: 'amap://styles/darkblue',
-          center: [121.4737, 31.2304], // 上海中心
-          zoom: 12,
-          viewMode: '3D',
-        })
-
-        mapInstanceRef.current = map
-
-        // 地图加载完成
-        map.on('complete', () => {
-          setMapLoaded(true)
-        })
-
-        // 如果地图已经加载完成
-        if (map.getStatus() === 'complete') {
-          setMapLoaded(true)
-        }
-      }
-
-      script.onerror = () => {
-        console.error('[Map] 地图脚本加载失败')
-        setMapLoaded(true)
-      }
-
-      document.head.appendChild(script)
-    } catch (error) {
-      console.error('[Map] 初始化地图失败:', error)
-      setMapLoaded(true)
-    }
+    setMapLoaded(false)
   }, [])
+
 
   // 更新地图标记
   const updateMarkers = useCallback(() => {
-    if (!mapInstanceRef.current || restaurants.length === 0) return
+    if (!mapInstanceRef.current) return
 
     const map = mapInstanceRef.current
     const AMap = (window as any).AMap
@@ -628,30 +725,94 @@ export default function AdminDashboard() {
     })
     infoWindowsRef.current = []
 
-    // 获取有实时订单的餐厅ID列表
-    const activeOrderRestaurantIds = new Set(
-      orders
-        .filter(o => o.status === "pending" || o.status === "待处理" || o.status === "delivering" || o.status === "配送中")
-        .map(o => o.restaurant_id)
-    )
+    // 清除标记映射
+    markerMapRef.current.clear()
 
-    // 为每个餐厅创建标记
-    restaurants.forEach(restaurant => {
-      if (!restaurant.latitude || !restaurant.longitude) return
+        // 清除现有服务点圆圈
+        serviceCirclesRef.current.forEach(circle => {
+          map.remove(circle)
+        })
+        serviceCirclesRef.current = []
 
-      const hasActiveOrders = activeOrderRestaurantIds.has(restaurant.id)
-      const markerHTML = createMarkerHTML(restaurant, hasActiveOrders)
+        // 清除现有热力图
+        if (heatmapRef.current) {
+          try {
+            map.remove(heatmapRef.current)
+            heatmapRef.current.setMap(null)
+            heatmapRef.current = null
+          } catch (e) {
+            console.warn('[Map] 清除热力图时出错:', e)
+          }
+        }
 
-      // 创建HTML标记
-      const marker = new AMap.Marker({
-        position: [restaurant.longitude, restaurant.latitude],
-        content: markerHTML,
-        offset: new AMap.Pixel(-20, -20),
-        zIndex: 100,
-      })
+    // 根据热力图状态决定显示方式
+    if (showHeatmap) {
+      // 显示热力图模式
+      const restaurantsWithLocation = restaurants.filter(
+        r => r.latitude && r.longitude && 
+        typeof r.latitude === 'number' && typeof r.longitude === 'number' &&
+        !isNaN(r.latitude) && !isNaN(r.longitude)
+      )
 
-      // 创建信息窗口
-      const infoWindow = new AMap.InfoWindow({
+      if (restaurantsWithLocation.length > 0) {
+        // 准备热力图数据
+        const heatmapData = restaurantsWithLocation.map(restaurant => ({
+          lng: restaurant.longitude!,
+          lat: restaurant.latitude!,
+          count: 1, // 每个餐厅的权重
+        }))
+
+        // 创建热力图
+        if (!heatmapRef.current) {
+          heatmapRef.current = new AMap.Heatmap(map, {
+            radius: 25, // 热力点半径
+            opacity: [0, 0.8], // 透明度范围
+            gradient: {
+              0.4: 'blue',    // 低密度区域 - 蓝色
+              0.6: 'cyan',    // 中低密度 - 青色
+              0.7: 'lime',    // 中密度 - 黄绿色
+              0.8: 'yellow',  // 中高密度 - 黄色
+              1.0: 'red'      // 高密度区域 - 红色
+            },
+            zIndex: 100,
+          })
+        }
+
+        // 设置热力图数据
+        heatmapRef.current.setDataSet({
+          data: heatmapData,
+          max: 100, // 最大权重值
+        })
+
+        map.add(heatmapRef.current)
+        console.log('[Map] 热力图已创建，餐厅数量:', restaurantsWithLocation.length)
+      }
+    } else {
+      // 显示标记模式
+      // 获取有实时订单的餐厅ID列表
+      const activeOrderRestaurantIds = new Set(
+        orders
+          .filter(o => o.status === "pending" || o.status === "待处理" || o.status === "delivering" || o.status === "配送中")
+          .map(o => o.restaurant_id)
+      )
+
+      // 为每个餐厅创建标记
+      restaurants.forEach(restaurant => {
+        if (!restaurant.latitude || !restaurant.longitude) return
+
+        const hasActiveOrders = activeOrderRestaurantIds.has(restaurant.id)
+        const markerHTML = createMarkerHTML(restaurant, hasActiveOrders)
+
+        // 创建HTML标记
+        const marker = new AMap.Marker({
+          position: [restaurant.longitude, restaurant.latitude],
+          content: markerHTML,
+          offset: new AMap.Pixel(-20, -20),
+          zIndex: 100,
+        })
+
+        // 创建信息窗口
+        const infoWindow = new AMap.InfoWindow({
         content: `
           <div style="
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 58, 138, 0.95));
@@ -680,21 +841,142 @@ export default function AdminDashboard() {
             </div>
           </div>
         `,
-        offset: new AMap.Pixel(0, -30),
-        closeWhenClickMap: true,
-      })
+          offset: new AMap.Pixel(0, -30),
+          closeWhenClickMap: true,
+        })
 
-      // 点击标记显示信息窗口
-      marker.on('click', () => {
-        infoWindow.open(map, marker.getPosition())
-        setSelectedMarkerRestaurant(restaurant)
-      })
+        // 点击标记显示信息窗口
+        marker.on('click', () => {
+          infoWindow.open(map, marker.getPosition())
+          setSelectedMarkerRestaurant(restaurant)
+        })
 
-      map.add(marker)
-      markersRef.current.push(marker)
-      infoWindowsRef.current.push(infoWindow)
-    })
-  }, [restaurants, orders])
+        // 双击标记平滑追踪到该餐厅并放大到最大视图
+        marker.on('dblclick', () => {
+          const position = marker.getPosition()
+          if (position) {
+            // 使用 setZoomAndCenter 实现平滑动画
+            // 参数：缩放级别、中心点、是否立即执行、动画时长（毫秒）
+            map.setZoomAndCenter(18, position, false, 1000)
+            console.log('[Map] 双击追踪到餐厅:', restaurant.name, '位置:', position)
+          }
+        })
+
+        map.add(marker)
+        markersRef.current.push(marker)
+        infoWindowsRef.current.push(infoWindow)
+        
+        // 存储标记和信息窗口的映射关系，用于定位功能
+        markerMapRef.current.set(restaurant.id, { marker, infoWindow })
+      })
+    }
+
+    // 根据状态决定是否绘制服务点范围圆圈
+    if (showServicePoints) {
+      servicePoints.forEach(servicePoint => {
+        if (!servicePoint.latitude || !servicePoint.longitude || !servicePoint.service_radius) return
+
+        // 将服务半径从公里转换为米
+        const radiusInMeters = servicePoint.service_radius * 1000
+
+        // 创建半透明的服务范围圆圈
+        const circle = new AMap.Circle({
+          center: [servicePoint.longitude, servicePoint.latitude],
+          radius: radiusInMeters,
+          fillColor: '#3b82f6', // 蓝色填充
+          fillOpacity: 0.2, // 半透明
+          strokeColor: '#60a5fa', // 蓝色边框
+          strokeOpacity: 0.6,
+          strokeWeight: 2,
+          strokeStyle: 'solid',
+          zIndex: 50, // 在标记下方
+        })
+
+        map.add(circle)
+        serviceCirclesRef.current.push(circle)
+      })
+    }
+  }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap])
+
+  // 初始化地图
+  const initMap = useCallback(async () => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return
+
+    const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
+    if (!amapKey) {
+      console.error('[Map] AMAP_KEY未配置')
+      setMapLoaded(true)
+      return
+    }
+
+    // 确保安全密钥已配置
+    if (typeof window !== 'undefined' && !(window as any)._AMapSecurityConfig) {
+      (window as any)._AMapSecurityConfig = {
+        securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
+      }
+    }
+
+    try {
+      console.log('[Map] 开始初始化地图，容器:', mapContainerRef.current)
+      
+      // 计算地图中心点和缩放级别
+      const { center, zoom } = calculateMapCenterAndZoom()
+      
+      // 动态加载高德地图JS API
+      const script = document.createElement('script')
+      script.src = `https://webapi.amap.com/maps?v=2.0&key=${amapKey}&callback=initAMapCallback`
+      script.async = true
+      
+      // 创建全局回调函数
+      ;(window as any).initAMapCallback = () => {
+        const AMap = (window as any).AMap
+        if (!AMap) {
+          console.error('[Map] AMap未加载')
+          setMapLoaded(true)
+          return
+        }
+
+        if (!mapContainerRef.current) {
+          console.error('[Map] 地图容器不存在')
+          setMapLoaded(true)
+          return
+        }
+
+        console.log('[Map] 创建地图实例，中心点:', center, '缩放级别:', zoom)
+        // 创建地图实例，使用计算出的中心点和缩放级别
+        const map = new AMap.Map(mapContainerRef.current, {
+          mapStyle: 'amap://styles/darkblue',
+          center: center,
+          zoom: zoom,
+          viewMode: '3D',
+        })
+
+        mapInstanceRef.current = map
+
+        // 地图加载完成
+        map.on('complete', () => {
+          console.log('[Map] 地图加载完成')
+          setMapLoaded(true)
+        })
+
+        // 如果地图已经加载完成
+        if (map.getStatus() === 'complete') {
+          console.log('[Map] 地图已加载完成（快速路径）')
+          setMapLoaded(true)
+        }
+      }
+
+      script.onerror = () => {
+        console.error('[Map] 地图脚本加载失败')
+        setMapLoaded(true)
+      }
+
+      document.head.appendChild(script)
+    } catch (error) {
+      console.error('[Map] 初始化地图失败:', error)
+      setMapLoaded(true)
+    }
+  }, [calculateMapCenterAndZoom])
 
   // 地图初始化Effect
   useEffect(() => {
@@ -703,12 +985,20 @@ export default function AdminDashboard() {
     }
   }, [activeMenu, initMap])
 
-  // 当餐厅或订单数据更新时，更新标记
+  // 组件卸载时清理地图
+  useEffect(() => {
+    return () => {
+      destroyMap()
+    }
+  }, [destroyMap])
+
+  // 当餐厅、订单、服务点数据或显示状态更新时，更新标记和范围
   useEffect(() => {
     if (mapInstanceRef.current && mapLoaded) {
+      console.log('[Map] 更新标记，餐厅数量:', restaurants.length, '订单数量:', orders.length, '服务点数量:', servicePoints.length, '显示服务点:', showServicePoints, '显示热力图:', showHeatmap)
       updateMarkers()
     }
-  }, [restaurants, orders, mapLoaded, updateMarkers])
+  }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap, mapLoaded, updateMarkers])
 
   // 获取订单状态样式
   const getOrderStatusStyle = (status: string) => {
@@ -775,6 +1065,96 @@ export default function AdminDashboard() {
     setIsDetailDialogOpen(true)
   }
 
+  // 定位到餐厅位置
+  const handleLocateRestaurant = (restaurant: Restaurant) => {
+    if (!restaurant.latitude || !restaurant.longitude) {
+      alert('该餐厅没有位置信息')
+      return
+    }
+
+    if (!mapInstanceRef.current) {
+      alert('地图未加载，请稍候再试')
+      return
+    }
+
+    const map = mapInstanceRef.current
+    const AMap = (window as any).AMap
+    if (!AMap) {
+      alert('地图未初始化')
+      return
+    }
+
+    // 切换到工作台视图以显示地图
+    if (activeMenu !== 'dashboard') {
+      setActiveMenu('dashboard')
+      // 等待地图加载完成后再执行定位
+      setTimeout(() => {
+        locateToRestaurant(restaurant, map, AMap)
+      }, 500)
+    } else {
+      locateToRestaurant(restaurant, map, AMap)
+    }
+  }
+
+  // 执行定位逻辑
+  const locateToRestaurant = (restaurant: Restaurant, map: any, AMap: any) => {
+    const position: [number, number] = [restaurant.longitude!, restaurant.latitude!]
+    
+    // 使用 setFitView 平滑移动到该位置并调整视野
+    map.setFitView(
+      [new AMap.Marker({ position })],
+      false,
+      [50, 50, 50, 50], // 边距
+      1000 // 动画时长（毫秒）
+    )
+
+    // 延迟打开信息窗口，等待动画完成
+    setTimeout(() => {
+      // 查找对应的标记和信息窗口
+      const markerInfo = markerMapRef.current.get(restaurant.id)
+      if (markerInfo) {
+        markerInfo.infoWindow.open(map, position)
+        setSelectedMarkerRestaurant(restaurant)
+      } else {
+        // 如果找不到，创建一个临时的信息窗口
+        const tempInfoWindow = new AMap.InfoWindow({
+          content: `
+            <div style="
+              background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 58, 138, 0.95));
+              border: 1px solid rgba(59, 130, 246, 0.5);
+              border-radius: 12px;
+              padding: 16px;
+              min-width: 250px;
+              color: white;
+              font-family: system-ui, -apple-system, sans-serif;
+              box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            ">
+              <div style="font-size: 18px; font-weight: 600; margin-bottom: 12px; color: #60a5fa;">
+                ${restaurant.name}
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">
+                <strong>QR Token:</strong> <span style="color: #cbd5e1;">${restaurant.qr_token || '未设置'}</span>
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">
+                <strong>累计加注量:</strong> <span style="color: #34d399;">${restaurant.total_refilled || 0}L</span>
+              </div>
+              <div style="font-size: 12px; color: #94a3b8;">
+                <strong>状态:</strong> 
+                <span style="color: ${restaurant.status === 'activated' || restaurant.status === '已激活' ? '#34d399' : '#fbbf24'};">
+                  ${restaurant.status === 'activated' || restaurant.status === '已激活' ? '已激活' : '待激活'}
+                </span>
+              </div>
+            </div>
+          `,
+          offset: new AMap.Pixel(0, -30),
+          closeWhenClickMap: true,
+        })
+        tempInfoWindow.open(map, position)
+        setSelectedMarkerRestaurant(restaurant)
+      }
+    }, 1100) // 等待动画完成后再打开信息窗口
+  }
+
   // 渲染餐厅管理
   const renderRestaurants = () => {
     const shouldShowWarning = (totalRefilled: number) => {
@@ -815,31 +1195,7 @@ export default function AdminDashboard() {
                       <p className="text-slate-400">暂无餐厅位置信息</p>
                     </div>
                   </div>
-                ) : (
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    scrolling="no"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${(() => {
-                      const restaurantsWithLocation = restaurants.filter(
-                        (r) => r.latitude && r.longitude
-                      )
-                      if (restaurantsWithLocation.length === 0) return "102.5,24.9,102.8,25.2"
-                      const lats = restaurantsWithLocation.map((r) => r.latitude!)
-                      const lngs = restaurantsWithLocation.map((r) => r.longitude!)
-                      const minLng = Math.min(...lngs) - 0.1
-                      const maxLng = Math.max(...lngs) + 0.1
-                      const minLat = Math.min(...lats) - 0.1
-                      const maxLat = Math.max(...lats) + 0.1
-                      return `${minLng},${minLat},${maxLng},${maxLat}`
-                    })()}&layer=mapnik&marker=${restaurants
-                      .filter((r) => r.latitude && r.longitude)
-                      .map((r) => `${r.latitude},${r.longitude}`)
-                      .join("&marker=")}`}
-                    className="border-0"
-                  />
-                )}
+                ) : null}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -915,6 +1271,17 @@ export default function AdminDashboard() {
                           </td>
                           <td className="py-4 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleLocateRestaurant(restaurant)}
+                                className="text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10"
+                                disabled={!restaurant.latitude || !restaurant.longitude}
+                                title={!restaurant.latitude || !restaurant.longitude ? "该餐厅没有位置信息" : "在地图上定位该餐厅"}
+                              >
+                                <MapPin className="h-4 w-4 mr-1" />
+                                定位
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1063,14 +1430,47 @@ export default function AdminDashboard() {
         {/* 实时地图看板 */}
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-cyan-400" />
-              实时地图看板
-            </CardTitle>
-            <CardDescription className="text-slate-400">餐厅位置分布与状态监控</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-cyan-400" />
+                  实时地图看板
+                </CardTitle>
+                <CardDescription className="text-slate-400">餐厅位置分布与状态监控</CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setShowHeatmap(!showHeatmap)}
+                  variant={showHeatmap ? "default" : "outline"}
+                  className={showHeatmap 
+                    ? "bg-orange-500 hover:bg-orange-600 text-white border-orange-500" 
+                    : "border-orange-500/50 text-orange-400 hover:bg-orange-500/10"
+                  }
+                  title={showHeatmap ? "切换到标记视图" : "切换到热力图视图"}
+                >
+                  <Activity className="h-4 w-4 mr-2" />
+                  热力图
+                </Button>
+                <Button
+                  onClick={() => setShowServicePoints(!showServicePoints)}
+                  variant={showServicePoints ? "default" : "outline"}
+                  className={showServicePoints 
+                    ? "bg-blue-500 hover:bg-blue-600 text-white border-blue-500" 
+                    : "border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                  }
+                >
+                  <MapPin className="h-4 w-4 mr-2" />
+                  服务网点
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div ref={mapContainerRef} className="w-full h-[600px] rounded-lg overflow-hidden border border-blue-800/30 relative">
+            <div 
+              ref={mapContainerRef} 
+              className="w-full h-[600px] rounded-lg overflow-hidden border border-blue-800/30 relative"
+              style={{ width: '100%', height: '600px', minHeight: '600px' }}
+            >
               {!mapLoaded && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-30">
                   <div className="text-center">
@@ -1607,6 +2007,291 @@ export default function AdminDashboard() {
     )
   }
 
+  // 保存燃料价格
+  const handleSaveFuelPrice = async (fuelId: string, newPrice: number) => {
+    setIsSavingPrice(true)
+    try {
+      // 更新本地状态
+      setFuelPrices(prev => prev.map(fuel => 
+        fuel.id === fuelId 
+          ? { ...fuel, basePrice: newPrice, lastUpdated: new Date().toISOString() }
+          : fuel
+      ))
+      
+      // TODO: 保存到数据库
+      // if (supabase) {
+      //   await supabase.from('fuel_prices').upsert({
+      //     fuel_id: fuelId,
+      //     base_price: newPrice,
+      //     updated_at: new Date().toISOString()
+      //   })
+      // }
+      
+      console.log('[Fuel Pricing] 价格已更新:', fuelId, newPrice)
+      alert('价格已保存')
+    } catch (error) {
+      console.error('[Fuel Pricing] 保存价格失败:', error)
+      alert('保存失败，请重试')
+    } finally {
+      setIsSavingPrice(false)
+    }
+  }
+
+  // 同步第三方市场价格
+  const handleSyncMarketPrice = async () => {
+    setIsSyncingPrice(true)
+    try {
+      // TODO: 调用第三方API获取市场价格
+      // const response = await fetch('/api/fuel-pricing/sync-market-price')
+      // const data = await response.json()
+      
+      // 模拟数据
+      const mockMarketPrices = {
+        lpg: 11.8,
+        clean: 7.8,
+        alcohol: 3.6,
+        outdoor: 6.2,
+      }
+      
+      // 更新市场价格
+      setFuelPrices(prev => prev.map(fuel => {
+        const marketPrice = mockMarketPrices[fuel.id as keyof typeof mockMarketPrices]
+        if (marketPrice && fuel.autoSync) {
+          return {
+            ...fuel,
+            marketPrice,
+            basePrice: marketPrice, // 如果启用自动同步，则更新基础价格
+            lastUpdated: new Date().toISOString()
+          }
+        }
+        return {
+          ...fuel,
+          marketPrice,
+          lastUpdated: new Date().toISOString()
+        }
+      }))
+      
+      console.log('[Fuel Pricing] 市场价格已同步')
+      alert('市场价格已同步')
+    } catch (error) {
+      console.error('[Fuel Pricing] 同步市场价格失败:', error)
+      alert('同步失败，请重试')
+    } finally {
+      setIsSyncingPrice(false)
+    }
+  }
+
+  // 切换自动同步
+  const handleToggleAutoSync = (fuelId: string) => {
+    setFuelPrices(prev => prev.map(fuel => 
+      fuel.id === fuelId 
+        ? { ...fuel, autoSync: !fuel.autoSync }
+        : fuel
+    ))
+  }
+
+  // 渲染燃料实时价格监控
+  const renderFuelPricing = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">燃料实时价格监控</h1>
+            <p className="text-slate-400">管理燃料类型价格，支持第三方市场价格自动同步</p>
+          </div>
+          <Button
+            onClick={handleSyncMarketPrice}
+            disabled={isSyncingPrice}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            {isSyncingPrice ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                同步中...
+              </>
+            ) : (
+              <>
+                <TrendingUp className="h-4 w-4 mr-2" />
+                同步市场价格
+              </>
+            )}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {fuelPrices.map((fuel) => {
+            const priceDiff = fuel.marketPrice 
+              ? ((fuel.basePrice - fuel.marketPrice) / fuel.marketPrice * 100).toFixed(2)
+              : null
+            const isPriceHigher = priceDiff ? parseFloat(priceDiff) > 0 : false
+
+            return (
+              <Card 
+                key={fuel.id}
+                className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm"
+              >
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-white">{fuel.name}</CardTitle>
+                      <CardDescription className="text-slate-400">
+                        单位：{fuel.unitLabel} ({fuel.unit})
+                      </CardDescription>
+                    </div>
+                    <Badge
+                      className={
+                        fuel.autoSync
+                          ? "bg-green-500/20 text-green-400 border-green-500/30"
+                          : "bg-slate-500/20 text-slate-400 border-slate-500/30"
+                      }
+                    >
+                      {fuel.autoSync ? "自动同步" : "手动管理"}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* 当前价格 */}
+                  <div className="p-4 bg-slate-800/50 rounded-lg">
+                    <Label className="text-slate-400 text-sm mb-2 block">当前价格</Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={fuel.basePrice}
+                        onChange={(e) => {
+                          const newPrice = parseFloat(e.target.value)
+                          if (!isNaN(newPrice) && newPrice >= 0) {
+                            setFuelPrices(prev => prev.map(f => 
+                              f.id === fuel.id ? { ...f, basePrice: newPrice } : f
+                            ))
+                          }
+                        }}
+                        className="flex-1 bg-slate-900 border-slate-700 text-white"
+                      />
+                      <span className="text-white font-medium">元/{fuel.unitLabel}</span>
+                    </div>
+                  </div>
+
+                  {/* 市场价格 */}
+                  {fuel.marketPrice && (
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-slate-400 text-sm">市场价格</Label>
+                        {priceDiff && (
+                          <Badge
+                            className={
+                              isPriceHigher
+                                ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                : "bg-green-500/20 text-green-400 border-green-500/30"
+                            }
+                          >
+                            {isPriceHigher ? '↑' : '↓'} {Math.abs(parseFloat(priceDiff))}%
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-white font-semibold text-lg">
+                        ¥{fuel.marketPrice.toFixed(2)}/{fuel.unitLabel}
+                      </div>
+                      {fuel.lastUpdated && (
+                        <div className="text-xs text-slate-500 mt-1">
+                          更新时间: {new Date(fuel.lastUpdated).toLocaleString('zh-CN')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 操作按钮 */}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleSaveFuelPrice(fuel.id, fuel.basePrice)}
+                      disabled={isSavingPrice}
+                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
+                    >
+                      {isSavingPrice ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          保存中...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          保存价格
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={() => handleToggleAutoSync(fuel.id)}
+                      variant={fuel.autoSync ? "default" : "outline"}
+                      className={
+                        fuel.autoSync
+                          ? "bg-green-500 hover:bg-green-600 text-white"
+                          : "border-green-500/50 text-green-400 hover:bg-green-500/10"
+                      }
+                    >
+                      {fuel.autoSync ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          已启用
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-4 w-4 mr-2" />
+                          启用自动同步
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+
+        {/* 说明卡片 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Database className="h-5 w-5 text-cyan-400" />
+              功能说明
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 text-slate-300 text-sm">
+              <div className="flex items-start gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-400 mt-1.5"></div>
+                <div>
+                  <strong className="text-white">手动调整价格：</strong>
+                  直接修改价格输入框中的数值，点击"保存价格"按钮即可更新。
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400 mt-1.5"></div>
+                <div>
+                  <strong className="text-white">自动同步价格：</strong>
+                  启用"自动同步"后，系统将定期从第三方报价平台获取最新市场价格并自动更新。
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-2 h-2 rounded-full bg-orange-400 mt-1.5"></div>
+                <div>
+                  <strong className="text-white">市场价格对比：</strong>
+                  显示当前价格与市场价格的差异百分比，帮助您及时调整定价策略。
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-2 h-2 rounded-full bg-purple-400 mt-1.5"></div>
+                <div>
+                  <strong className="text-white">第三方数据源：</strong>
+                  未来将支持接入多个报价平台API，实现实时价格监控和自动调整。
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   // 渲染系统设置
   const renderSettings = () => {
     return (
@@ -1710,6 +2395,7 @@ export default function AdminDashboard() {
           {activeMenu === "devices" && renderDevices()}
           {activeMenu === "workers" && renderWorkers()}
           {activeMenu === "api" && renderApiConfig()}
+          {activeMenu === "fuelPricing" && renderFuelPricing()}
           {activeMenu === "analytics" && renderAnalytics()}
           {activeMenu === "settings" && renderSettings()}
         </div>

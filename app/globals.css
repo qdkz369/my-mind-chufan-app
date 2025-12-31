@@ -201,15 +201,17 @@
   animation: breathe-glow 2s ease-in-out infinite;
 }
 
-/* 地图标记呼吸动画 */
+/* 地图标记呼吸动画 - 夜晚城市灯光效果 */
 @keyframes marker-pulse {
   0%, 100% {
-    opacity: 0.4;
-    transform: scale(0.8);
+    opacity: 0.6;
+    transform: scale(0.9);
+    box-shadow: 0 0 15px rgba(255, 200, 50, 0.6), 0 0 30px rgba(255, 200, 50, 0.4), 0 0 45px rgba(255, 200, 50, 0.2);
   }
   50% {
     opacity: 1;
-    transform: scale(1.2);
+    transform: scale(1.15);
+    box-shadow: 0 0 25px rgba(255, 200, 50, 0.9), 0 0 50px rgba(255, 200, 50, 0.7), 0 0 75px rgba(255, 200, 50, 0.5);
   }
 }
 
@@ -217,18 +219,20 @@
   animation: marker-pulse 2s ease-in-out infinite;
 }
 
-/* 扩散光圈效果 */
-@keyframes ripple {
+/* 扩散光圈效果 - 夜晚城市灯光扩散 */
+@keyframes marker-ripple {
   0% {
     transform: scale(1);
-    opacity: 0.8;
+    opacity: 0.7;
+    box-shadow: 0 0 10px rgba(255, 255, 100, 0.6);
   }
   100% {
-    transform: scale(2);
+    transform: scale(2.5);
     opacity: 0;
+    box-shadow: 0 0 30px rgba(255, 255, 100, 0.3);
   }
 }
 
 .marker-ripple {
-  animation: ripple 2s ease-out infinite;
+  animation: marker-ripple 2s ease-out infinite;
 }

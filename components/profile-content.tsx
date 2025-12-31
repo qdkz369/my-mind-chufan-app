@@ -37,6 +37,9 @@ export function ProfileContent() {
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [locationError, setLocationError] = useState("")
   const [amapLoaded, setAmapLoaded] = useState(false)
+  const [isLoginMode, setIsLoginMode] = useState(false) // 登录/注册模式切换
+  const [isLoggingIn, setIsLoggingIn] = useState(false) // 登录中状态
+  const [loginError, setLoginError] = useState("") // 登录错误信息
   const geolocationRef = useRef<any>(null)
   const geocoderRef = useRef<any>(null)
   
@@ -62,18 +65,19 @@ export function ProfileContent() {
     status: string | null
   } | null>(null)
 
-  // 从 localStorage 加载餐厅ID
+  // 从 localStorage 加载餐厅ID（自动登录）
   useEffect(() => {
     const loadRestaurant = async () => {
       const restaurantId = localStorage.getItem("restaurantId")
       console.log('[ProfileContent] 初始化检查，restaurantId:', restaurantId)
       if (restaurantId) {
-        console.log('[ProfileContent] 找到restaurantId，开始加载餐厅信息')
+        console.log('[ProfileContent] 找到restaurantId，自动登录')
         await loadRestaurantInfo(restaurantId)
       } else {
-        console.log('[ProfileContent] 未找到restaurantId，显示注册表单')
-        // 确保 restaurantInfo 为 null，显示注册表单
+        console.log('[ProfileContent] 未找到restaurantId，显示登录/注册表单')
+        // 确保 restaurantInfo 为 null，显示登录/注册表单
         setRestaurantInfo(null)
+        setIsLoginMode(false) // 默认显示注册表单
       }
     }
     loadRestaurant()
@@ -509,56 +513,152 @@ export function ProfileContent() {
     }
   }
 
+  // 登录处理
+  const handleLogin = async () => {
+    if (!formData.phone.trim()) {
+      setLoginError("请输入手机号")
+      return
+    }
+
+    setIsLoggingIn(true)
+    setLoginError("")
+
+    try {
+      const response = await fetch("/api/restaurant/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone: formData.phone.trim(),
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || result.error) {
+        throw new Error(result.error || "登录失败")
+      }
+
+      if (result.success && result.data) {
+        const restaurantId = result.data.restaurant_id
+        localStorage.setItem("restaurantId", restaurantId)
+        
+        // 构建完整的餐厅信息对象
+        const loginRestaurantInfo = {
+          id: restaurantId,
+          name: result.data.name || "",
+          contact_name: result.data.contact_name || "",
+          contact_phone: result.data.contact_phone || "",
+          address: result.data.address || null,
+          latitude: result.data.latitude || null,
+          longitude: result.data.longitude || null,
+          status: result.data.status || "unactivated",
+        }
+        
+        setRestaurantInfo(loginRestaurantInfo)
+        setFormData({
+          name: loginRestaurantInfo.contact_name || "",
+          phone: loginRestaurantInfo.contact_phone || "",
+          restaurant_name: loginRestaurantInfo.name || "",
+          latitude: loginRestaurantInfo.latitude || 0,
+          longitude: loginRestaurantInfo.longitude || 0,
+          address: loginRestaurantInfo.address || "",
+        })
+        
+        // 缓存到localStorage
+        localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(loginRestaurantInfo))
+        
+        setIsLoginMode(false)
+        setSubmitSuccess(true)
+        setTimeout(() => setSubmitSuccess(false), 3000)
+        router.refresh()
+      }
+    } catch (error: any) {
+      console.error("登录失败:", error)
+      setLoginError(error.message || "登录失败，请检查手机号是否正确")
+    } finally {
+      setIsLoggingIn(false)
+    }
+  }
+
+  // 退出登录
+  const handleLogout = () => {
+    if (confirm("确定要退出登录吗？")) {
+      const restaurantId = localStorage.getItem("restaurantId")
+      if (restaurantId) {
+        localStorage.removeItem("restaurantId")
+        localStorage.removeItem(`restaurant_${restaurantId}`)
+      }
+      setRestaurantInfo(null)
+      setFormData({
+        name: "",
+        phone: "",
+        restaurant_name: "",
+        latitude: 0,
+        longitude: 0,
+        address: "",
+      })
+      setIsLoginMode(false)
+      setIsEditing(false)
+      router.refresh()
+    }
+  }
+
   const isRegistered = restaurantInfo !== null
   const isUnactivated = restaurantInfo?.status === "unactivated"
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* 注册/编辑表单 */}
+      {/* 登录/注册/编辑表单 */}
       {(!isRegistered || isEditing) ? (
         <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
               <User className="h-5 w-5 text-white" />
             </div>
-            <div>
+            <div className="flex-1">
               <h2 className="text-lg font-bold text-white">
-                {isRegistered ? "编辑资料" : "注册信息"}
+                {isRegistered ? "编辑资料" : isLoginMode ? "登录" : "注册信息"}
               </h2>
               <p className="text-xs text-slate-400">
-                {isRegistered ? "更新您的餐厅信息" : "填写信息以激活服务"}
+                {isRegistered ? "更新您的餐厅信息" : isLoginMode ? "使用手机号登录" : "填写信息以激活服务"}
               </p>
             </div>
+            {!isRegistered && !isEditing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setIsLoginMode(!isLoginMode)
+                  setLoginError("")
+                  setFormData(prev => ({ ...prev, name: "", restaurant_name: "", address: "", latitude: 0, longitude: 0 }))
+                }}
+                className="text-blue-400 hover:text-blue-300"
+              >
+                {isLoginMode ? "去注册" : "已有账号？登录"}
+              </Button>
+            )}
           </div>
 
           {submitSuccess && (
             <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-400" />
               <span className="text-sm text-green-400">
-                {isRegistered ? "信息更新成功！" : "注册成功！"}
+                {isRegistered ? "信息更新成功！" : isLoginMode ? "登录成功！" : "注册成功！"}
               </span>
             </div>
           )}
 
-          <div className="space-y-4">
-            {/* 姓名 */}
-            <div>
-              <Label htmlFor="name" className="text-slate-300 mb-2 block">
-                姓名 <span className="text-red-400">*</span>
-              </Label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
-                  placeholder="请输入您的姓名"
-                />
-              </div>
+          {loginError && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-red-400" />
+              <span className="text-sm text-red-400">{loginError}</span>
             </div>
+          )}
 
-            {/* 手机号 */}
+          <div className="space-y-4">
+            {/* 手机号（登录和注册都需要） */}
             <div>
               <Label htmlFor="phone" className="text-slate-300 mb-2 block">
                 手机号 <span className="text-red-400">*</span>
@@ -569,35 +669,84 @@ export function ProfileContent() {
                   id="phone"
                   type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, phone: e.target.value }))
+                    setLoginError("")
+                  }}
                   className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
                   placeholder="请输入手机号"
                 />
               </div>
             </div>
 
-            {/* 餐厅名称 */}
-            <div>
-              <Label htmlFor="restaurant_name" className="text-slate-300 mb-2 block">
-                餐厅名称 <span className="text-red-400">*</span>
-              </Label>
-              <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  id="restaurant_name"
-                  value={formData.restaurant_name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, restaurant_name: e.target.value }))}
-                  className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
-                  placeholder="请输入餐厅名称"
-                />
-              </div>
-            </div>
+            {/* 登录模式：只显示手机号 */}
+            {isLoginMode && !isRegistered && (
+              <>
+                <Button
+                  onClick={handleLogin}
+                  disabled={isLoggingIn || !formData.phone.trim()}
+                  className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-blue-500/30"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      登录中...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-5 w-5 mr-2" />
+                      登录
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
 
-            {/* 详细地址 */}
-            <div>
-              <Label htmlFor="address" className="text-slate-300 mb-2 block">
-                详细地址 <span className="text-slate-500 text-xs">(可选)</span>
-              </Label>
+            {/* 注册模式：显示完整表单 */}
+            {!isLoginMode && (
+              <>
+                {/* 姓名 */}
+                <div>
+                  <Label htmlFor="name" className="text-slate-300 mb-2 block">
+                    姓名 <span className="text-red-400">*</span>
+                  </Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                      placeholder="请输入您的姓名"
+                    />
+                  </div>
+                </div>
+
+                {/* 餐厅名称 */}
+                <div>
+                  <Label htmlFor="restaurant_name" className="text-slate-300 mb-2 block">
+                    餐厅名称 <span className="text-red-400">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      id="restaurant_name"
+                      value={formData.restaurant_name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, restaurant_name: e.target.value }))}
+                      className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                      placeholder="请输入餐厅名称"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* 详细地址（仅注册模式显示） */}
+            {!isLoginMode && (
+              <div>
+                <Label htmlFor="address" className="text-slate-300 mb-2 block">
+                  详细地址 <span className="text-slate-500 text-xs">(可选)</span>
+                </Label>
               <div className="relative flex gap-2">
                 <div className="relative flex-1">
                   <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -647,40 +796,45 @@ export function ProfileContent() {
                   </div>
                 </div>
               )}
-              {!amapLoaded && (
-                <p className="mt-2 text-xs text-slate-500">
-                  正在加载定位服务...
-                </p>
-              )}
-            </div>
+                {!amapLoaded && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    正在加载定位服务...
+                  </p>
+                )}
+              </div>
+            )}
 
-            {/* 提交按钮 */}
-            <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting || !formData.name.trim() || !formData.phone.trim() || !formData.restaurant_name.trim()}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  {isRegistered ? "更新中..." : "注册中..."}
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-5 w-5 mr-2" />
-                  {isRegistered ? "保存修改" : "完成注册"}
-                </>
-              )}
-            </Button>
+            {/* 提交按钮（仅注册模式显示） */}
+            {!isLoginMode && (
+              <>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !formData.name.trim() || !formData.phone.trim() || !formData.restaurant_name.trim()}
+                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      {isRegistered ? "更新中..." : "注册中..."}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-5 w-5 mr-2" />
+                      {isRegistered ? "保存修改" : "完成注册"}
+                    </>
+                  )}
+                </Button>
 
-            {isRegistered && (
-              <Button
-                onClick={() => setIsEditing(false)}
-                variant="ghost"
-                className="w-full text-slate-400 hover:text-white"
-              >
-                取消
-              </Button>
+                {isRegistered && (
+                  <Button
+                    onClick={() => setIsEditing(false)}
+                    variant="ghost"
+                    className="w-full text-slate-400 hover:text-white"
+                  >
+                    取消
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </Card>
@@ -761,9 +915,16 @@ export function ProfileContent() {
         ))}
       </Card>
 
-      <Card className="p-4 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-        <button className="w-full text-red-400 font-medium hover:text-red-300 transition-colors">退出登录</button>
-      </Card>
+      {isRegistered && (
+        <Card className="p-4 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+          <button 
+            onClick={handleLogout}
+            className="w-full text-red-400 font-medium hover:text-red-300 transition-colors"
+          >
+            退出登录
+          </button>
+        </Card>
+      )}
     </div>
   )
 }
