@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { MapPin, CreditCard, Settings, HelpCircle, FileText, Shield, ChevronRight, Star, User, Phone, Building2, Navigation, Loader2, CheckCircle2, AlertCircle, Locate, Package } from "lucide-react"
-import AMapLoader from '@amap/amap-jsapi-loader'
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -119,6 +118,9 @@ export function ProfileContent() {
   // 加载高德地图定位插件
   useEffect(() => {
     const loadAMapPlugins = async () => {
+      // 确保只在客户端执行
+      if (typeof window === 'undefined') return
+      
       if (amapLoaded) return
 
       const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
@@ -128,15 +130,15 @@ export function ProfileContent() {
       }
 
       // 确保安全密钥已配置
-      if (typeof window !== 'undefined') {
-        if (!(window as any)._AMapSecurityConfig) {
-          (window as any)._AMapSecurityConfig = {
-            securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
-          }
+      if (!(window as any)._AMapSecurityConfig) {
+        (window as any)._AMapSecurityConfig = {
+          securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
         }
       }
 
       try {
+        // 动态导入 AMapLoader，避免在 SSR 时执行
+        const AMapLoader = (await import('@amap/amap-jsapi-loader')).default
         const AMap = await AMapLoader.load({
           key: amapKey,
           version: '2.0',
