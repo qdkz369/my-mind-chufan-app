@@ -125,10 +125,16 @@ export async function POST(request: Request) {
 
       if (updateError) {
         console.error("[注册API] 更新餐厅记录失败:", updateError)
+        console.error("[注册API] 错误代码:", updateError.code)
+        console.error("[注册API] 错误详情:", updateError.details)
+        console.error("[注册API] 错误提示:", updateError.hint)
+        console.error("[注册API] 更新数据:", JSON.stringify(updateData, null, 2))
         return NextResponse.json(
           { 
             error: "更新餐厅记录失败",
-            details: updateError.message
+            details: updateError.message || "未知错误",
+            code: updateError.code,
+            hint: updateError.hint
           },
           { status: 500 }
         )
@@ -407,9 +413,19 @@ export async function PUT(request: Request) {
       .select("id, name, qr_token, status, contact_name, contact_phone, latitude, longitude, address")
 
     if (updateError) {
-      console.error("更新餐厅信息失败:", updateError)
+      console.error("[更新API] 更新餐厅信息失败:", updateError)
+      console.error("[更新API] 错误代码:", updateError.code)
+      console.error("[更新API] 错误详情:", updateError.details)
+      console.error("[更新API] 错误提示:", updateError.hint)
+      console.error("[更新API] 更新数据:", JSON.stringify(updateData, null, 2))
+      console.error("[更新API] 餐厅ID:", restaurant_id)
       return NextResponse.json(
-        { error: "更新餐厅信息失败", details: updateError.message },
+        { 
+          error: "更新餐厅信息失败", 
+          details: updateError.message || "未知错误",
+          code: updateError.code,
+          hint: updateError.hint
+        },
         { status: 500 }
       )
     }
