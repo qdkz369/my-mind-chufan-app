@@ -1,12 +1,5 @@
 "use client"
 
-// 高德地图安全密钥配置
-if (typeof window !== 'undefined') {
-  (window as any)._AMapSecurityConfig = {
-    securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
-  }
-}
-
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -82,7 +75,7 @@ export function ProfileContent() {
     const loadRestaurant = async () => {
       try {
         // 立即读取 localStorage，避免延迟
-        const restaurantId = localStorage.getItem("restaurantId")
+        const restaurantId = typeof window !== 'undefined' ? localStorage.getItem("restaurantId") : null
         console.log('[ProfileContent] 初始化检查，restaurantId:', restaurantId)
         console.log('[ProfileContent] Supabase配置状态:', {
           isSupabaseConfigured,
@@ -135,9 +128,11 @@ export function ProfileContent() {
       }
 
       // 确保安全密钥已配置
-      if (typeof window !== 'undefined' && !(window as any)._AMapSecurityConfig) {
-        (window as any)._AMapSecurityConfig = {
-          securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
+      if (typeof window !== 'undefined') {
+        if (!(window as any)._AMapSecurityConfig) {
+          (window as any)._AMapSecurityConfig = {
+            securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
+          }
         }
       }
 
@@ -258,7 +253,9 @@ export function ProfileContent() {
         console.log('[加载餐厅信息] Supabase加载成功:', data)
         setRestaurantInfo(data)
         // 更新缓存到localStorage
-        localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(data))
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(data))
+        }
         setFormData({
           name: data.contact_name || "",
           phone: data.contact_phone || "",
@@ -277,8 +274,10 @@ export function ProfileContent() {
         // 数据不存在
         console.warn("[加载餐厅信息] 餐厅数据不存在，restaurantId:", restaurantId)
         // 清除无效的缓存
-        localStorage.removeItem(`restaurant_${restaurantId}`)
-        localStorage.removeItem("restaurantId")
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(`restaurant_${restaurantId}`)
+          localStorage.removeItem("restaurantId")
+        }
         setRestaurantInfo(null)
       }
     } catch (error) {
@@ -451,7 +450,7 @@ export function ProfileContent() {
     setSubmitSuccess(false)
 
     try {
-      const restaurantId = localStorage.getItem("restaurantId")
+      const restaurantId = typeof window !== 'undefined' ? localStorage.getItem("restaurantId") : null
 
       if (restaurantId) {
         // 更新现有餐厅
@@ -480,8 +479,10 @@ export function ProfileContent() {
           // 如果返回404，说明记录不存在，清除localStorage并切换到注册模式
           if (response.status === 404) {
             console.log('[注册表单] 记录不存在，清除localStorage并切换到注册模式')
-            localStorage.removeItem("restaurantId")
-            localStorage.removeItem(`restaurant_${restaurantId}`)
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem("restaurantId")
+              localStorage.removeItem(`restaurant_${restaurantId}`)
+            }
             
             // 自动重试注册
             const registerResponse = await fetch("/api/restaurant/register", {
@@ -509,7 +510,9 @@ export function ProfileContent() {
             
             if (!registerResult.error && registerResult.data) {
               const newRestaurantId = registerResult.data.restaurant_id
-              localStorage.setItem("restaurantId", newRestaurantId)
+              if (typeof window !== 'undefined') {
+                localStorage.setItem("restaurantId", newRestaurantId)
+              }
               
               const newRestaurantInfo = {
                 id: newRestaurantId,
@@ -523,7 +526,9 @@ export function ProfileContent() {
               }
               
               setRestaurantInfo(newRestaurantInfo)
-              localStorage.setItem(`restaurant_${newRestaurantId}`, JSON.stringify(newRestaurantInfo))
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(`restaurant_${newRestaurantId}`, JSON.stringify(newRestaurantInfo))
+              }
               
               setSubmitSuccess(true)
               setIsEditing(false)
@@ -552,7 +557,7 @@ export function ProfileContent() {
             setRestaurantInfo(result.data)
             // 更新缓存
             const updatedRestaurantId = result.data.id || restaurantId
-            if (updatedRestaurantId) {
+            if (updatedRestaurantId && typeof window !== 'undefined') {
               localStorage.setItem(`restaurant_${updatedRestaurantId}`, JSON.stringify(result.data))
             }
           } else {
@@ -603,7 +608,9 @@ export function ProfileContent() {
           // 保存餐厅ID到localStorage（如果返回了数据）
           if (result.data && result.data.restaurant_id) {
             const restaurantId = result.data.restaurant_id
-            localStorage.setItem("restaurantId", restaurantId)
+            if (typeof window !== 'undefined') {
+              localStorage.setItem("restaurantId", restaurantId)
+            }
             
             // 构建完整的餐厅信息对象
             const newRestaurantInfo = {
@@ -621,14 +628,16 @@ export function ProfileContent() {
             setRestaurantInfo(newRestaurantInfo)
             
             // 缓存到localStorage，以便页面刷新后能快速恢复
-            localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(newRestaurantInfo))
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(newRestaurantInfo))
+            }
             
             console.log('[注册表单] 注册成功，已保存餐厅信息:', newRestaurantInfo)
           } else {
             // 即使没有返回完整数据，也尝试保存基本信息
             console.warn('[注册表单] API返回数据不完整，但操作可能已成功')
             // 尝试从localStorage获取之前保存的ID
-            const existingId = localStorage.getItem("restaurantId")
+            const existingId = typeof window !== 'undefined' ? localStorage.getItem("restaurantId") : null
             if (existingId) {
               // 重新加载数据
               loadRestaurantInfo(existingId)
@@ -682,7 +691,9 @@ export function ProfileContent() {
 
       if (result.success && result.data) {
         const restaurantId = result.data.restaurant_id
-        localStorage.setItem("restaurantId", restaurantId)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem("restaurantId", restaurantId)
+        }
         
         // 构建完整的餐厅信息对象
         const loginRestaurantInfo = {
@@ -707,7 +718,9 @@ export function ProfileContent() {
         })
         
         // 缓存到localStorage
-        localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(loginRestaurantInfo))
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(loginRestaurantInfo))
+        }
         
         setIsLoginMode(false)
         setSubmitSuccess(true)
@@ -724,9 +737,9 @@ export function ProfileContent() {
 
   // 退出登录
   const handleLogout = () => {
-    if (confirm("确定要退出登录吗？")) {
-      const restaurantId = localStorage.getItem("restaurantId")
-      if (restaurantId) {
+    if (typeof window !== 'undefined' && confirm("确定要退出登录吗？")) {
+      const restaurantId = typeof window !== 'undefined' ? localStorage.getItem("restaurantId") : null
+      if (restaurantId && typeof window !== 'undefined') {
         localStorage.removeItem("restaurantId")
         localStorage.removeItem(`restaurant_${restaurantId}`)
       }
