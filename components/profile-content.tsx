@@ -335,50 +335,115 @@ export function ProfileContent() {
           console.log('[定位] 获取到坐标:', { latitude, longitude })
 
           // 使用逆地理编码将坐标转换为地址
-          geocoderRef.current.getAddress([longitude, latitude], (geocodeStatus: string, geocodeResult: any) => {
-            console.log('[定位] 逆地理编码回调:', { geocodeStatus, geocodeResult })
-            
-            if (geocodeStatus === 'complete' && geocodeResult.info === 'OK') {
-              const address = geocodeResult.regeocode.formattedAddress || 
-                (geocodeResult.regeocode.addressComponent ? 
-                  `${geocodeResult.regeocode.addressComponent.province || ""}${geocodeResult.regeocode.addressComponent.city || ""}${geocodeResult.regeocode.addressComponent.district || ""}${geocodeResult.regeocode.addressComponent.township || ""}${geocodeResult.regeocode.addressComponent.street || ""}${geocodeResult.regeocode.addressComponent.streetNumber || ""}` : 
-                  `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`)
-
-              console.log('[定位] 地址解析成功:', address)
-
-              setFormData(prev => ({
-                ...prev,
-                latitude,
-                longitude,
-                address: address,
-              }))
-              setLocationError("")
-              setIsLocating(false)
+          // 高德地图的 getAddress 方法需要传入 LngLat 对象
+          try {
+            // 确保 AMap 对象可用
+            if (typeof window !== 'undefined' && (window as any).AMap) {
+              const AMap = (window as any).AMap
+              const lngLat = new AMap.LngLat(longitude, latitude)
               
-              // 移除事件监听
-              if (geolocationRef.current) {
-                geolocationRef.current.off('complete', handleComplete)
-                geolocationRef.current.off('error', handleError)
-              }
+              geocoderRef.current.getAddress(lngLat, (geocodeStatus: string, geocodeResult: any) => {
+                console.log('[定位] 逆地理编码回调:', { geocodeStatus, geocodeResult })
+                
+                if (geocodeStatus === 'complete' && geocodeResult && geocodeResult.info === 'OK' && geocodeResult.regeocode) {
+                  // 优先使用格式化地址
+                  let address = geocodeResult.regeocode.formattedAddress
+                  
+                  // 如果格式化地址为空，尝试从地址组件构建
+                  if (!address && geocodeResult.regeocode.addressComponent) {
+                    const addrComp = geocodeResult.regeocode.addressComponent
+                    const parts = [
+                      addrComp.province,
+                      addrComp.city,
+                      addrComp.district,
+                      addrComp.township,
+                      addrComp.street,
+                      addrComp.streetNumber
+                    ].filter(Boolean)
+                    address = parts.join('')
+                  }
+                  
+                  // 如果还是没有地址，使用坐标
+                  if (!address || address.trim() === '') {
+                    address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+                  }
+
+                  console.log('[定位] 地址解析成功:', address)
+
+                  setFormData(prev => ({
+                    ...prev,
+                    latitude,
+                    longitude,
+                    address: address,
+                  }))
+                  setLocationError("")
+                  setIsLocating(false)
+                  
+                  // 移除事件监听
+                  if (geolocationRef.current) {
+                    geolocationRef.current.off('complete', handleComplete)
+                    geolocationRef.current.off('error', handleError)
+                  }
+                } else {
+                  // 如果逆地理编码失败，尝试使用坐标作为地址
+                  console.warn('[定位] 地址解析失败，状态:', geocodeStatus, '结果:', geocodeResult)
+                  
+                  // 尝试从错误结果中提取信息
+                  let errorInfo = ''
+                  if (geocodeResult && geocodeResult.info) {
+                    errorInfo = ` (${geocodeResult.info})`
+                  }
+                  
+                  setFormData(prev => ({
+                    ...prev,
+                    latitude,
+                    longitude,
+                    address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+                  }))
+                  setLocationError(`地址解析失败${errorInfo}，已保存坐标`)
+                  setIsLocating(false)
+                  
+                  // 移除事件监听
+                  if (geolocationRef.current) {
+                    geolocationRef.current.off('complete', handleComplete)
+                    geolocationRef.current.off('error', handleError)
+                  }
+                }
+              })
             } else {
-              // 如果逆地理编码失败，至少保存坐标
-              console.warn('[定位] 地址解析失败，但已保存坐标')
+              // AMap 对象不可用，直接保存坐标
+              console.warn('[定位] AMap 对象不可用，直接保存坐标')
               setFormData(prev => ({
                 ...prev,
                 latitude,
                 longitude,
                 address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
               }))
-              setLocationError("地址解析失败，已保存坐标")
+              setLocationError("地图服务不可用，已保存坐标")
               setIsLocating(false)
               
-              // 移除事件监听
               if (geolocationRef.current) {
                 geolocationRef.current.off('complete', handleComplete)
                 geolocationRef.current.off('error', handleError)
               }
             }
-          })
+          } catch (error) {
+            // 捕获逆地理编码过程中的异常
+            console.error('[定位] 逆地理编码异常:', error)
+            setFormData(prev => ({
+              ...prev,
+              latitude,
+              longitude,
+              address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+            }))
+            setLocationError("地址解析异常，已保存坐标")
+            setIsLocating(false)
+            
+            if (geolocationRef.current) {
+              geolocationRef.current.off('complete', handleComplete)
+              geolocationRef.current.off('error', handleError)
+            }
+          }
         } else {
           console.error('[定位] 定位数据格式错误:', data)
           setLocationError("定位数据格式错误")
