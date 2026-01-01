@@ -8,13 +8,6 @@ const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkA
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY
 
-// 添加调试日志（仅在客户端或开发环境）
-if (typeof window !== 'undefined' || process.env.NODE_ENV === 'development') {
-  console.log('[Supabase] 初始化配置:')
-  console.log('[Supabase] URL:', supabaseUrl === FALLBACK_SUPABASE_URL ? '使用后备值' : '使用环境变量')
-  console.log('[Supabase] Key:', supabaseAnonKey === FALLBACK_SUPABASE_ANON_KEY ? '使用后备值' : '使用环境变量（已隐藏）')
-}
-
 // 检查配置是否有效
 const isSupabaseConfigured = !!(
   supabaseUrl && 
@@ -23,20 +16,16 @@ const isSupabaseConfigured = !!(
   supabaseAnonKey.trim() !== ""
 )
 
-if (typeof window !== 'undefined' || process.env.NODE_ENV === 'development') {
-  if (isSupabaseConfigured) {
-    console.log('[Supabase] 客户端初始化成功')
-  } else {
-    console.error('[Supabase] 客户端配置失败:', {
-      url: supabaseUrl || '未配置',
-      key: supabaseAnonKey ? '已配置（已隐藏）' : '未配置'
-    })
-  }
-}
-
-// 创建客户端（使用环境变量或后备值）
+// 创建客户端（Supabase 客户端支持 SSR，不会在初始化时访问 window）
 export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      // 确保在 SSR 环境中不会访问浏览器 API
+      auth: {
+        persistSession: typeof window !== 'undefined',
+        autoRefreshToken: typeof window !== 'undefined',
+        detectSessionInUrl: typeof window !== 'undefined',
+      },
+    })
   : null
 
 // 导出配置状态（供其他模块检查）
