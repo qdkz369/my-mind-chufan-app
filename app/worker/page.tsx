@@ -228,6 +228,29 @@ function InstallForm({ onBack }: { onBack: () => void }) {
         // 显示警告但不阻止成功提示
       }
 
+      // 3. 如果有成功绑定的设备，更新餐厅状态为已激活
+      if (successDevices.length > 0 && customerId && supabase) {
+        try {
+          const { error: statusError } = await supabase
+            .from("restaurants")
+            .update({
+              status: "activated",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", customerId)
+
+          if (statusError) {
+            console.error("更新餐厅状态失败:", statusError)
+            // 不阻止流程，只记录错误
+          } else {
+            console.log("✅ 餐厅状态已更新为已激活")
+          }
+        } catch (err) {
+          console.error("更新餐厅状态时出错:", err)
+          // 不阻止流程，只记录错误
+        }
+      }
+
       // 提交成功
       console.log('[安装表单] 提交成功！', {
         successDevices,
@@ -919,11 +942,11 @@ function BindDevicePage({ restaurantInfo, onComplete, onBack }: {
           throw new Error("绑定设备失败: " + linkError.message)
         }
 
-        // 3. 同步更新餐厅状态为 active
+        // 3. 同步更新餐厅状态为 activated
         const { error: statusError } = await supabase
           .from("restaurants")
           .update({
-            status: "active",
+            status: "activated",
             updated_at: new Date().toISOString(),
           })
           .eq("id", restaurantInfo.restaurant_id)

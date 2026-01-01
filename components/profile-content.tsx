@@ -75,6 +75,7 @@ export function ProfileContent() {
     // 确保只在客户端执行
     if (typeof window === 'undefined') {
       setIsInitializing(false)
+      setRestaurantInfo(null) // 服务端渲染时确保为 null
       return
     }
     
@@ -89,19 +90,31 @@ export function ProfileContent() {
           url: process.env.NEXT_PUBLIC_SUPABASE_URL ? '已配置' : '未配置'
         })
         
-        if (restaurantId) {
-          console.log('[ProfileContent] 找到restaurantId，自动登录:', restaurantId)
-          await loadRestaurantInfo(restaurantId)
-        } else {
-          console.log('[ProfileContent] 未找到restaurantId，显示登录/注册表单')
-          // 确保 restaurantInfo 为 null，显示登录/注册表单
-          setRestaurantInfo(null)
+        // 如果没有 restaurantId，立即清除所有状态并显示注册表单
+        if (!restaurantId || restaurantId.trim() === '') {
+          console.log('[ProfileContent] 未找到restaurantId，清除所有状态并显示登录/注册表单')
+          // 清除可能存在的无效缓存
+          if (restaurantInfo) {
+            console.log('[ProfileContent] 清除无效的restaurantInfo')
+            setRestaurantInfo(null)
+          }
           setIsLoginMode(false) // 默认显示注册表单
+          setIsInitializing(false) // 立即完成初始化
+          return
         }
+        
+        // 有 restaurantId，尝试加载
+        console.log('[ProfileContent] 找到restaurantId，自动登录:', restaurantId)
+        await loadRestaurantInfo(restaurantId)
       } catch (error) {
         console.error('[ProfileContent] 加载餐厅信息失败:', error)
+        // 发生错误时，清除所有状态
         setRestaurantInfo(null)
         setIsLoginMode(false)
+        // 清除可能无效的 restaurantId
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem("restaurantId")
+        }
       } finally {
         // 标记初始化完成
         setIsInitializing(false)
@@ -177,32 +190,58 @@ export function ProfileContent() {
   const loadRestaurantInfo = async (restaurantId: string) => {
     console.log('[加载餐厅信息] 开始加载，restaurantId:', restaurantId)
     
+    // 验证 restaurantId 是否有效
+    if (!restaurantId || restaurantId.trim() === '') {
+      console.warn('[加载餐厅信息] restaurantId 无效，清除状态')
+      setRestaurantInfo(null)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem("restaurantId")
+      }
+      return
+    }
+    
     // 首先尝试从 localStorage 缓存恢复（快速显示）
-    const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
+    const cachedData = typeof window !== 'undefined' ? localStorage.getItem(`restaurant_${restaurantId}`) : null
     if (cachedData) {
       try {
         const data = JSON.parse(cachedData)
-        console.log('[加载餐厅信息] 从缓存恢复:', data)
-        setRestaurantInfo(data)
-        setFormData({
-          name: data.contact_name || "",
-          phone: data.contact_phone || "",
-          restaurant_name: data.name || "",
-          latitude: data.latitude || 0,
-          longitude: data.longitude || 0,
-          address: data.address || "",
-        })
+        // 验证缓存数据的有效性：必须包含 id 且与 restaurantId 匹配
+        if (data && data.id && data.id === restaurantId) {
+          console.log('[加载餐厅信息] 从缓存恢复:', data)
+          setRestaurantInfo(data)
+          setFormData({
+            name: data.contact_name || "",
+            phone: data.contact_phone || "",
+            restaurant_name: data.name || "",
+            latitude: data.latitude || 0,
+            longitude: data.longitude || 0,
+            address: data.address || "",
+          })
+        } else {
+          console.warn('[加载餐厅信息] 缓存数据无效（ID不匹配），清除缓存')
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(`restaurant_${restaurantId}`)
+          }
+        }
       } catch (e) {
         console.error('[加载餐厅信息] 解析缓存数据失败:', e)
+        // 清除无效缓存
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(`restaurant_${restaurantId}`)
+        }
       }
     }
     
     // 检查 Supabase 是否已配置
     if (!supabase || !isSupabaseConfigured) {
       console.warn('[加载餐厅信息] Supabase未配置，仅使用localStorage缓存数据')
-      // 如果没有缓存数据，保持 restaurantInfo 为 null
-      if (!cachedData) {
+      // 如果没有有效的缓存数据，清除状态
+      if (!cachedData || !restaurantInfo) {
         setRestaurantInfo(null)
+        // 清除无效的 restaurantId
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem("restaurantId")
+        }
       }
       return
     }

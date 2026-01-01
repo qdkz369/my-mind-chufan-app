@@ -220,6 +220,232 @@ export default function AdminDashboard() {
   const markerMapRef = useRef<Map<string, { marker: any; infoWindow: any }>>(new Map())
   const heatmapRef = useRef<any>(null)
 
+  // 生成地址降级列表（逐步简化地址）
+  const generateAddressFallbacks = useCallback((address: string): string[] => {
+    const fallbacks: string[] = [address] // 首先尝试原始地址
+    
+    // 去掉门牌号（数字结尾）
+    const withoutNumber = address.replace(/\d+号?$/, '').trim()
+    if (withoutNumber && withoutNumber !== address) {
+      fallbacks.push(withoutNumber)
+    }
+    
+    // 提取主要区域信息（省市区街道村）
+    // 例如："昆明市五华区黑林铺班庄村93号" -> "昆明市五华区黑林铺班庄村"
+    const parts = address.split(/[省市区县镇乡街道村]/)
+    if (parts.length > 1) {
+      // 保留到"村"或"街道"级别
+      const mainArea = address.match(/^[^省]*省?[^市]*市[^区]*区?[^县]*县?[^镇]*镇?[^乡]*乡?[^街道]*街道?[^村]*村?/)
+      if (mainArea && mainArea[0] && mainArea[0] !== address) {
+        fallbacks.push(mainArea[0])
+      }
+      
+      // 尝试只保留到区/县级别
+      const districtLevel = address.match(/^[^省]*省?[^市]*市[^区]*区?[^县]*县?/)
+      if (districtLevel && districtLevel[0] && districtLevel[0] !== address) {
+        fallbacks.push(districtLevel[0])
+      }
+    }
+    
+    // 提取关键地名（如"班庄村"）
+    const keyPlaceMatch = address.match(/([^省市区县镇乡街道]+(?:村|庄|社区|小区|路|街|巷|弄))/)
+    if (keyPlaceMatch && keyPlaceMatch[1]) {
+      const keyPlace = keyPlaceMatch[1]
+      if (!fallbacks.includes(keyPlace)) {
+        fallbacks.push(keyPlace)
+      }
+      // 尝试添加"（公交站）"后缀
+      const busStop = `${keyPlace}（公交站）`
+      if (!fallbacks.includes(busStop)) {
+        fallbacks.push(busStop)
+      }
+    }
+    
+    return [...new Set(fallbacks)] // 去重
+  }, [])
+
+  // 地理编码：将地址转换为经纬度（支持地址降级和POI搜索）
+  const geocodeAddress = useCallback(async (address: string): Promise<{ latitude: number; longitude: number } | null> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !(window as any).AMap) {
+        console.warn('[地理编码] AMap未加载')
+        resolve(null)
+        return
+      }
+
+      const AMap = (window as any).AMap
+      const geocoder = new AMap.Geocoder({
+        city: '全国', // 全国范围搜索
+      })
+
+      // 生成地址降级列表
+      const addressFallbacks = generateAddressFallbacks(address)
+      console.log('[地理编码] 尝试地址列表:', addressFallbacks)
+
+      let currentIndex = 0
+
+      // 尝试地理编码
+      const tryGeocode = (addr: string) => {
+        geocoder.getLocation(addr, (status: string, result: any) => {
+          if (status === 'complete' && result.geocodes && result.geocodes.length > 0) {
+            const location = result.geocodes[0].location
+            if (location && location.lat && location.lng) {
+              console.log('[地理编码] 成功:', addr, '->', { latitude: location.lat, longitude: location.lng })
+              resolve({
+                latitude: location.lat,
+                longitude: location.lng,
+              })
+              return
+            }
+          }
+          
+          // 当前地址失败，尝试下一个降级地址
+          currentIndex++
+          if (currentIndex < addressFallbacks.length) {
+            console.log(`[地理编码] "${addr}" 失败，尝试降级地址: "${addressFallbacks[currentIndex]}"`)
+            tryGeocode(addressFallbacks[currentIndex])
+          } else {
+            // 所有地址都失败，尝试POI搜索
+            console.log('[地理编码] 所有地址都失败，尝试POI搜索:', address)
+            tryPOISearch(address)
+          }
+        })
+      }
+
+      // POI搜索作为最后备选
+      const tryPOISearch = (searchText: string) => {
+        const placeSearch = new AMap.PlaceSearch({
+          city: '全国',
+          citylimit: false,
+        })
+
+        placeSearch.search(searchText, (status: string, result: any) => {
+          if (status === 'complete' && result.poiList && result.poiList.pois && result.poiList.pois.length > 0) {
+            const poi = result.poiList.pois[0]
+            if (poi.location && poi.location.lat && poi.location.lng) {
+              console.log('[地理编码] POI搜索成功:', searchText, '->', { 
+                name: poi.name, 
+                address: poi.address,
+                latitude: poi.location.lat, 
+                longitude: poi.location.lng 
+              })
+              resolve({
+                latitude: poi.location.lat,
+                longitude: poi.location.lng,
+              })
+              return
+            }
+          }
+          
+          // POI搜索也失败，尝试使用地址中的关键地名进行POI搜索
+          const keyPlaceMatch = searchText.match(/([^省市区县镇乡街道]+(?:村|庄|社区|小区|路|街|巷|弄|公交站))/)
+          if (keyPlaceMatch && keyPlaceMatch[1] && keyPlaceMatch[1] !== searchText) {
+            console.log('[地理编码] POI搜索失败，尝试关键地名:', keyPlaceMatch[1])
+            const placeSearch2 = new AMap.PlaceSearch({
+              city: '全国',
+              citylimit: false,
+            })
+            placeSearch2.search(keyPlaceMatch[1], (status2: string, result2: any) => {
+              if (status2 === 'complete' && result2.poiList && result2.poiList.pois && result2.poiList.pois.length > 0) {
+                const poi = result2.poiList.pois[0]
+                if (poi.location && poi.location.lat && poi.location.lng) {
+                  console.log('[地理编码] 关键地名POI搜索成功:', keyPlaceMatch[1], '->', { 
+                    name: poi.name, 
+                    address: poi.address,
+                    latitude: poi.location.lat, 
+                    longitude: poi.location.lng 
+                  })
+                  resolve({
+                    latitude: poi.location.lat,
+                    longitude: poi.location.lng,
+                  })
+                  return
+                }
+              }
+              console.warn('[地理编码] 所有尝试都失败:', address)
+              resolve(null)
+            })
+          } else {
+            console.warn('[地理编码] 所有尝试都失败:', address)
+            resolve(null)
+          }
+        })
+      }
+
+      // 开始尝试第一个地址
+      tryGeocode(addressFallbacks[0])
+    })
+  }, [generateAddressFallbacks])
+
+  // 批量更新餐厅的经纬度（对于有地址但没有经纬度的餐厅）
+  const updateRestaurantCoordinates = useCallback(async (restaurants: Restaurant[]) => {
+    if (!supabase) {
+      console.warn("[更新坐标] Supabase未配置")
+      return
+    }
+
+    // 检查AMap是否已加载
+    if (typeof window === 'undefined' || !(window as any).AMap) {
+      console.warn("[更新坐标] AMap未加载，等待地图加载完成")
+      return
+    }
+
+    // 找出有地址但没有经纬度的餐厅
+    const restaurantsToGeocode = restaurants.filter(
+      r => r.address && 
+      r.address.trim() !== '' && 
+      r.address !== '地址待完善' &&
+      (!r.latitude || !r.longitude || isNaN(r.latitude) || isNaN(r.longitude))
+    )
+
+    if (restaurantsToGeocode.length === 0) {
+      console.log('[更新坐标] 所有餐厅都有有效的经纬度')
+      return
+    }
+
+    console.log(`[更新坐标] 发现 ${restaurantsToGeocode.length} 个餐厅需要地理编码`)
+
+    // 批量处理地理编码（限制并发数，避免API限制）
+    const batchSize = 3
+    for (let i = 0; i < restaurantsToGeocode.length; i += batchSize) {
+      const batch = restaurantsToGeocode.slice(i, i + batchSize)
+      const promises = batch.map(async (restaurant) => {
+        if (!restaurant.address) return
+
+        const location = await geocodeAddress(restaurant.address)
+        if (location) {
+          // 更新数据库
+          const { error: updateError } = await supabase
+            .from("restaurants")
+            .update({
+              latitude: location.latitude,
+              longitude: location.longitude,
+              location: `${location.latitude},${location.longitude}`,
+            })
+            .eq("id", restaurant.id)
+
+          if (updateError) {
+            console.error(`[更新坐标] 更新餐厅 ${restaurant.id} 失败:`, updateError)
+          } else {
+            console.log(`[更新坐标] 成功更新餐厅 ${restaurant.id} 的坐标`)
+            // 更新本地状态
+            setRestaurants(prev => prev.map(r => 
+              r.id === restaurant.id 
+                ? { ...r, latitude: location.latitude, longitude: location.longitude }
+                : r
+            ))
+          }
+        }
+      })
+
+      await Promise.all(promises)
+      // 延迟一下，避免API请求过快
+      if (i + batchSize < restaurantsToGeocode.length) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    }
+  }, [supabase, geocodeAddress])
+
   // 加载餐厅数据
   const loadRestaurants = useCallback(async () => {
     try {
@@ -243,13 +469,20 @@ export default function AdminDashboard() {
 
       if (data) {
         setRestaurants(data)
+        // 如果地图已加载，尝试更新没有经纬度的餐厅坐标
+        if (mapLoaded && typeof window !== 'undefined' && (window as any).AMap) {
+          // 延迟一下，确保地图完全加载
+          setTimeout(() => {
+            updateRestaurantCoordinates(data)
+          }, 1000)
+        }
       }
     } catch (error) {
       console.error("[Admin Dashboard] 加载餐厅数据时出错:", error)
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [supabase, mapLoaded, updateRestaurantCoordinates])
 
   // 加载订单数据
   const loadRecentOrders = useCallback(async () => {
@@ -798,7 +1031,44 @@ export default function AdminDashboard() {
 
       // 为每个餐厅创建标记
       restaurants.forEach(restaurant => {
-        if (!restaurant.latitude || !restaurant.longitude) return
+        // 检查经纬度是否有效
+        if (!restaurant.latitude || !restaurant.longitude || 
+            isNaN(restaurant.latitude) || isNaN(restaurant.longitude)) {
+          // 如果有地址但没有经纬度，尝试地理编码（异步，不阻塞标记创建）
+          if (restaurant.address && restaurant.address.trim() !== '' && restaurant.address !== '地址待完善') {
+            console.log('[Map] 餐厅有地址但无经纬度，尝试地理编码:', restaurant.name, restaurant.address)
+            // 异步地理编码，不阻塞当前标记创建
+            geocodeAddress(restaurant.address).then(location => {
+              if (location && supabase) {
+                // 更新数据库
+                supabase
+                  .from("restaurants")
+                  .update({
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    location: `${location.latitude},${location.longitude}`,
+                  })
+                  .eq("id", restaurant.id)
+                  .then(({ error }) => {
+                    if (!error) {
+                      console.log('[Map] 地理编码成功，更新餐厅坐标:', restaurant.name)
+                      // 更新本地状态并重新创建标记
+                      setRestaurants(prev => prev.map(r => 
+                        r.id === restaurant.id 
+                          ? { ...r, latitude: location.latitude, longitude: location.longitude }
+                          : r
+                      ))
+                      // 触发标记更新
+                      setTimeout(() => updateMarkers(), 500)
+                    }
+                  })
+              }
+            }).catch(err => {
+              console.warn('[Map] 地理编码失败:', restaurant.name, err)
+            })
+          }
+          return
+        }
 
         const hasActiveOrders = activeOrderRestaurantIds.has(restaurant.id)
         const markerHTML = createMarkerHTML(restaurant, hasActiveOrders)
@@ -896,7 +1166,7 @@ export default function AdminDashboard() {
         serviceCirclesRef.current.push(circle)
       })
     }
-  }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap])
+  }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap, geocodeAddress, supabase])
 
   // 初始化地图
   const initMap = useCallback(async () => {
@@ -957,6 +1227,16 @@ export default function AdminDashboard() {
         map.on('complete', () => {
           console.log('[Map] 地图加载完成')
           setMapLoaded(true)
+          // 地图加载完成后，尝试更新没有经纬度的餐厅坐标
+          // 使用函数式更新，确保获取最新的 restaurants 状态
+          setTimeout(() => {
+            setRestaurants(currentRestaurants => {
+              if (currentRestaurants.length > 0) {
+                updateRestaurantCoordinates(currentRestaurants)
+              }
+              return currentRestaurants
+            })
+          }, 1000)
         })
 
         // 如果地图已经加载完成
@@ -976,7 +1256,7 @@ export default function AdminDashboard() {
       console.error('[Map] 初始化地图失败:', error)
       setMapLoaded(true)
     }
-  }, [calculateMapCenterAndZoom])
+  }, [calculateMapCenterAndZoom, updateRestaurantCoordinates])
 
   // 地图初始化Effect
   useEffect(() => {
