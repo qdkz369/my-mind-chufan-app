@@ -83,9 +83,14 @@ export function ProfileContent() {
         // 立即读取 localStorage，避免延迟
         const restaurantId = localStorage.getItem("restaurantId")
         console.log('[ProfileContent] 初始化检查，restaurantId:', restaurantId)
+        console.log('[ProfileContent] Supabase配置状态:', {
+          isSupabaseConfigured,
+          hasSupabase: !!supabase,
+          url: process.env.NEXT_PUBLIC_SUPABASE_URL ? '已配置' : '未配置'
+        })
         
         if (restaurantId) {
-          console.log('[ProfileContent] 找到restaurantId，自动登录')
+          console.log('[ProfileContent] 找到restaurantId，自动登录:', restaurantId)
           await loadRestaurantInfo(restaurantId)
         } else {
           console.log('[ProfileContent] 未找到restaurantId，显示登录/注册表单')
@@ -170,23 +175,40 @@ export function ProfileContent() {
 
   // 加载餐厅信息
   const loadRestaurantInfo = async (restaurantId: string) => {
+    console.log('[加载餐厅信息] 开始加载，restaurantId:', restaurantId)
+    
+    // 首先尝试从 localStorage 缓存恢复（快速显示）
+    const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
+    if (cachedData) {
+      try {
+        const data = JSON.parse(cachedData)
+        console.log('[加载餐厅信息] 从缓存恢复:', data)
+        setRestaurantInfo(data)
+        setFormData({
+          name: data.contact_name || "",
+          phone: data.contact_phone || "",
+          restaurant_name: data.name || "",
+          latitude: data.latitude || 0,
+          longitude: data.longitude || 0,
+          address: data.address || "",
+        })
+      } catch (e) {
+        console.error('[加载餐厅信息] 解析缓存数据失败:', e)
+      }
+    }
+    
     // 检查 Supabase 是否已配置
     if (!supabase || !isSupabaseConfigured) {
-      console.warn('[加载餐厅信息] Supabase未配置，使用localStorage数据')
-      // 即使Supabase未配置，也尝试从localStorage恢复基本信息
-      const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
-      if (cachedData) {
-        try {
-          const data = JSON.parse(cachedData)
-          setRestaurantInfo(data)
-        } catch (e) {
-          console.error('[加载餐厅信息] 解析缓存数据失败:', e)
-        }
+      console.warn('[加载餐厅信息] Supabase未配置，仅使用localStorage缓存数据')
+      // 如果没有缓存数据，保持 restaurantInfo 为 null
+      if (!cachedData) {
+        setRestaurantInfo(null)
       }
       return
     }
 
     try {
+      console.log('[加载餐厅信息] 从Supabase加载数据...')
       const { data, error } = await supabase
         .from("restaurants")
         .select("id, name, contact_name, contact_phone, address, latitude, longitude, status")
@@ -194,8 +216,9 @@ export function ProfileContent() {
         .maybeSingle()
 
       if (!error && data) {
+        console.log('[加载餐厅信息] Supabase加载成功:', data)
         setRestaurantInfo(data)
-        // 缓存到localStorage
+        // 更新缓存到localStorage
         localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(data))
         setFormData({
           name: data.contact_name || "",
@@ -206,29 +229,24 @@ export function ProfileContent() {
           address: data.address || "",
         })
       } else if (error) {
-        console.error("加载餐厅信息失败:", error)
-        // 如果加载失败，尝试从localStorage恢复
-        const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
-        if (cachedData) {
-          try {
-            const data = JSON.parse(cachedData)
-            setRestaurantInfo(data)
-          } catch (e) {
-            console.error('[加载餐厅信息] 解析缓存数据失败:', e)
-          }
+        console.error("[加载餐厅信息] Supabase查询失败:", error)
+        // 如果 Supabase 查询失败，但已有缓存数据，保持使用缓存
+        if (!cachedData) {
+          setRestaurantInfo(null)
         }
+      } else {
+        // 数据不存在
+        console.warn("[加载餐厅信息] 餐厅数据不存在，restaurantId:", restaurantId)
+        // 清除无效的缓存
+        localStorage.removeItem(`restaurant_${restaurantId}`)
+        localStorage.removeItem("restaurantId")
+        setRestaurantInfo(null)
       }
     } catch (error) {
-      console.error("加载餐厅信息异常:", error)
-      // 如果加载失败，尝试从localStorage恢复
-      const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
-      if (cachedData) {
-        try {
-          const data = JSON.parse(cachedData)
-          setRestaurantInfo(data)
-        } catch (e) {
-          console.error('[加载餐厅信息] 解析缓存数据失败:', e)
-        }
+      console.error("[加载餐厅信息] 异常:", error)
+      // 如果发生异常，但已有缓存数据，保持使用缓存
+      if (!cachedData) {
+        setRestaurantInfo(null)
       }
     }
   }
@@ -1108,94 +1126,94 @@ export function ProfileContent() {
             </>
           </div>
         </Card>
-      ) : (
+      ) : isRegistered ? (
         /* 已注册信息展示 */
-        <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-          <div className="flex items-center gap-4">
-            <Avatar className="w-16 h-16">
-              <AvatarImage src="/placeholder.svg?height=64&width=64" />
-              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-cyan-600 text-white">
-                {restaurantInfo.contact_name?.[0] || "用"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-xl font-bold text-white">{restaurantInfo.contact_name || "未设置"}</h2>
-                {isUnactivated ? (
-                  <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                    待激活
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white border-0">
-                    已激活
-                  </Badge>
+        <>
+          <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+            <div className="flex items-center gap-4">
+              <Avatar className="w-16 h-16">
+                <AvatarImage src="/placeholder.svg?height=64&width=64" />
+                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-cyan-600 text-white">
+                  {restaurantInfo.contact_name?.[0] || "用"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="text-xl font-bold text-white">{restaurantInfo.contact_name || "未设置"}</h2>
+                  {isUnactivated ? (
+                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                      待激活
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white border-0">
+                      已激活
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-slate-400">{restaurantInfo.name}</p>
+                <p className="text-sm text-slate-400">手机: {restaurantInfo.contact_phone || "未设置"}</p>
+                {restaurantInfo.address && (
+                  <p className="text-sm text-slate-400 flex items-center gap-1 mt-1">
+                    <MapPin className="h-3 w-3" />
+                    {restaurantInfo.address}
+                  </p>
                 )}
               </div>
-              <p className="text-sm text-slate-400">{restaurantInfo.name}</p>
-              <p className="text-sm text-slate-400">手机: {restaurantInfo.contact_phone || "未设置"}</p>
-              {restaurantInfo.address && (
-                <p className="text-sm text-slate-400 flex items-center gap-1 mt-1">
-                  <MapPin className="h-3 w-3" />
-                  {restaurantInfo.address}
-                </p>
-              )}
+              <Button
+                onClick={() => setIsEditing(true)}
+                variant="ghost"
+                size="sm"
+                className="text-blue-400 hover:text-blue-300"
+              >
+                编辑
+              </Button>
             </div>
-            <Button
-              onClick={() => setIsEditing(true)}
-              variant="ghost"
-              size="sm"
-              className="text-blue-400 hover:text-blue-300"
-            >
-              编辑
-            </Button>
+          </Card>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+              <div className="text-2xl font-bold mb-1 text-white">106</div>
+              <div className="text-xs text-slate-400">累计订单</div>
+            </Card>
+            <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+              <div className="text-2xl font-bold mb-1 text-white">¥28.6k</div>
+              <div className="text-xs text-slate-400">累计消费</div>
+            </Card>
+            <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+              <div className="text-2xl font-bold mb-1 text-white">320</div>
+              <div className="text-xs text-slate-400">积分余额</div>
+            </Card>
           </div>
-        </Card>
-      )}
 
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-          <div className="text-2xl font-bold mb-1 text-white">106</div>
-          <div className="text-xs text-slate-400">累计订单</div>
-        </Card>
-        <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-          <div className="text-2xl font-bold mb-1 text-white">¥28.6k</div>
-          <div className="text-xs text-slate-400">累计消费</div>
-        </Card>
-        <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-          <div className="text-2xl font-bold mb-1 text-white">320</div>
-          <div className="text-xs text-slate-400">积分余额</div>
-        </Card>
-      </div>
+          <Card className="divide-y divide-slate-800 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+            {menuItems.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="w-full flex items-center gap-3 p-4 hover:bg-slate-800/50 transition-colors text-left"
+              >
+                <div className="w-10 h-10 bg-slate-800/50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <item.icon className="h-5 w-5 text-slate-300" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium mb-0.5 text-white">{item.label}</h3>
+                  <p className="text-sm text-slate-400">{item.description}</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+              </Link>
+            ))}
+          </Card>
 
-      <Card className="divide-y divide-slate-800 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-        {menuItems.map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            className="w-full flex items-center gap-3 p-4 hover:bg-slate-800/50 transition-colors text-left"
-          >
-            <div className="w-10 h-10 bg-slate-800/50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <item.icon className="h-5 w-5 text-slate-300" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-medium mb-0.5 text-white">{item.label}</h3>
-              <p className="text-sm text-slate-400">{item.description}</p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
-          </Link>
-        ))}
-      </Card>
-
-      {isRegistered && (
-        <Card className="p-4 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-          <button 
-            onClick={handleLogout}
-            className="w-full text-red-400 font-medium hover:text-red-300 transition-colors"
-          >
-            退出登录
-          </button>
-        </Card>
-      )}
+          <Card className="p-4 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+            <button 
+              onClick={handleLogout}
+              className="w-full text-red-400 font-medium hover:text-red-300 transition-colors"
+            >
+              退出登录
+            </button>
+          </Card>
+        </>
+      ) : null}
     </div>
   )
 }
