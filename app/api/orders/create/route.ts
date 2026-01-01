@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { OrderStatus, ProductType } from "@/lib/types/order"
 
 // POST: 创建订单并关联工人
 export async function POST(request: Request) {
@@ -12,7 +13,15 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { restaurant_id, worker_id, service_type, status, amount } = body
+    const {
+      restaurant_id,
+      worker_id,
+      assigned_to, // 新字段：指派配送员ID
+      service_type,
+      product_type, // 新字段：产品类型
+      status,
+      amount,
+    } = body
 
     // 验证必要参数
     if (!restaurant_id) {
@@ -22,7 +31,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // worker_id 是可选的（客户提交时可能没有，管理员指派时才有）
+    // worker_id 和 assigned_to 是可选的（客户提交时可能没有，管理员指派时才有）
+    // 优先使用 assigned_to，如果没有则使用 worker_id（兼容旧字段）
 
     // 验证餐厅是否存在
     const { data: restaurantData, error: restaurantError } = await supabase
@@ -42,21 +52,40 @@ export async function POST(request: Request) {
     const orderData: any = {
       restaurant_id: restaurant_id,
       service_type: service_type || "燃料配送",
-      status: status || "pending",
+      status: status || OrderStatus.ACTIVE, // 默认状态为 active（已激活/待下单）
       amount: amount || 0,
+      customer_confirmed: false, // 默认未确认
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    
-    // 如果有 worker_id，则添加
-    if (worker_id) {
-      orderData.worker_id = worker_id
+
+    // 添加产品类型（如果提供）
+    if (product_type) {
+      orderData.product_type = product_type
+    }
+
+    // 添加配送员ID（优先使用 assigned_to，兼容 worker_id）
+    const deliveryWorkerId = assigned_to || worker_id
+    if (deliveryWorkerId) {
+      orderData.assigned_to = deliveryWorkerId
+      orderData.worker_id = deliveryWorkerId // 兼容旧字段
+      // 如果有配送员，状态设为 processing（待派单）
+      if (!status) {
+        orderData.status = OrderStatus.PROCESSING
+      }
+    } else {
+      // 如果没有配送员，状态设为 active（待下单）
+      if (!status) {
+        orderData.status = OrderStatus.ACTIVE
+      }
     }
 
     const { data: newOrder, error: createError } = await supabase
       .from("orders")
       .insert(orderData)
-      .select("id, restaurant_id, worker_id, service_type, status, created_at")
+      .select(
+        "id, restaurant_id, worker_id, assigned_to, product_type, service_type, status, amount, tracking_code, proof_image, customer_confirmed, created_at, updated_at"
+      )
       .single()
 
     if (createError) {

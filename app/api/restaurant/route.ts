@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
 // GET: 根据 qr_token 获取餐厅信息
 export async function GET(request: Request) {
   try {
-    // 检查环境变量
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    // 检查 Supabase 是否已配置（使用后备值或环境变量）
+    if (!isSupabaseConfigured || !supabase) {
       return NextResponse.json(
-        { error: "Supabase环境变量未配置" },
+        { error: "Supabase未正确配置，请检查环境变量或联系管理员" },
         { status: 500 }
       )
     }
@@ -31,8 +31,13 @@ export async function GET(request: Request) {
       .single()
 
     if (restaurantError || !restaurantData) {
+      // 提供更详细的错误信息，帮助用户排查问题
+      const errorMessage = restaurantError 
+        ? `无效的二维码：${restaurantError.message}` 
+        : `无效的二维码：餐厅不存在（qr_token: ${qrToken}）\n\n提示：如果这是测试数据，请确保已在 Supabase 中创建了对应的测试餐厅。\n详见：docs/quick-test-restaurant-setup.md`
+      
       return NextResponse.json(
-        { error: "无效的二维码：餐厅不存在" },
+        { error: errorMessage },
         { status: 404 }
       )
     }
@@ -43,31 +48,41 @@ export async function GET(request: Request) {
       .select("device_id, model, address, container_type, status, is_locked, restaurant_id, tank_capacity")
       .eq("restaurant_id", restaurantData.id)
 
+    // 如果查询出错，记录错误但继续执行（允许设备列表为空）
     if (devicesError) {
-      console.error("获取设备列表失败:", devicesError)
-      return NextResponse.json(
-        { error: "获取设备列表失败", details: devicesError.message },
-        { status: 500 }
-      )
+      console.warn("获取设备列表时出现错误（可能是餐厅还没有设备）:", devicesError)
+      // 不返回错误，而是返回空设备列表，允许继续安装新设备
     }
 
     // 获取每个设备的最新燃料百分比
-    const devicesWithFuel = await Promise.all(
-      (devicesData || []).map(async (device) => {
-        const { data: fuelData } = await supabase
-          .from("fuel_level")
-          .select("percentage")
-          .eq("device_id", device.device_id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single()
+    // 如果设备列表为空，直接返回空数组
+    const devicesWithFuel = devicesData && devicesData.length > 0
+      ? await Promise.all(
+          devicesData.map(async (device) => {
+            try {
+              const { data: fuelData } = await supabase
+                .from("fuel_level")
+                .select("percentage")
+                .eq("device_id", device.device_id)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle() // 使用 maybeSingle 而不是 single，允许没有燃料数据
 
-        return {
-          ...device,
-          fuel_percentage: fuelData?.percentage || 0,
-        }
-      })
-    )
+              return {
+                ...device,
+                fuel_percentage: fuelData?.percentage || 0,
+              }
+            } catch (fuelError) {
+              // 如果查询燃料数据失败，仍然返回设备信息，燃料百分比为0
+              console.warn(`获取设备 ${device.device_id} 的燃料数据失败:`, fuelError)
+              return {
+                ...device,
+                fuel_percentage: 0,
+              }
+            }
+          })
+        )
+      : [] // 如果没有设备，返回空数组
 
     return NextResponse.json({
       success: true,

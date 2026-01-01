@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
 // POST: 提交设备安装信息
 export async function POST(request: Request) {
   try {
-    // 检查环境变量
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    // 检查 Supabase 是否已配置（使用 isSupabaseConfigured 而不是直接检查环境变量）
+    if (!isSupabaseConfigured || !supabase) {
       return NextResponse.json(
-        { error: "Supabase环境变量未配置" },
+        { error: "Supabase未正确配置，请检查环境变量或联系管理员" },
         { status: 500 }
       )
     }
@@ -57,44 +57,127 @@ export async function POST(request: Request) {
     // 处理安装时间，如果没有提供则使用当前时间
     const installDate = install_date || new Date().toISOString()
 
-    // 插入或更新设备信息
-    const { data, error } = await supabase
+    console.log(`[安装API] 开始安装设备: ${device_id}`)
+    console.log(`[安装API] 安装数据:`, {
+      device_id,
+      model,
+      address,
+      installer,
+      install_date: installDate,
+    })
+
+    // 先检查设备是否存在
+    const { data: existingDevice, error: checkError } = await supabase
       .from("devices")
-      .upsert(
-        {
+      .select("device_id")
+      .eq("device_id", device_id)
+      .maybeSingle()
+
+    if (checkError) {
+      console.error(`[安装API] 检查设备失败:`, checkError)
+      return NextResponse.json(
+        { 
+          error: "检查设备失败", 
+          details: checkError.message,
+          code: checkError.code,
+        },
+        { status: 500 }
+      )
+    }
+
+    let deviceData
+
+    if (existingDevice) {
+      // 设备存在，更新
+      console.log(`[安装API] 设备已存在，更新设备: ${device_id}`)
+      const { data: updatedData, error: updateError } = await supabase
+        .from("devices")
+        .update({
+          model: model,
+          address: address,
+          installer: installer,
+          install_date: installDate,
+          status: "online",
+          is_locked: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("device_id", device_id)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error(`[安装API] 更新设备失败:`, updateError)
+        console.error(`[安装API] 错误详情:`, {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+        })
+        return NextResponse.json(
+          { 
+            error: "更新设备安装信息失败", 
+            details: updateError.message,
+            code: updateError.code,
+            hint: updateError.hint,
+          },
+          { status: 500 }
+        )
+      }
+
+      console.log(`[安装API] 设备更新成功: ${device_id}`, updatedData)
+      deviceData = updatedData
+    } else {
+      // 设备不存在，创建
+      console.log(`[安装API] 设备不存在，创建新设备: ${device_id}`)
+      const { data: newDeviceData, error: insertError } = await supabase
+        .from("devices")
+        .insert({
           device_id: device_id,
           model: model,
           address: address,
           installer: installer,
           install_date: installDate,
-          status: "online", // 安装后默认为在线状态
-          is_locked: false, // 新安装的设备默认未锁定
-        },
-        {
-          onConflict: "device_id",
-        }
-      )
-      .select()
-      .single()
+          status: "online",
+          is_locked: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single()
 
-    if (error) {
-      console.error("保存设备安装信息失败:", error)
-      return NextResponse.json(
-        { error: "保存设备安装信息失败", details: error.message },
-        { status: 500 }
-      )
+      if (insertError) {
+        console.error(`[安装API] 创建设备失败:`, insertError)
+        console.error(`[安装API] 错误详情:`, {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+        })
+        return NextResponse.json(
+          { 
+            error: "保存设备安装信息失败", 
+            details: insertError.message,
+            code: insertError.code,
+            hint: insertError.hint,
+          },
+          { status: 500 }
+        )
+      }
+
+      console.log(`[安装API] 设备创建成功: ${device_id}`, newDeviceData)
+      deviceData = newDeviceData
     }
 
     return NextResponse.json({
       success: true,
       message: "设备安装信息已成功保存",
       data: {
-        device_id: data.device_id,
-        model: data.model,
-        address: data.address,
-        installer: data.installer,
-        install_date: data.install_date,
-        status: data.status,
+        device_id: deviceData.device_id,
+        model: deviceData.model,
+        address: deviceData.address,
+        installer: deviceData.installer,
+        install_date: deviceData.install_date,
+        status: deviceData.status,
       },
     })
   } catch (error) {
@@ -109,10 +192,10 @@ export async function POST(request: Request) {
 // GET: 获取设备安装信息
 export async function GET(request: Request) {
   try {
-    // 检查环境变量
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    // 检查 Supabase 是否已配置
+    if (!isSupabaseConfigured || !supabase) {
       return NextResponse.json(
-        { error: "Supabase环境变量未配置" },
+        { error: "Supabase未正确配置，请检查环境变量或联系管理员" },
         { status: 500 }
       )
     }

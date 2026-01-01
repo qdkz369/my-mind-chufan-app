@@ -30,6 +30,7 @@ import {
   Unlock,
   QrCode,
   X,
+  AlertCircle,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -41,6 +42,219 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { motion, AnimatePresence } from "framer-motion"
 import { QRCodeSVG } from "qrcode.react"
+
+// Notification Bell Component - 通知铃铛组件
+function NotificationBell({ 
+  restaurantId, 
+  onInstallationClick 
+}: { 
+  restaurantId: string | null
+  onInstallationClick?: () => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [notifications, setNotifications] = useState<Array<{
+    id: string
+    type: 'installation' | 'order' | 'system'
+    title: string
+    message: string
+    time: string
+    deviceId?: string
+    deviceAddress?: string
+    installer?: string
+  }>>([])
+  const [isLoading, setIsLoading] = useState(false)
+
+  // 加载通知
+  useEffect(() => {
+    if (!restaurantId || !supabase) return
+
+    const loadNotifications = async () => {
+      setIsLoading(true)
+      try {
+        // 查询待确认的设备安装
+        const { data: devices, error } = await supabase
+          .from("devices")
+          .select("device_id, address, installer, install_date, status, created_at")
+          .eq("restaurant_id", restaurantId)
+          .in("status", ["online", "pending_acceptance"])
+          .order("created_at", { ascending: false })
+          .limit(10)
+
+        if (error) {
+          console.error("[通知] 加载设备失败:", error)
+          return
+        }
+
+        // 转换为通知格式
+        const deviceNotifications = (devices || []).map((device) => ({
+          id: device.device_id,
+          type: 'installation' as const,
+          title: "设备安装完成",
+          message: `设备 ${device.device_id} 已安装完成，请确认验收`,
+          time: device.install_date || device.created_at || new Date().toISOString(),
+          deviceId: device.device_id,
+          deviceAddress: device.address || "",
+          installer: device.installer || "",
+        }))
+
+        setNotifications(deviceNotifications)
+      } catch (error) {
+        console.error("[通知] 加载失败:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadNotifications()
+
+    // 每30秒刷新一次
+    const interval = setInterval(loadNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [restaurantId])
+
+  const unreadCount = notifications.length
+
+  return (
+    <>
+      <Button 
+        variant="ghost" 
+        size="icon" 
+        className="text-white hover:bg-white/10 relative"
+        onClick={() => setIsOpen(true)}
+      >
+        <Bell className="h-5 w-5" />
+        {unreadCount > 0 && (
+          <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-gradient-to-r from-red-500 to-red-600 text-white text-xs border-0">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </Badge>
+        )}
+      </Button>
+
+      {/* 通知弹窗 */}
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* 遮罩层 */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+              onClick={() => setIsOpen(false)}
+            />
+            
+            {/* 弹窗内容 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-16 right-4 z-[101] w-96 max-w-[calc(100vw-2rem)] bg-slate-900/95 backdrop-blur-md rounded-xl border border-slate-700/50 shadow-2xl max-h-[80vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 标题栏 */}
+              <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
+                <h3 className="text-lg font-bold text-white">通知</h3>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsOpen(false)}
+                  className="text-slate-400 hover:text-white hover:bg-slate-800 h-8 w-8"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* 通知列表 */}
+              <div className="flex-1 overflow-y-auto">
+                {isLoading ? (
+                  <div className="p-8 text-center text-slate-400">
+                    <div className="inline-block h-6 w-6 border-2 border-slate-600 border-t-white rounded-full animate-spin mb-2" />
+                    <p className="text-sm">加载中...</p>
+                  </div>
+                ) : notifications.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400">
+                    <Bell className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">暂无通知</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800">
+                    {notifications.map((notification) => (
+                      <div
+                        key={notification.id}
+                        className="p-4 hover:bg-slate-800/50 transition-colors cursor-pointer"
+                        onClick={() => {
+                          if (notification.type === 'installation' && onInstallationClick) {
+                            onInstallationClick()
+                            setIsOpen(false)
+                          }
+                        }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="mt-1">
+                            {notification.type === 'installation' ? (
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
+                                <CheckCircle2 className="h-5 w-5 text-blue-400" />
+                              </div>
+                            ) : (
+                              <div className="w-10 h-10 bg-gradient-to-br from-slate-500/20 to-slate-600/20 rounded-lg flex items-center justify-center border border-slate-500/30">
+                                <AlertCircle className="h-5 w-5 text-slate-400" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-semibold text-white mb-1">
+                              {notification.title}
+                            </h4>
+                            <p className="text-xs text-slate-400 mb-2 line-clamp-2">
+                              {notification.message}
+                            </p>
+                            {notification.deviceAddress && (
+                              <p className="text-xs text-slate-500 mb-1">
+                                地址: {notification.deviceAddress}
+                              </p>
+                            )}
+                            {notification.installer && (
+                              <p className="text-xs text-slate-500 mb-1">
+                                安装人: {notification.installer}
+                              </p>
+                            )}
+                            <p className="text-xs text-slate-500">
+                              {new Date(notification.time).toLocaleString('zh-CN')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 底部操作 */}
+              {notifications.length > 0 && (
+                <div className="p-4 border-t border-slate-700/50">
+                  <Button
+                    variant="ghost"
+                    className="w-full text-slate-400 hover:text-white hover:bg-slate-800"
+                    onClick={() => {
+                      if (onInstallationClick) {
+                        onInstallationClick()
+                        setIsOpen(false)
+                      }
+                    }}
+                  >
+                    查看待确认设备
+                  </Button>
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
 
 // No Device Dialog Component - 无设备提示对话框
 function NoDeviceDialog({ isOpen, onClose }: {
@@ -410,12 +624,13 @@ function Header() {
               <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
                 <Search className="h-5 w-5" />
               </Button>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative">
-                <Bell className="h-5 w-5" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-gradient-to-r from-red-500 to-red-600 text-white text-xs border-0">
-                  3
-                </Badge>
-              </Button>
+              <NotificationBell 
+                restaurantId={restaurantId}
+                onInstallationClick={() => {
+                  // 点击安装通知时，可以跳转到确认页面或显示详情
+                  window.location.href = "/customer/confirm"
+                }}
+              />
             </div>
           </div>
         </div>
@@ -817,17 +1032,17 @@ function MemberPrivileges() {
 // Quick Actions Component
 const actions = [
   {
+    icon: Package,
+    label: "我的设备",
+    color: "from-blue-500 to-cyan-600",
+    shadowColor: "shadow-blue-500/20",
+    href: "/devices",
+  },
+  {
     icon: Truck,
     label: "燃料配送",
     color: "from-orange-500 to-red-600",
     shadowColor: "shadow-orange-500/20",
-    href: "/services",
-  },
-  {
-    icon: Package,
-    label: "设备租赁",
-    color: "from-blue-500 to-cyan-600",
-    shadowColor: "shadow-blue-500/20",
     href: "/services",
   },
   {
@@ -1001,11 +1216,135 @@ function BottomNavigation() {
   )
 }
 
+// Installation Alert Component - 安装完成提示横幅
+function InstallationAlert() {
+  const [pendingDevices, setPendingDevices] = useState<Array<{
+    device_id: string
+    address: string
+    installer: string
+    install_date: string
+  }>>([])
+  const [isVisible, setIsVisible] = useState(true)
+  const [restaurantId, setRestaurantId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const rid = localStorage.getItem("restaurantId")
+    setRestaurantId(rid)
+  }, [])
+
+  useEffect(() => {
+    if (!restaurantId || !supabase) return
+
+    const loadPendingDevices = async () => {
+      try {
+        // 查询待确认的设备安装（状态为 online 或 pending_acceptance）
+        const { data, error } = await supabase
+          .from("devices")
+          .select("device_id, address, installer, install_date, status")
+          .eq("restaurant_id", restaurantId)
+          .in("status", ["online", "pending_acceptance"])
+          .order("install_date", { ascending: false })
+          .limit(5)
+
+        if (error) {
+          console.error("[安装提示] 加载失败:", error)
+          return
+        }
+
+        if (data && data.length > 0) {
+          setPendingDevices(data)
+        }
+      } catch (error) {
+        console.error("[安装提示] 加载失败:", error)
+      }
+    }
+
+    loadPendingDevices()
+
+    // 每30秒刷新一次
+    const interval = setInterval(loadPendingDevices, 30000)
+    return () => clearInterval(interval)
+  }, [restaurantId])
+
+  if (!isVisible || pendingDevices.length === 0) return null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="container mx-auto px-4 pt-4"
+    >
+      <Card className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border-blue-500/30 backdrop-blur-sm p-4">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-500/30 to-cyan-500/30 rounded-xl flex items-center justify-center border border-blue-500/30 flex-shrink-0">
+            <CheckCircle2 className="h-6 w-6 text-blue-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <h3 className="text-base font-semibold text-white mb-1">
+                  设备安装完成
+                </h3>
+                <p className="text-sm text-slate-300 mb-2">
+                  您有 {pendingDevices.length} 台设备已安装完成，请确认验收以激活设备
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsVisible(false)}
+                className="text-slate-400 hover:text-white hover:bg-slate-800/50 h-8 w-8 flex-shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-2 mb-3">
+              {pendingDevices.slice(0, 3).map((device) => (
+                <div
+                  key={device.device_id}
+                  className="bg-slate-800/50 rounded-lg p-2 text-sm"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Package className="h-4 w-4 text-blue-400" />
+                    <span className="font-medium text-white">{device.device_id}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 ml-6">
+                    {device.address || "地址未设置"}
+                  </p>
+                  {device.installer && (
+                    <p className="text-xs text-slate-500 ml-6">
+                      安装人: {device.installer}
+                    </p>
+                  )}
+                </div>
+              ))}
+              {pendingDevices.length > 3 && (
+                <p className="text-xs text-slate-400 text-center">
+                  还有 {pendingDevices.length - 3} 台设备...
+                </p>
+              )}
+            </div>
+            <Link href="/customer/confirm">
+              <Button className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white">
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                前往确认验收
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
+  )
+}
+
 // Main Page Component
 export default function MainPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
       <Header />
+      <InstallationAlert />
       <div className="container mx-auto px-4 py-6 space-y-6">
         <IoTDashboard />
         <CoreServices />

@@ -304,6 +304,7 @@ function PaymentContent() {
         }
 
         // 获取商户注册位置（从localStorage或API）
+        if (typeof window === "undefined") return
         const merchantId = localStorage.getItem("merchantId") || "default"
         const merchantResponse = await fetch(`/api/merchant/location?merchantId=${merchantId}`)
         if (merchantResponse.ok) {
@@ -425,6 +426,7 @@ function PaymentContent() {
           
           // 保存商户位置到数据库
           try {
+            if (typeof window === "undefined") return
             const merchantId = localStorage.getItem("merchantId") || "default"
             await fetch("/api/merchant/location", {
               method: "POST",
@@ -466,6 +468,7 @@ function PaymentContent() {
           
           // 保存商户位置到数据库（即使地址解析失败）
           try {
+            if (typeof window === "undefined") return
             const merchantId = localStorage.getItem("merchantId") || "default"
             await fetch("/api/merchant/location", {
               method: "POST",
@@ -581,6 +584,9 @@ function PaymentContent() {
   }, [selectedFuel, actualQuantity, deliveryCity, deliveryAddress, distance, serviceType, useGPS, gpsLocation, selectedSpec, bottleCount])
 
   const handlePayment = async () => {
+    // 确保只在客户端执行
+    if (typeof window === "undefined") return
+    
     // 获取当前用户的 restaurant_id
     const restaurantId = localStorage.getItem("restaurantId")
     
@@ -600,8 +606,9 @@ function PaymentContent() {
         },
         body: JSON.stringify({
           restaurant_id: restaurantId,
+          product_type: selectedFuel === "lpg" ? "liquefied_gas" : selectedFuel === "alcohol" ? "methanol" : selectedFuel === "clean" ? "clean_fuel" : null, // 添加产品类型
           service_type: `${fuelTypes.find((f) => f.id === selectedFuel)?.name || "燃料配送"} - ${actualQuantity}${fuelTypes.find((f) => f.id === selectedFuel)?.unitLabel || "kg"}`,
-          status: "pending",
+          status: "processing", // 使用新状态：processing（待派单）
           amount: orderInfo.amount,
         }),
       })
@@ -655,8 +662,8 @@ function PaymentContent() {
             orderId,
             amount: orderInfo.amount,
             subject: `${fuelTypes.find((f) => f.id === selectedFuel)?.name || "燃料配送"} - ${actualQuantity}${fuelTypes.find((f) => f.id === selectedFuel)?.unitLabel || "kg"}`,
-            returnUrl: `${window.location.origin}/payment/callback?status=success&out_trade_no=${orderId}`,
-            notifyUrl: `${window.location.origin}/api/payment/alipay/notify`,
+            returnUrl: typeof window !== "undefined" ? `${window.location.origin}/payment/callback?status=success&out_trade_no=${orderId}` : "",
+            notifyUrl: typeof window !== "undefined" ? `${window.location.origin}/api/payment/alipay/notify` : "",
           }),
         })
 
@@ -668,7 +675,11 @@ function PaymentContent() {
 
         // 跳转到支付宝支付页面
         if (paymentResult.paymentUrl) {
-          window.location.href = paymentResult.paymentUrl
+          if (typeof window !== "undefined") {
+            window.location.href = paymentResult.paymentUrl
+          } else {
+            throw new Error("无法在服务器端执行页面跳转")
+          }
         } else {
           throw new Error("未获取到支付链接")
         }

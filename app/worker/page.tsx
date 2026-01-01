@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,85 +22,310 @@ import {
   Droplet,
   Calendar,
   Hash,
+  Camera,
+  List,
+  Trash2,
+  Plus,
 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { WorkerOrderList } from "@/components/worker/order-list"
+import { QRScanner } from "@/components/worker/qr-scanner"
+import { ImageUploader } from "@/components/worker/image-uploader"
+import { OrderStatus } from "@/lib/types/order"
 
-// 安装登记表单组件
+// 设备型号选项
+const DEVICE_MODELS = [
+  { id: "v2.0", name: "智能燃料监控系统 V2.0" },
+  { id: "v1.0", name: "智能燃料监控系统 V1.0" },
+  { id: "pro", name: "智能燃料监控系统 Pro" },
+  { id: "lite", name: "智能燃料监控系统 Lite" },
+]
+
+// 设备清单项类型
+interface DeviceListItem {
+  id: string // 临时ID，用于列表管理
+  deviceId: string // 设备ID
+  model: string // 设备型号
+}
+
+// 安装登记表单组件（批量绑定版本）
 function InstallForm({ onBack }: { onBack: () => void }) {
-  const [deviceId, setDeviceId] = useState("")
   const [address, setAddress] = useState("")
   const [installer, setInstaller] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [error, setError] = useState("")
+  
+  // 客户信息相关状态
+  const [customerId, setCustomerId] = useState<string | null>(null) // 客户ID（餐厅ID）
+  const [customerName, setCustomerName] = useState("") // 客户名称
+  const [isLoadingCustomer, setIsLoadingCustomer] = useState(false) // 正在加载客户信息
+  const [customerAutoFilled, setCustomerAutoFilled] = useState(false) // 客户信息是否已自动填充
 
-  // 处理表单提交
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setSubmitSuccess(false)
+  // 设备清单相关状态
+  const [deviceList, setDeviceList] = useState<DeviceListItem[]>([]) // 待绑定设备清单
+  const [currentDeviceId, setCurrentDeviceId] = useState("") // 当前输入的设备ID
+  const [currentDeviceModel, setCurrentDeviceModel] = useState("v2.0") // 当前选择的设备型号
+  const [showDeviceQRScanner, setShowDeviceQRScanner] = useState(false) // 显示设备二维码扫描器
 
-    // 验证表单
-    if (!deviceId.trim()) {
+  // 添加设备到清单
+  const handleAddDevice = () => {
+    if (!currentDeviceId.trim()) {
       setError("请输入设备ID")
       return
     }
 
+    // 检查设备ID是否已存在
+    if (deviceList.some((item) => item.deviceId === currentDeviceId.trim())) {
+      setError("该设备ID已存在于清单中")
+      return
+    }
+
+    // 获取型号名称
+    const modelName = DEVICE_MODELS.find((m) => m.id === currentDeviceModel)?.name || "智能燃料监控系统 V2.0"
+
+    // 添加到清单
+    const newDevice: DeviceListItem = {
+      id: Date.now().toString(), // 临时ID
+      deviceId: currentDeviceId.trim(),
+      model: modelName,
+    }
+
+    setDeviceList([...deviceList, newDevice])
+    setCurrentDeviceId("") // 清空输入
+    setError("")
+  }
+
+  // 从清单中移除设备
+  const handleRemoveDevice = (id: string) => {
+    setDeviceList(deviceList.filter((item) => item.id !== id))
+  }
+
+  // 设备二维码扫描成功回调
+  const handleDeviceQRScanSuccess = (decodedText: string) => {
+    setCurrentDeviceId(decodedText.trim())
+    setShowDeviceQRScanner(false)
+  }
+
+  // 批量处理表单提交
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    console.log('[安装表单] 开始提交，当前状态:', {
+      deviceListLength: deviceList.length,
+      address: address,
+      installer: installer,
+      customerId: customerId,
+      customerName: customerName
+    })
+    
+    setError("")
+    setSubmitSuccess(false)
+
+    // 验证表单
+    if (deviceList.length === 0) {
+      const errorMsg = "请至少添加一个设备到清单"
+      console.error('[安装表单] 验证失败:', errorMsg)
+      setError(errorMsg)
+      return
+    }
+
     if (!address.trim()) {
-      setError("请输入安装地址")
+      const errorMsg = "请输入安装地址"
+      console.error('[安装表单] 验证失败:', errorMsg)
+      setError(errorMsg)
       return
     }
 
     if (!installer.trim()) {
-      setError("请输入安装人姓名")
+      const errorMsg = "请输入安装人姓名"
+      console.error('[安装表单] 验证失败:', errorMsg)
+      setError(errorMsg)
       return
     }
 
+    if (!customerId) {
+      const errorMsg = "请先扫描客户二维码获取客户信息"
+      console.error('[安装表单] 验证失败:', errorMsg)
+      setError(errorMsg)
+      return
+    }
+
+    console.log('[安装表单] 验证通过，开始提交...')
     setIsSubmitting(true)
 
     try {
-      const response = await fetch("/api/install", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          device_id: deviceId.trim(),
-          model: "智能燃料监控系统 V2.0",
-          address: address.trim(),
-          installer: installer.trim(),
-          install_date: new Date().toISOString(),
-        }),
-      })
+      const installDate = new Date().toISOString()
+      const successDevices: string[] = []
+      const failedDevices: string[] = []
 
-      const data = await response.json()
+      // 批量安装和绑定设备
+      for (const device of deviceList) {
+        try {
+          // 1. 安装设备
+          const installResponse = await fetch("/api/install", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              device_id: device.deviceId,
+              model: device.model,
+              address: address.trim(),
+              installer: installer.trim(),
+              install_date: installDate,
+            }),
+          })
 
-      if (!response.ok) {
-        throw new Error(data.error || "提交失败，请重试")
+          let installData
+          try {
+            installData = await installResponse.json()
+          } catch (parseError) {
+            console.error(`解析响应失败 (设备 ${device.deviceId}):`, parseError)
+            throw new Error(`服务器响应格式错误 (状态码: ${installResponse.status})`)
+          }
+
+          if (!installResponse.ok) {
+            const errorMsg = installData?.error || installData?.details || `安装失败 (状态码: ${installResponse.status})`
+            console.error(`设备 ${device.deviceId} 安装失败:`, {
+              status: installResponse.status,
+              error: installData,
+            })
+            throw new Error(errorMsg)
+          }
+
+          // 2. 将设备关联到客户
+          if (supabase) {
+            const { error: linkError } = await supabase
+              .from("devices")
+              .update({
+                restaurant_id: customerId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("device_id", device.deviceId)
+
+            if (linkError) {
+              console.error(`关联设备 ${device.deviceId} 到客户失败:`, linkError)
+              failedDevices.push(device.deviceId)
+            } else {
+              console.log(`✅ 设备 ${device.deviceId} 已成功关联到客户`)
+              successDevices.push(device.deviceId)
+            }
+          }
+        } catch (err: any) {
+          console.error(`处理设备 ${device.deviceId} 失败:`, err)
+          failedDevices.push(device.deviceId)
+        }
+      }
+
+      // 检查结果
+      if (failedDevices.length > 0 && successDevices.length === 0) {
+        throw new Error(`所有设备安装失败: ${failedDevices.join(", ")}`)
+      }
+
+      if (failedDevices.length > 0) {
+        console.warn(`部分设备安装失败: ${failedDevices.join(", ")}`)
+        // 显示警告但不阻止成功提示
       }
 
       // 提交成功
+      console.log('[安装表单] 提交成功！', {
+        successDevices,
+        failedDevices
+      })
       setSubmitSuccess(true)
+      
       // 清空表单
-      setDeviceId("")
+      setDeviceList([])
+      setCurrentDeviceId("")
       setAddress("")
       setInstaller("")
+      setCustomerId(null)
+      setCustomerName("")
+      setCustomerAutoFilled(false)
 
       // 3秒后重置成功状态
       setTimeout(() => {
         setSubmitSuccess(false)
       }, 3000)
     } catch (err: any) {
-      setError(err.message || "提交失败，请检查网络连接")
+      console.error('[安装表单] 提交失败:', err)
+      const errorMessage = err.message || "提交失败，请检查网络连接"
+      setError(errorMessage)
+      alert(`安装失败: ${errorMessage}\n\n请查看浏览器控制台获取详细信息`)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // 模拟扫码功能
-  const handleScanQR = () => {
-    alert("扫码功能需要调用设备摄像头API，请手动输入设备ID")
+  // 客户二维码扫描功能
+  const [showCustomerQRScanner, setShowCustomerQRScanner] = useState(false)
+  const [customerQRInput, setCustomerQRInput] = useState("")
+
+  // 获取客户信息
+  const fetchCustomerInfo = async (qrToken: string) => {
+    setIsLoadingCustomer(true)
+    setError("")
+
+    try {
+      const response = await fetch(`/api/restaurant?qr_token=${encodeURIComponent(qrToken)}`)
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "获取客户信息失败")
+      }
+
+      // 自动填充客户信息
+      if (data.restaurant) {
+        setCustomerId(data.restaurant.restaurant_id || data.restaurant.id)
+        setCustomerName(data.restaurant.name || "")
+        
+        // 自动填充地址
+        if (data.restaurant.address) {
+          setAddress(data.restaurant.address)
+          setCustomerAutoFilled(true)
+        }
+
+        // 如果有联系人姓名，也可以填充（可选）
+        if (data.restaurant.contact_name) {
+          // 可以在这里设置一个联系人字段，或者只显示
+        }
+
+        console.log("✅ 客户信息已自动填充:", data.restaurant)
+      }
+    } catch (err: any) {
+      console.error("获取客户信息失败:", err)
+      setError(err.message || "获取客户信息失败，请重试")
+      setCustomerAutoFilled(false)
+    } finally {
+      setIsLoadingCustomer(false)
+    }
+  }
+
+  // 客户二维码扫描成功回调
+  const handleCustomerQRScanSuccess = (decodedText: string) => {
+    const qrToken = decodedText.trim()
+    setCustomerQRInput("")
+    setShowCustomerQRScanner(false)
+    fetchCustomerInfo(qrToken)
+  }
+
+  // 模拟获取客户信息（测试用）
+  const handleMockCustomerInfo = () => {
+    // 提示用户如何获取真实的 qr_token
+    const userInput = prompt(
+      "请输入客户的二维码令牌（qr_token）\n\n" +
+      "获取方式：\n" +
+      "1. 在个人中心（/profile）注册新客户\n" +
+      "2. 注册成功后，在浏览器控制台查看 qr_token\n" +
+      "3. 或访问首页，点击右上角二维码图标查看\n" +
+      "4. 或在 Supabase Dashboard 中查询 restaurants 表\n\n" +
+      "如果使用测试数据，请输入：test_qr_token_001"
+    )
+    
+    if (userInput && userInput.trim()) {
+      fetchCustomerInfo(userInput.trim())
+    }
   }
 
   return (
@@ -159,33 +384,261 @@ function InstallForm({ onBack }: { onBack: () => void }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* 设备ID */}
+          {/* 第一步：扫描客户码 */}
           <div className="space-y-2">
-            <Label htmlFor="deviceId" className="text-slate-300 flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              设备ID <span className="text-red-400">*</span>
+            <Label className="text-slate-300 flex items-center gap-2">
+              <User className="h-4 w-4" />
+              第一步：扫描客户码 <span className="text-red-400">*</span>
             </Label>
             <div className="flex gap-2">
               <Input
-                id="deviceId"
                 type="text"
-                placeholder="请输入设备ID或扫码获取"
-                value={deviceId}
-                onChange={(e) => setDeviceId(e.target.value)}
+                placeholder="扫描客户二维码或输入二维码内容"
+                value={customerQRInput}
+                onChange={(e) => setCustomerQRInput(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && customerQRInput.trim()) {
+                    fetchCustomerInfo(customerQRInput.trim())
+                  }
+                }}
                 className="flex-1 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isLoadingCustomer}
               />
               <Button
                 type="button"
-                onClick={handleScanQR}
+                onClick={() => setShowCustomerQRScanner(true)}
                 variant="outline"
                 className="border-slate-700 text-slate-300 hover:bg-slate-800/50 hover:text-white"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isLoadingCustomer}
               >
                 <QrCode className="h-5 w-5" />
               </Button>
+              <Button
+                type="button"
+                onClick={handleMockCustomerInfo}
+                variant="outline"
+                className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                disabled={isSubmitting || isLoadingCustomer}
+              >
+                模拟获取
+              </Button>
             </div>
-            <p className="text-xs text-slate-500">点击扫码按钮或手动输入设备ID</p>
+            {isLoadingCustomer && (
+              <div className="flex items-center gap-2 text-xs text-blue-400">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>正在获取客户信息...</span>
+              </div>
+            )}
+            {customerAutoFilled && customerName && (
+              <div className="p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <div className="flex items-center gap-2 text-xs text-green-400">
+                  <CheckCircle2 className="h-3 w-3" />
+                  <span>自动识别成功：{customerName}</span>
+                </div>
+              </div>
+            )}
+            {/* 客户二维码扫描器 */}
+            {showCustomerQRScanner && (
+              <QRScanner
+                onScanSuccess={handleCustomerQRScanSuccess}
+                onClose={() => setShowCustomerQRScanner(false)}
+                title="扫描客户二维码"
+              />
+            )}
+          </div>
+
+          {/* 第二步：待绑定设备清单 */}
+          <div className="space-y-2">
+            <Label className="text-slate-300 flex items-center gap-2">
+              <List className="h-4 w-4" />
+              第二步：待绑定设备清单 <span className="text-red-400">*</span>
+              {deviceList.length > 0 && (
+                <Badge className="ml-2 bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                  {deviceList.length} 台设备
+                </Badge>
+              )}
+            </Label>
+
+            {/* 添加设备输入区域 */}
+            <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/50">
+              <div className="flex gap-2 mb-2">
+                <Input
+                  type="text"
+                  placeholder="扫描或输入设备ID（如：TEST-DEV-001）"
+                  value={currentDeviceId}
+                  onChange={(e) => setCurrentDeviceId(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddDevice()
+                    }
+                  }}
+                  className="flex-1 bg-slate-700/50 border-slate-600 text-white text-sm"
+                  disabled={isSubmitting}
+                />
+                <Button
+                  type="button"
+                  onClick={() => setShowDeviceQRScanner(true)}
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-600 text-slate-400 hover:text-white"
+                  disabled={isSubmitting}
+                >
+                  <QrCode className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleAddDevice}
+                  size="sm"
+                  className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/30"
+                  disabled={!currentDeviceId.trim() || isSubmitting}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  添加
+                </Button>
+              </div>
+
+              {/* 设备型号选择 */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">设备型号：</span>
+                <select
+                  value={currentDeviceModel}
+                  onChange={(e) => setCurrentDeviceModel(e.target.value)}
+                  className="flex-1 bg-slate-700/50 border border-slate-600 text-white text-sm rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                  disabled={isSubmitting}
+                >
+                  {DEVICE_MODELS.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 快速填充按钮 */}
+              <div className="mt-2 flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const deviceId = "TEST-DEV-001"
+                    // 检查设备ID是否已存在
+                    if (deviceList.some((item) => item.deviceId === deviceId)) {
+                      setError("该设备ID已存在于清单中")
+                      return
+                    }
+                    // 获取型号名称
+                    const modelName = DEVICE_MODELS.find((m) => m.id === currentDeviceModel)?.name || "智能燃料监控系统 V2.0"
+                    // 直接添加到清单
+                    const newDevice: DeviceListItem = {
+                      id: Date.now().toString(),
+                      deviceId: deviceId,
+                      model: modelName,
+                    }
+                    setDeviceList([...deviceList, newDevice])
+                    setError("")
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs border-slate-600 text-slate-400 hover:text-white h-7"
+                  disabled={isSubmitting}
+                >
+                  + TEST-DEV-001
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const deviceId = "TEST-DEV-002"
+                    // 检查设备ID是否已存在
+                    if (deviceList.some((item) => item.deviceId === deviceId)) {
+                      setError("该设备ID已存在于清单中")
+                      return
+                    }
+                    // 获取型号名称
+                    const modelName = DEVICE_MODELS.find((m) => m.id === currentDeviceModel)?.name || "智能燃料监控系统 V2.0"
+                    // 直接添加到清单
+                    const newDevice: DeviceListItem = {
+                      id: (Date.now() + 1).toString(),
+                      deviceId: deviceId,
+                      model: modelName,
+                    }
+                    setDeviceList([...deviceList, newDevice])
+                    setError("")
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs border-slate-600 text-slate-400 hover:text-white h-7"
+                  disabled={isSubmitting}
+                >
+                  + TEST-DEV-002
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const deviceId = "TEST-DEV-003"
+                    // 检查设备ID是否已存在
+                    if (deviceList.some((item) => item.deviceId === deviceId)) {
+                      setError("该设备ID已存在于清单中")
+                      return
+                    }
+                    // 获取型号名称
+                    const modelName = DEVICE_MODELS.find((m) => m.id === currentDeviceModel)?.name || "智能燃料监控系统 V2.0"
+                    // 直接添加到清单
+                    const newDevice: DeviceListItem = {
+                      id: (Date.now() + 2).toString(),
+                      deviceId: deviceId,
+                      model: modelName,
+                    }
+                    setDeviceList([...deviceList, newDevice])
+                    setError("")
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs border-slate-600 text-slate-400 hover:text-white h-7"
+                  disabled={isSubmitting}
+                >
+                  + TEST-DEV-003
+                </Button>
+              </div>
+            </div>
+
+            {/* 设备清单列表 */}
+            {deviceList.length > 0 && (
+              <div className="space-y-2">
+                {deviceList.map((device) => (
+                  <Card
+                    key={device.id}
+                    className="bg-slate-800/50 border-slate-700 p-3 flex items-center justify-between"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 text-blue-400" />
+                        <span className="text-white font-medium text-sm">{device.deviceId}</span>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">{device.model}</div>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => handleRemoveDevice(device.id)}
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      disabled={isSubmitting}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* 设备二维码扫描器 */}
+            {showDeviceQRScanner && (
+              <QRScanner
+                onScanSuccess={handleDeviceQRScanSuccess}
+                onClose={() => setShowDeviceQRScanner(false)}
+                title="扫描设备二维码"
+              />
+            )}
           </div>
 
           {/* 安装地址 */}
@@ -193,17 +646,32 @@ function InstallForm({ onBack }: { onBack: () => void }) {
             <Label htmlFor="address" className="text-slate-300 flex items-center gap-2">
               <MapPin className="h-4 w-4" />
               安装地址 <span className="text-red-400">*</span>
+              {customerAutoFilled && (
+                <Badge className="ml-2 bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                  已自动识别
+                </Badge>
+              )}
             </Label>
             <Input
               id="address"
               type="text"
-              placeholder="请输入详细安装地址"
+              placeholder={customerAutoFilled ? "地址已自动填充，可手动微调" : "请输入详细安装地址"}
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500"
+              onChange={(e) => {
+                setAddress(e.target.value)
+                // 如果用户手动修改了地址，取消自动填充标记（可选）
+                if (customerAutoFilled && e.target.value !== address) {
+                  // 保持自动填充标记，允许微调
+                }
+              }}
+              className={`bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 ${
+                customerAutoFilled ? "border-green-500/30" : ""
+              }`}
               disabled={isSubmitting}
             />
-            <p className="text-xs text-slate-500">例如：昆明市五华区xxx路123号</p>
+            <p className="text-xs text-slate-500">
+              {customerAutoFilled ? "地址已自动识别，您可以根据实际情况进行微调" : "例如：昆明市五华区xxx路123号"}
+            </p>
           </div>
 
           {/* 安装人姓名 */}
@@ -224,26 +692,57 @@ function InstallForm({ onBack }: { onBack: () => void }) {
             <p className="text-xs text-slate-500">请输入您的真实姓名</p>
           </div>
 
+          {/* 客户信息显示（如果已识别） */}
+          {customerAutoFilled && customerId && (
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <div className="text-xs text-blue-400 mb-1">已关联客户</div>
+              <div className="text-sm text-white font-medium">{customerName}</div>
+              <div className="text-xs text-slate-400 mt-1">客户ID: {customerId.substring(0, 8)}...</div>
+            </div>
+          )}
+
           {/* 提交按钮 */}
           <Button
             type="submit"
-            disabled={isSubmitting || submitSuccess}
-            className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-blue-500/30"
+            disabled={isSubmitting || submitSuccess || deviceList.length === 0 || !customerId}
+            onClick={(e) => {
+              // 添加点击事件调试
+              console.log('[安装表单] 按钮被点击', {
+                isSubmitting,
+                submitSuccess,
+                deviceListLength: deviceList.length,
+                customerId,
+                disabled: isSubmitting || submitSuccess || deviceList.length === 0 || !customerId
+              })
+              // 如果按钮被禁用，显示原因
+              if (isSubmitting) {
+                console.warn('[安装表单] 按钮被禁用：正在提交中')
+              } else if (submitSuccess) {
+                console.warn('[安装表单] 按钮被禁用：已提交成功')
+              } else if (deviceList.length === 0) {
+                console.warn('[安装表单] 按钮被禁用：设备列表为空')
+                alert('请至少添加一个设备到清单')
+              } else if (!customerId) {
+                console.warn('[安装表单] 按钮被禁用：未关联客户')
+                alert('请先扫描客户二维码获取客户信息')
+              }
+            }}
+            className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-blue-500/30 disabled:opacity-50"
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                提交中...
+                批量安装中... ({deviceList.length} 台设备)
               </>
             ) : submitSuccess ? (
               <>
                 <CheckCircle2 className="h-5 w-5 mr-2 text-green-400 animate-in zoom-in-95 duration-300" />
-                <span className="text-green-400">已提交</span>
+                <span className="text-green-400">安装完成</span>
               </>
             ) : (
               <>
                 <CheckCircle2 className="h-5 w-5 mr-2" />
-                提交登记
+                确认安装完成 ({deviceList.length} 台设备)
               </>
             )}
           </Button>
@@ -568,6 +1067,8 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [error, setError] = useState("")
+  const [showQRScanner, setShowQRScanner] = useState(false) // 显示二维码扫描器
+  const [manualInput, setManualInput] = useState("") // 手动输入（用于测试）
 
   const handleSubmit = async () => {
     if (!deviceId.trim() || !model.trim() || !address.trim() || !installer.trim()) {
@@ -620,7 +1121,34 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
           throw new Error("关联设备失败")
         }
 
-        // 3. 更新餐厅状态为 active
+        // 3. 创建安装订单，状态设为 pending_acceptance（待验收）
+        const orderResponse = await fetch("/api/orders/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            restaurant_id: restaurantInfo.restaurant_id,
+            service_type: "设备安装",
+            status: OrderStatus.PENDING_ACCEPTANCE, // 待验收
+            amount: 0, // 安装订单金额为0
+          }),
+        })
+
+        const orderResult = await orderResponse.json()
+
+        if (!orderResponse.ok || orderResult.error) {
+          console.error("创建安装订单失败:", orderResult.error)
+          // 不阻止流程，只记录错误
+        } else {
+          console.log("安装订单创建成功，订单ID:", orderResult.data?.id)
+          // 可以将订单ID保存到localStorage，供客户确认验收页面使用
+          if (orderResult.data?.id) {
+            localStorage.setItem(`pending_acceptance_order_${restaurantInfo.restaurant_id}`, orderResult.data.id)
+          }
+        }
+
+        // 4. 更新餐厅状态为 active（可选，根据业务需求）
         const { error: statusError } = await supabase
           .from("restaurants")
           .update({
@@ -785,13 +1313,18 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
   )
 }
 
-// 燃料配送组件（重构版：先扫餐厅二维码，再显示设备列表）
+// 燃料配送组件（重构版：支持订单配送，包含扫码和拍照）
 function DeliveryForm({ onBack }: { onBack: () => void }) {
-  const [step, setStep] = useState<"scan_restaurant" | "device_list" | "filling" | "cylinder_scan" | "new_customer_install" | "bind_device">("scan_restaurant")
+  const [step, setStep] = useState<"select_order" | "order_list" | "scan_restaurant" | "device_list" | "filling" | "cylinder_scan" | "new_customer_install" | "bind_device" | "delivery_proof">("select_order")
   const [qrToken, setQrToken] = useState("")
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null)
   const [devices, setDevices] = useState<DeviceInfo[]>([])
   const [selectedDevice, setSelectedDevice] = useState<DeviceInfo | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<any>(null) // 选中的订单
+  const [trackingCode, setTrackingCode] = useState("") // 瓶身溯源二维码
+  const [proofImageUrl, setProofImageUrl] = useState<string | null>(null) // 配送凭证图片URL
+  const [showQRScanner, setShowQRScanner] = useState(false) // 显示二维码扫描器
+  const [manualInput, setManualInput] = useState("") // 手动输入（用于测试）
   const [isLoading, setIsLoading] = useState(false)
   
   // 固定油箱场景
@@ -912,17 +1445,95 @@ function DeliveryForm({ onBack }: { onBack: () => void }) {
 
   // 扫描钢瓶二维码
   const handleCylinderScan = () => {
-    // 模拟扫码，实际应该调用摄像头API
-    const scannedId = prompt("请扫描新钢瓶身份码（或手动输入钢瓶ID）:")
-    if (scannedId && scannedId.trim()) {
-      setCylinderId(scannedId.trim())
-      setError("")
-      setStep("filling")
-    }
+    setShowQRScanner(true)
   }
 
-  // 提交配送记录
+  // 二维码扫描成功回调
+  const handleQRScanSuccess = (decodedText: string) => {
+    if (step === "cylinder_scan") {
+      setCylinderId(decodedText.trim())
+      setError("")
+      setStep("filling")
+    } else if (step === "delivery_proof") {
+      // 扫描瓶身溯源二维码
+      setTrackingCode(decodedText.trim())
+      setError("")
+    }
+    setShowQRScanner(false)
+  }
+
+  // 图片上传成功回调
+  const handleImageUploadSuccess = (imageUrl: string) => {
+    setProofImageUrl(imageUrl)
+  }
+
+  // 移除图片
+  const handleRemoveImage = () => {
+    setProofImageUrl(null)
+  }
+
+  // 提交配送记录（新版本：支持订单配送）
   const handleSubmit = async () => {
+    // 如果有选中的订单，使用订单配送流程
+    if (selectedOrder) {
+      // 验证必要字段
+      if (!trackingCode.trim()) {
+        setError("请扫描瓶身溯源二维码")
+        setStep("delivery_proof")
+        return
+      }
+
+      if (!proofImageUrl) {
+        setError("请上传配送凭证图片")
+        setStep("delivery_proof")
+        return
+      }
+
+      setIsSubmitting(true)
+      setError("")
+
+      try {
+        // 调用完成配送API
+        const response = await fetch("/api/orders/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            order_id: selectedOrder.id,
+            tracking_code: trackingCode.trim(),
+            proof_image: proofImageUrl,
+          }),
+        })
+
+        const result = await response.json()
+
+        if (!response.ok || result.error) {
+          throw new Error(result.error || "完成配送失败")
+        }
+
+        // 提交成功
+        setSubmitSuccess(true)
+        
+        // 重置表单
+        setSelectedOrder(null)
+        setTrackingCode("")
+        setProofImageUrl(null)
+        setStep("select_order")
+        
+        // 3秒后清除成功提示
+        setTimeout(() => {
+          setSubmitSuccess(false)
+        }, 3000)
+      } catch (err: any) {
+        setError(err.message || "提交失败，请检查网络连接")
+      } finally {
+        setIsSubmitting(false)
+      }
+      return
+    }
+
+    // 旧流程：设备配送（保留兼容性）
     if (!selectedDevice || !restaurantInfo) {
       setError("请先选择设备和餐厅")
       return
@@ -1065,6 +1676,234 @@ function DeliveryForm({ onBack }: { onBack: () => void }) {
             fetchRestaurantInfo(qrToken)
           }}
           onBack={() => setStep("new_customer_install")}
+        />
+      )}
+
+      {/* 步骤0: 选择订单或扫描餐厅 */}
+      {step === "select_order" && (
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <Package className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">选择配送方式</h2>
+              <p className="text-sm text-slate-400">选择订单配送或设备配送</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Button
+              onClick={() => {
+                // 加载待接单订单
+                setStep("order_list")
+              }}
+              className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:opacity-90 text-white h-12"
+            >
+              <Package className="h-5 w-5 mr-2" />
+              订单配送（推荐）
+            </Button>
+            <Button
+              onClick={() => setStep("scan_restaurant")}
+              variant="outline"
+              className="w-full border-slate-700 text-slate-300 hover:bg-slate-800/50 h-12"
+            >
+              <QrCode className="h-5 w-5 mr-2" />
+              设备配送（传统方式）
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* 订单列表（从订单列表选择） */}
+      {step === "order_list" && (
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
+              <Package className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">选择订单</h2>
+              <p className="text-sm text-slate-400">选择要配送的订单</p>
+            </div>
+          </div>
+          <WorkerOrderList
+            productType={null}
+            workerId={localStorage.getItem("workerId") || "worker_001"}
+            onSelectOrder={(order) => {
+              // 选择订单后，进入配送证明步骤
+              setSelectedOrder(order)
+              setStep("delivery_proof")
+            }}
+          />
+          <Button
+            onClick={() => setStep("select_order")}
+            variant="outline"
+            className="w-full mt-4 border-slate-700 text-slate-300 hover:bg-slate-800/50"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            返回
+          </Button>
+        </Card>
+      )}
+
+      {/* 配送证明步骤（扫码+拍照） */}
+      {step === "delivery_proof" && selectedOrder && (
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30">
+              <CheckCircle2 className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">配送证明</h2>
+              <p className="text-sm text-slate-400">扫描瓶身二维码并上传配送凭证</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* 订单信息 */}
+            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <div className="text-xs text-slate-400 mb-2">订单信息</div>
+              <div className="text-sm font-medium text-white">订单号: {selectedOrder.id}</div>
+            </div>
+
+            {/* 扫描瓶身溯源二维码 */}
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-2">
+                <QrCode className="h-4 w-4" />
+                瓶身溯源二维码 <span className="text-red-400">*</span>
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="请扫描瓶身二维码或手动输入（测试：BOTTLE-999）"
+                  value={trackingCode}
+                  onChange={(e) => setTrackingCode(e.target.value)}
+                  className="flex-1 bg-slate-800/50 border-slate-700 text-white"
+                  disabled={isSubmitting}
+                />
+                <Button
+                  type="button"
+                  onClick={() => setShowQRScanner(true)}
+                  variant="outline"
+                  className="border-slate-700 text-slate-300 hover:bg-slate-800/50"
+                  disabled={isSubmitting}
+                >
+                  <QrCode className="h-5 w-5" />
+                </Button>
+              </div>
+              {/* 手动模拟输入区域 */}
+              <div className="mt-2 p-3 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                <p className="text-xs text-slate-400 mb-2">测试模式：快速输入模拟溯源码</p>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    placeholder="输入模拟溯源码（如：BOTTLE-999）"
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        setTrackingCode(manualInput.trim())
+                        setManualInput("")
+                      }
+                    }}
+                    className="flex-1 bg-slate-700/50 border-slate-600 text-white text-sm h-8"
+                    disabled={isSubmitting}
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setTrackingCode(manualInput.trim())
+                      setManualInput("")
+                    }}
+                    size="sm"
+                    className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/30"
+                    disabled={!manualInput.trim() || isSubmitting}
+                  >
+                    快速填充
+                  </Button>
+                </div>
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setTrackingCode("BOTTLE-999")
+                      setManualInput("")
+                    }}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs border-slate-600 text-slate-400 hover:text-white h-7"
+                    disabled={isSubmitting}
+                  >
+                    使用测试码：BOTTLE-999
+                  </Button>
+                </div>
+              </div>
+            </div>
+            {/* 二维码扫描器 */}
+            {showQRScanner && (
+              <QRScanner
+                onScanSuccess={(decodedText) => {
+                  setTrackingCode(decodedText.trim())
+                  setShowQRScanner(false)
+                }}
+                onClose={() => setShowQRScanner(false)}
+                title="扫描瓶身溯源二维码"
+              />
+            )}
+
+            {/* 上传配送凭证 */}
+            <ImageUploader
+              onUploadSuccess={handleImageUploadSuccess}
+              onRemove={handleRemoveImage}
+              currentImageUrl={proofImageUrl}
+              label="配送凭证图片 *"
+            />
+
+            {/* 提交按钮 */}
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  setStep("order_list")
+                  setSelectedOrder(null)
+                  setTrackingCode("")
+                  setProofImageUrl(null)
+                }}
+                variant="outline"
+                disabled={isSubmitting}
+                className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800/50"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                返回
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={isSubmitting || !trackingCode.trim() || !proofImageUrl}
+                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    提交中...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 mr-2" />
+                    完成配送
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* 二维码扫描器 */}
+      {showQRScanner && (
+        <QRScanner
+          onScanSuccess={handleQRScanSuccess}
+          onClose={() => setShowQRScanner(false)}
+          title={step === "cylinder_scan" ? "扫描钢瓶二维码" : "扫描瓶身溯源二维码"}
         />
       )}
 
@@ -1505,7 +2344,20 @@ function ComingSoon({ title, description, onBack }: { title: string; description
 
 // 主组件
 export default function WorkerPage() {
-  const [currentView, setCurrentView] = useState<"home" | "install" | "delivery" | "repair">("home")
+  const [currentView, setCurrentView] = useState<"home" | "install" | "delivery" | "orders" | "repair">("home")
+  const [workerId, setWorkerId] = useState<string | null>(null)
+  const [productType, setProductType] = useState<string | null>(null) // 当前配送员的产品类型
+
+  // 加载配送员ID（从localStorage或设置）
+  useEffect(() => {
+    // 确保只在客户端执行
+    if (typeof window === 'undefined') return
+    
+    const wid = localStorage.getItem("workerId") || "worker_001" // 默认值，实际应从登录获取
+    setWorkerId(wid)
+    // 可以根据workerId查询配送员的产品类型
+    // 这里先使用默认值
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
@@ -1537,12 +2389,14 @@ export default function WorkerPage() {
                   {currentView === "home" && "服务端工作台"}
                   {currentView === "install" && "设备安装登记"}
                   {currentView === "delivery" && "燃料配送"}
+                  {currentView === "orders" && "待接单订单"}
                   {currentView === "repair" && "故障维修"}
                 </h1>
                 <p className="text-xs text-blue-400">
                   {currentView === "home" && "多功能工作平台"}
                   {currentView === "install" && "扫码登记设备信息"}
                   {currentView === "delivery" && "燃料补给登记"}
+                  {currentView === "orders" && "查看和接单"}
                   {currentView === "repair" && "设备故障处理"}
                 </p>
               </div>
@@ -1586,13 +2440,30 @@ export default function WorkerPage() {
                   </div>
                 </Card>
 
+                {/* 待接单订单 */}
+                <Card
+                  className="bg-slate-900/40 backdrop-blur-md border border-orange-500/30 shadow-lg shadow-orange-500/20 p-6 hover:scale-[1.02] hover:shadow-orange-500/30 transition-all cursor-pointer"
+                  onClick={() => setCurrentView("orders")}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 flex-shrink-0">
+                      <Package className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-white mb-1">待接单订单</h3>
+                      <p className="text-sm text-slate-400">查看和接单配送任务</p>
+                    </div>
+                    <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
+                  </div>
+                </Card>
+
                 {/* 燃料配送 */}
                 <Card
                   className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
                   onClick={() => setCurrentView("delivery")}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 flex-shrink-0">
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
                       <Truck className="h-8 w-8 text-white" />
                     </div>
                     <div className="flex-1">
@@ -1653,16 +2524,54 @@ export default function WorkerPage() {
             <InstallForm onBack={() => setCurrentView("home")} />
           )}
 
+          {currentView === "orders" && (
+            <div className="space-y-6">
+              <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
+                    <Package className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">待接单订单</h2>
+                    <p className="text-sm text-slate-400">根据产品类型筛选订单</p>
+                  </div>
+                </div>
+                <WorkerOrderList
+                  productType={productType as any}
+                  workerId={workerId}
+                  onAcceptOrder={(orderId) => {
+                    // 接单成功后，可以跳转到配送页面
+                    setCurrentView("delivery")
+                  }}
+                />
+              </Card>
+            </div>
+          )}
+
           {currentView === "delivery" && (
             <DeliveryForm onBack={() => setCurrentView("home")} />
           )}
 
           {currentView === "repair" && (
-            <ComingSoon
-              title="故障维修功能"
-              description="该功能正在开发中，敬请期待"
-              onBack={() => setCurrentView("home")}
-            />
+            <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-yellow-500/30">
+                  <Wrench className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-2">故障维修功能</h2>
+                  <p className="text-sm text-slate-400">该功能正在开发中，敬请期待</p>
+                </div>
+                <Button
+                  onClick={() => setCurrentView("home")}
+                  variant="outline"
+                  className="border-slate-700 text-slate-300 hover:bg-slate-800/50"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  返回首页
+                </Button>
+              </div>
+            </Card>
           )}
         </div>
       </main>

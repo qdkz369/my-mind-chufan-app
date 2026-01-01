@@ -9,6 +9,9 @@ export function PWAInstallPrompt() {
   const [showPrompt, setShowPrompt] = useState(false)
 
   useEffect(() => {
+    // 确保只在客户端执行
+    if (typeof window === "undefined") return
+    
     const dismissed = localStorage.getItem("pwa-prompt-dismissed")
     if (dismissed) {
       const dismissedTime = Number.parseInt(dismissed)
@@ -49,7 +52,9 @@ export function PWAInstallPrompt() {
 
   const handleDismiss = () => {
     setShowPrompt(false)
-    localStorage.setItem("pwa-prompt-dismissed", Date.now().toString())
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pwa-prompt-dismissed", Date.now().toString())
+    }
   }
 
   if (!showPrompt) return null

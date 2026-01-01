@@ -9,7 +9,8 @@ if (typeof window !== 'undefined') {
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { MapPin, CreditCard, Settings, HelpCircle, FileText, Shield, ChevronRight, Star, User, Phone, Building2, Navigation, Loader2, CheckCircle2, AlertCircle, Locate } from "lucide-react"
+import Link from "next/link"
+import { MapPin, CreditCard, Settings, HelpCircle, FileText, Shield, ChevronRight, Star, User, Phone, Building2, Navigation, Loader2, CheckCircle2, AlertCircle, Locate, Package } from "lucide-react"
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -17,9 +18,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { supabase } from "@/lib/supabase"
+import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
 const menuItems = [
+  { icon: Package, label: "我的设备", description: "查看已激活的设备", href: "/devices" },
   { icon: MapPin, label: "地址管理", description: "管理配送地址", href: "/addresses" },
   { icon: CreditCard, label: "支付方式", description: "管理支付账户", href: "/payment" },
   { icon: FileText, label: "发票管理", description: "开具和查看发票", href: "/invoices" },
@@ -64,20 +66,40 @@ export function ProfileContent() {
     longitude: number | null
     status: string | null
   } | null>(null)
+  
+  // 初始化状态：正在读取 localStorage
+  const [isInitializing, setIsInitializing] = useState(true)
 
   // 从 localStorage 加载餐厅ID（自动登录）
   useEffect(() => {
+    // 确保只在客户端执行
+    if (typeof window === 'undefined') {
+      setIsInitializing(false)
+      return
+    }
+    
     const loadRestaurant = async () => {
-      const restaurantId = localStorage.getItem("restaurantId")
-      console.log('[ProfileContent] 初始化检查，restaurantId:', restaurantId)
-      if (restaurantId) {
-        console.log('[ProfileContent] 找到restaurantId，自动登录')
-        await loadRestaurantInfo(restaurantId)
-      } else {
-        console.log('[ProfileContent] 未找到restaurantId，显示登录/注册表单')
-        // 确保 restaurantInfo 为 null，显示登录/注册表单
+      try {
+        // 立即读取 localStorage，避免延迟
+        const restaurantId = localStorage.getItem("restaurantId")
+        console.log('[ProfileContent] 初始化检查，restaurantId:', restaurantId)
+        
+        if (restaurantId) {
+          console.log('[ProfileContent] 找到restaurantId，自动登录')
+          await loadRestaurantInfo(restaurantId)
+        } else {
+          console.log('[ProfileContent] 未找到restaurantId，显示登录/注册表单')
+          // 确保 restaurantInfo 为 null，显示登录/注册表单
+          setRestaurantInfo(null)
+          setIsLoginMode(false) // 默认显示注册表单
+        }
+      } catch (error) {
+        console.error('[ProfileContent] 加载餐厅信息失败:', error)
         setRestaurantInfo(null)
-        setIsLoginMode(false) // 默认显示注册表单
+        setIsLoginMode(false)
+      } finally {
+        // 标记初始化完成
+        setIsInitializing(false)
       }
     }
     loadRestaurant()
@@ -148,7 +170,8 @@ export function ProfileContent() {
 
   // 加载餐厅信息
   const loadRestaurantInfo = async (restaurantId: string) => {
-    if (!supabase || !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")) {
+    // 检查 Supabase 是否已配置
+    if (!supabase || !isSupabaseConfigured) {
       console.warn('[加载餐厅信息] Supabase未配置，使用localStorage数据')
       // 即使Supabase未配置，也尝试从localStorage恢复基本信息
       const cachedData = localStorage.getItem(`restaurant_${restaurantId}`)
@@ -396,8 +419,68 @@ export function ProfileContent() {
         if (!response.ok) {
           const errorResult = await response.json().catch(() => ({ error: "网络请求失败" }))
           console.error('[注册表单] 更新失败 - HTTP错误:', response.status, errorResult)
-          alert(`更新失败 (${response.status}): ${errorResult.error || "网络请求失败"}`)
-          return
+          
+          // 如果返回404，说明记录不存在，清除localStorage并切换到注册模式
+          if (response.status === 404) {
+            console.log('[注册表单] 记录不存在，清除localStorage并切换到注册模式')
+            localStorage.removeItem("restaurantId")
+            localStorage.removeItem(`restaurant_${restaurantId}`)
+            
+            // 自动重试注册
+            const registerResponse = await fetch("/api/restaurant/register", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                name: formData.name,
+                phone: formData.phone,
+                restaurant_name: formData.restaurant_name,
+                latitude: hasLocation ? Number(formData.latitude) : null,
+                longitude: hasLocation ? Number(formData.longitude) : null,
+                address: formData.address || undefined,
+              }),
+            })
+            
+            if (!registerResponse.ok) {
+              const registerError = await registerResponse.json().catch(() => ({ error: "网络请求失败" }))
+              alert(`注册失败 (${registerResponse.status}): ${registerError.error || "网络请求失败"}`)
+              return
+            }
+            
+            const registerResult = await registerResponse.json()
+            
+            if (!registerResult.error && registerResult.data) {
+              const newRestaurantId = registerResult.data.restaurant_id
+              localStorage.setItem("restaurantId", newRestaurantId)
+              
+              const newRestaurantInfo = {
+                id: newRestaurantId,
+                name: registerResult.data.name || formData.restaurant_name,
+                contact_name: formData.name,
+                contact_phone: formData.phone,
+                address: formData.address || null,
+                latitude: hasLocation ? formData.latitude : null,
+                longitude: hasLocation ? formData.longitude : null,
+                status: registerResult.data.status || "unactivated",
+              }
+              
+              setRestaurantInfo(newRestaurantInfo)
+              localStorage.setItem(`restaurant_${newRestaurantId}`, JSON.stringify(newRestaurantInfo))
+              
+              setSubmitSuccess(true)
+              setIsEditing(false)
+              router.refresh()
+              setTimeout(() => setSubmitSuccess(false), 3000)
+              return
+            } else {
+              alert(`注册失败: ${registerResult.error || "未知错误"}`)
+              return
+            }
+          } else {
+            alert(`更新失败 (${response.status}): ${errorResult.error || "网络请求失败"}`)
+            return
+          }
         }
 
         const result = await response.json()
@@ -608,10 +691,24 @@ export function ProfileContent() {
   const isRegistered = restaurantInfo !== null
   const isUnactivated = restaurantInfo?.status === "unactivated"
 
-  return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      {/* 登录/注册/编辑表单 */}
-      {(!isRegistered || isEditing) ? (
+  // 如果正在初始化，显示加载状态
+  if (isInitializing) {
+    return (
+      <div className="container mx-auto px-4 py-6 space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-400 mx-auto mb-4" />
+            <p className="text-slate-400">加载中...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 如果未注册且不在编辑模式，只显示注册/登录表单
+  if (!isRegistered && !isEditing) {
+    return (
+      <div className="container mx-auto px-4 py-6 space-y-6">
         <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
@@ -619,33 +716,31 @@ export function ProfileContent() {
             </div>
             <div className="flex-1">
               <h2 className="text-lg font-bold text-white">
-                {isRegistered ? "编辑资料" : isLoginMode ? "登录" : "注册信息"}
+                {isLoginMode ? "登录" : "注册信息"}
               </h2>
               <p className="text-xs text-slate-400">
-                {isRegistered ? "更新您的餐厅信息" : isLoginMode ? "使用手机号登录" : "填写信息以激活服务"}
+                {isLoginMode ? "使用手机号登录" : "填写信息以激活服务"}
               </p>
             </div>
-            {!isRegistered && !isEditing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setIsLoginMode(!isLoginMode)
-                  setLoginError("")
-                  setFormData(prev => ({ ...prev, name: "", restaurant_name: "", address: "", latitude: 0, longitude: 0 }))
-                }}
-                className="text-blue-400 hover:text-blue-300"
-              >
-                {isLoginMode ? "去注册" : "已有账号？登录"}
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setIsLoginMode(!isLoginMode)
+                setLoginError("")
+                setFormData(prev => ({ ...prev, name: "", restaurant_name: "", address: "", latitude: 0, longitude: 0 }))
+              }}
+              className="text-blue-400 hover:text-blue-300"
+            >
+              {isLoginMode ? "去注册" : "已有账号？登录"}
+            </Button>
           </div>
 
           {submitSuccess && (
             <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-400" />
               <span className="text-sm text-green-400">
-                {isRegistered ? "信息更新成功！" : isLoginMode ? "登录成功！" : "注册成功！"}
+                {isLoginMode ? "登录成功！" : "注册成功！"}
               </span>
             </div>
           )}
@@ -680,7 +775,7 @@ export function ProfileContent() {
             </div>
 
             {/* 登录模式：只显示手机号 */}
-            {isLoginMode && !isRegistered && (
+            {isLoginMode && (
               <>
                 <Button
                   onClick={handleLogin}
@@ -738,11 +833,190 @@ export function ProfileContent() {
                     />
                   </div>
                 </div>
+
+                {/* 详细地址（仅注册模式显示） */}
+                <div>
+                  <Label htmlFor="address" className="text-slate-300 mb-2 block">
+                    详细地址 <span className="text-slate-500 text-xs">(可选)</span>
+                  </Label>
+                  <div className="relative flex gap-2">
+                    <div className="relative flex-1">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        id="address"
+                        value={formData.address}
+                        onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                        className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                        placeholder="请输入详细地址或点击右侧按钮自动获取"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleAMapLocation}
+                      disabled={isLocating || !amapLoaded}
+                      className="px-4 bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white flex-shrink-0"
+                      title="自动获取位置"
+                    >
+                      {isLocating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Locate className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  {locationError && (
+                    <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                      <p className="text-xs text-yellow-400 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {locationError}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        提示：地理位置为可选信息，您可以跳过此步骤继续完成注册
+                      </p>
+                    </div>
+                  )}
+                  {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
+                    <div className="mt-2 p-3 bg-slate-800/50 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-sm text-white">{formData.address}</p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            坐标: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {!amapLoaded && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      正在加载定位服务...
+                    </p>
+                  )}
+                </div>
+
+                {/* 提交按钮（仅注册模式显示） */}
+                <Button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !formData.name.trim() || !formData.phone.trim() || !formData.restaurant_name.trim()}
+                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      注册中...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-5 w-5 mr-2" />
+                      完成注册
+                    </>
+                  )}
+                </Button>
               </>
             )}
+          </div>
+        </Card>
+      </div>
+    )
+  }
 
-            {/* 详细地址（仅注册模式显示） */}
-            {!isLoginMode && (
+  return (
+    <div className="container mx-auto px-4 py-6 space-y-6">
+      {/* 登录/注册/编辑表单 */}
+      {isEditing ? (
+        <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
+              <User className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg font-bold text-white">编辑资料</h2>
+              <p className="text-xs text-slate-400">更新您的餐厅信息</p>
+            </div>
+            <Button
+              onClick={() => setIsEditing(false)}
+              variant="ghost"
+              size="sm"
+              className="text-slate-400 hover:text-white"
+            >
+              取消
+            </Button>
+          </div>
+
+          {submitSuccess && (
+            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-green-400" />
+              <span className="text-sm text-green-400">信息更新成功！</span>
+            </div>
+          )}
+
+          {loginError && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-red-400" />
+              <span className="text-sm text-red-400">{loginError}</span>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {/* 手机号（登录和注册都需要） */}
+            <div>
+              <Label htmlFor="phone" className="text-slate-300 mb-2 block">
+                手机号 <span className="text-red-400">*</span>
+              </Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, phone: e.target.value }))
+                    setLoginError("")
+                  }}
+                  className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  placeholder="请输入手机号"
+                />
+              </div>
+            </div>
+
+            {/* 编辑模式：显示完整表单 */}
+            <>
+              {/* 姓名 */}
+              <div>
+                <Label htmlFor="name" className="text-slate-300 mb-2 block">
+                  姓名 <span className="text-red-400">*</span>
+                </Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                    placeholder="请输入您的姓名"
+                  />
+                </div>
+              </div>
+
+              {/* 餐厅名称 */}
+              <div>
+                <Label htmlFor="restaurant_name" className="text-slate-300 mb-2 block">
+                  餐厅名称 <span className="text-red-400">*</span>
+                </Label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    id="restaurant_name"
+                    value={formData.restaurant_name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, restaurant_name: e.target.value }))}
+                    className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                    placeholder="请输入餐厅名称"
+                  />
+                </div>
+              </div>
+
+              {/* 详细地址 */}
               <div>
                 <Label htmlFor="address" className="text-slate-300 mb-2 block">
                   详细地址 <span className="text-slate-500 text-xs">(可选)</span>
@@ -802,40 +1076,36 @@ export function ProfileContent() {
                   </p>
                 )}
               </div>
-            )}
+            </>
 
-            {/* 提交按钮（仅注册模式显示） */}
-            {!isLoginMode && (
-              <>
-                <Button
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || !formData.name.trim() || !formData.phone.trim() || !formData.restaurant_name.trim()}
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                      {isRegistered ? "更新中..." : "注册中..."}
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-5 w-5 mr-2" />
-                      {isRegistered ? "保存修改" : "完成注册"}
-                    </>
-                  )}
-                </Button>
-
-                {isRegistered && (
-                  <Button
-                    onClick={() => setIsEditing(false)}
-                    variant="ghost"
-                    className="w-full text-slate-400 hover:text-white"
-                  >
-                    取消
-                  </Button>
+            {/* 提交按钮 */}
+            <>
+              <Button
+                onClick={handleSubmit}
+                disabled={isSubmitting || !formData.name.trim() || !formData.phone.trim() || !formData.restaurant_name.trim()}
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    更新中...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 mr-2" />
+                    保存修改
+                  </>
                 )}
-              </>
-            )}
+              </Button>
+
+              <Button
+                onClick={() => setIsEditing(false)}
+                variant="ghost"
+                className="w-full text-slate-400 hover:text-white"
+              >
+                取消
+              </Button>
+            </>
           </div>
         </Card>
       ) : (
@@ -899,8 +1169,9 @@ export function ProfileContent() {
 
       <Card className="divide-y divide-slate-800 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
         {menuItems.map((item) => (
-          <button
+          <Link
             key={item.label}
+            href={item.href}
             className="w-full flex items-center gap-3 p-4 hover:bg-slate-800/50 transition-colors text-left"
           >
             <div className="w-10 h-10 bg-slate-800/50 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -911,7 +1182,7 @@ export function ProfileContent() {
               <p className="text-sm text-slate-400">{item.description}</p>
             </div>
             <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
-          </button>
+          </Link>
         ))}
       </Card>
 
