@@ -461,7 +461,7 @@ export default function AdminDashboard() {
         if (!restaurant.address) return
 
         const location = await geocodeAddress(restaurant.address)
-        if (location) {
+        if (location && supabase) {
           // 更新数据库
           const { error: updateError } = await supabase
             .from("restaurants")
@@ -764,8 +764,11 @@ export default function AdminDashboard() {
       }
 
       // 先检查表是否存在
+      console.log("[添加工人] 检查 workers 表是否存在...")
       const checkResponse = await fetch("/api/worker/check-table")
       const checkResult = await checkResponse.json()
+      
+      console.log("[添加工人] 表检查结果:", checkResult)
       
       if (!checkResult.exists) {
         throw new Error(
@@ -780,6 +783,8 @@ export default function AdminDashboard() {
           `7. 刷新页面后重试`
         )
       }
+      
+      console.log("[添加工人] 表检查通过，开始添加工人...")
 
       // 构建worker_type：单个类型保存为字符串，多个保存为JSON字符串（因为数据库字段是TEXT类型）
       let workerTypeValue: string
