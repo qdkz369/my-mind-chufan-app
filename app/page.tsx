@@ -598,26 +598,30 @@ function Header() {
                 className="relative text-white hover:bg-white/10 transition-all overflow-visible group"
                 title={isGeneratingToken ? "正在生成令牌..." : deviceCount === 0 ? "查看提示信息" : "查看身份二维码"}
               >
-                {/* 呼吸灯光晕效果 - 亮绿色，轻微发光 */}
-                <div 
-                  className="absolute inset-0 rounded-full bg-[#4ade80] blur-md"
-                  style={{
-                    animation: 'breathe-glow 3s ease-in-out infinite',
-                    opacity: 0.15,
-                  }}
-                ></div>
-                <div 
-                  className="absolute inset-0 rounded-full bg-[#4ade80] blur-sm"
-                  style={{
-                    animation: 'breathe-glow 3s ease-in-out infinite 0.5s',
-                    opacity: 0.1,
-                  }}
-                ></div>
+                {/* 呼吸灯光晕效果 - 已注册时显示绿色光晕，未注册时不显示光晕 */}
+                {restaurantId && (
+                  <>
+                    <div 
+                      className="absolute inset-0 rounded-full bg-[#4ade80] blur-md"
+                      style={{
+                        animation: 'breathe-glow 3s ease-in-out infinite',
+                        opacity: 0.08,
+                      }}
+                    ></div>
+                    <div 
+                      className="absolute inset-0 rounded-full bg-[#4ade80] blur-sm"
+                      style={{
+                        animation: 'breathe-glow 3s ease-in-out infinite 0.5s',
+                        opacity: 0.05,
+                      }}
+                    ></div>
+                  </>
+                )}
                 
                 {isGeneratingToken ? (
-                  <div className="h-5 w-5 border-2 border-[#4ade80] border-t-transparent rounded-full animate-spin relative z-10" />
+                  <div className={`h-5 w-5 border-2 border-t-transparent rounded-full animate-spin relative z-10 ${restaurantId ? 'border-[#4ade80]' : 'border-slate-500'}`} />
                 ) : (
-                  <QrCode className="h-5 w-5 text-[#4ade80] relative z-10 drop-shadow-[0_0_12px_rgba(74,222,128,0.8)] transition-all group-hover:scale-110" />
+                  <QrCode className={`h-5 w-5 relative z-10 transition-all group-hover:scale-110 ${restaurantId ? 'text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'text-slate-500'}`} />
                 )}
               </Button>
               
