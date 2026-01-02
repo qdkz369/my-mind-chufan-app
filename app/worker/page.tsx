@@ -2710,36 +2710,36 @@ export default function WorkerPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 backdrop-blur-lg border-b border-blue-800/30">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
               {currentView !== "home" && (
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setCurrentView("home")}
-                  className="text-white hover:bg-white/10"
+                  className="text-white hover:bg-white/10 flex-shrink-0"
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
               )}
               <Link href="/">
-                <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 flex-shrink-0">
                   <Home className="h-5 w-5" />
                 </Button>
               </Link>
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-500/30">
-                <Package className="h-6 w-6 text-white" />
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center font-bold text-base sm:text-lg shadow-lg shadow-blue-500/30 flex-shrink-0">
+                <Package className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
               </div>
-              <div className="flex-1">
-                <h1 className="text-lg font-bold leading-tight text-white">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base sm:text-lg font-bold leading-tight text-white truncate">
                   {currentView === "home" && "服务端工作台"}
                   {currentView === "install" && "设备安装登记"}
                   {currentView === "delivery" && "燃料配送"}
                   {currentView === "orders" && "待接单订单"}
                   {currentView === "repair" && "故障维修"}
                 </h1>
-                <p className="text-xs text-blue-400">
+                <p className="text-xs text-blue-400 truncate">
                   {currentView === "home" && "多功能工作平台"}
                   {currentView === "install" && "扫码登记设备信息"}
                   {currentView === "delivery" && "燃料补给登记"}
@@ -2749,12 +2749,12 @@ export default function WorkerPage() {
               </div>
             </div>
             {/* 登录状态 */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               {isLoggedIn && workerInfo ? (
                 <>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-white">{workerInfo.name}</div>
-                    <div className="text-xs text-slate-400 flex items-center gap-1 mt-1">
+                  <div className="text-right hidden sm:block">
+                    <div className="text-sm font-semibold text-white truncate">{workerInfo.name}</div>
+                    <div className="text-xs text-slate-400 flex items-center justify-end gap-1 mt-1 flex-wrap">
                       {workerInfo.worker_types?.map((type) => {
                         const labels: Record<string, string> = {
                           delivery: "配送员",
@@ -2762,21 +2762,44 @@ export default function WorkerPage() {
                           install: "安装工",
                         }
                         return (
-                          <Badge key={type} variant="outline" className="text-xs border-blue-500/50 text-blue-400">
+                          <Badge key={type} variant="outline" className="text-xs border-blue-500/50 text-blue-400 whitespace-nowrap">
                             {labels[type] || type}
                           </Badge>
                         )
                       })}
                     </div>
                   </div>
+                  {/* 手机端显示：只显示姓名和类型（简化） */}
+                  <div className="text-right sm:hidden">
+                    <div className="text-xs font-semibold text-white truncate max-w-[80px]">{workerInfo.name}</div>
+                    <div className="text-xs text-slate-400 flex items-center justify-end gap-0.5 mt-0.5 flex-wrap max-w-[100px]">
+                      {workerInfo.worker_types?.slice(0, 2).map((type) => {
+                        const labels: Record<string, string> = {
+                          delivery: "配送",
+                          repair: "维修",
+                          install: "安装",
+                        }
+                        return (
+                          <Badge key={type} variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-400 whitespace-nowrap">
+                            {labels[type] || type}
+                          </Badge>
+                        )
+                      })}
+                      {workerInfo.worker_types && workerInfo.worker_types.length > 2 && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-400">
+                          +{workerInfo.worker_types.length - 2}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleLogout}
-                    className="text-white hover:bg-white/10"
+                    className="text-white hover:bg-white/10 text-xs sm:text-sm px-2 sm:px-3"
                   >
-                    <LogOut className="h-4 w-4 mr-1" />
-                    退出
+                    <LogOut className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">退出</span>
                   </Button>
                 </>
               ) : (
@@ -2784,38 +2807,41 @@ export default function WorkerPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setIsLoginDialogOpen(true)}
-                  className="text-white hover:bg-white/10"
+                  className="text-white hover:bg-white/10 text-xs sm:text-sm px-2 sm:px-3"
                 >
-                  <LogIn className="h-4 w-4 mr-1" />
-                  登录
+                  <LogIn className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">登录</span>
                 </Button>
               )}
             </div>
           </div>
           
           {/* 网络状态和暂存操作提示 */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-2 sm:mt-0">
             {!isOnline && (
-              <Badge variant="outline" className="bg-yellow-500/20 border-yellow-500/50 text-yellow-400">
+              <Badge variant="outline" className="bg-yellow-500/20 border-yellow-500/50 text-yellow-400 text-xs">
                 <WifiOff className="h-3 w-3 mr-1" />
-                离线模式
+                <span className="hidden sm:inline">离线模式</span>
+                <span className="sm:hidden">离线</span>
               </Badge>
             )}
             {pendingCount > 0 && (
               <Badge 
                 variant="outline" 
-                className="bg-blue-500/20 border-blue-500/50 text-blue-400 cursor-pointer hover:bg-blue-500/30"
+                className="bg-blue-500/20 border-blue-500/50 text-blue-400 cursor-pointer hover:bg-blue-500/30 text-xs"
                 onClick={sync}
               >
                 {isSyncing ? (
                   <>
                     <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    同步中...
+                    <span className="hidden sm:inline">同步中...</span>
+                    <span className="sm:hidden">同步</span>
                   </>
                 ) : (
                   <>
                     <Wifi className="h-3 w-3 mr-1" />
-                    {pendingCount} 个待提交
+                    <span className="hidden sm:inline">{pendingCount} 个待提交</span>
+                    <span className="sm:hidden">{pendingCount}</span>
                   </>
                 )}
               </Badge>

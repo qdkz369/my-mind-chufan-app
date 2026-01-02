@@ -272,43 +272,69 @@ export default function AdminDashboard() {
   const generateAddressFallbacks = useCallback((address: string): string[] => {
     const fallbacks: string[] = [address] // 首先尝试原始地址
     
-    // 去掉门牌号（数字结尾）
+    // 去掉门牌号（数字结尾，包括"93号"、"93"等）
     const withoutNumber = address.replace(/\d+号?$/, '').trim()
     if (withoutNumber && withoutNumber !== address) {
       fallbacks.push(withoutNumber)
+    }
+    
+    // 提取关键地名（优先提取，因为POI搜索通常更准确）
+    // 例如："昆明市五华区黑林铺班庄村93号" -> "班庄村"
+    const keyPlaceMatch = address.match(/([^省市区县镇乡街道]+(?:村|庄|社区|小区|路|街|巷|弄|公交站|站))/)
+    if (keyPlaceMatch && keyPlaceMatch[1]) {
+      const keyPlace = keyPlaceMatch[1]
+      if (!fallbacks.includes(keyPlace)) {
+        fallbacks.push(keyPlace)
+      }
+      // 尝试添加"（公交站）"后缀（如果还没有）
+      if (!keyPlace.includes('公交站') && !keyPlace.includes('站')) {
+        const busStop = `${keyPlace}（公交站）`
+        if (!fallbacks.includes(busStop)) {
+          fallbacks.push(busStop)
+        }
+        // 也尝试不加括号的版本
+        const busStop2 = `${keyPlace}公交站`
+        if (!fallbacks.includes(busStop2)) {
+          fallbacks.push(busStop2)
+        }
+      }
     }
     
     // 提取主要区域信息（省市区街道村）
     // 例如："昆明市五华区黑林铺班庄村93号" -> "昆明市五华区黑林铺班庄村"
     const parts = address.split(/[省市区县镇乡街道村]/)
     if (parts.length > 1) {
-      // 保留到"村"或"街道"级别
-      const mainArea = address.match(/^[^省]*省?[^市]*市[^区]*区?[^县]*县?[^镇]*镇?[^乡]*乡?[^街道]*街道?[^村]*村?/)
-      if (mainArea && mainArea[0] && mainArea[0] !== address) {
-        fallbacks.push(mainArea[0])
+      // 保留到"村"或"街道"级别（去掉门牌号后）
+      const mainAreaMatch = address.match(/^([^省]*省?[^市]*市[^区]*区?[^县]*县?[^镇]*镇?[^乡]*乡?[^街道]*街道?[^村]*村?)/)
+      if (mainAreaMatch && mainAreaMatch[1]) {
+        const mainArea = mainAreaMatch[1].replace(/\d+号?$/, '').trim()
+        if (mainArea && mainArea !== address && !fallbacks.includes(mainArea)) {
+          fallbacks.push(mainArea)
+        }
       }
       
       // 尝试只保留到区/县级别
-      const districtLevel = address.match(/^[^省]*省?[^市]*市[^区]*区?[^县]*县?/)
-      if (districtLevel && districtLevel[0] && districtLevel[0] !== address) {
-        fallbacks.push(districtLevel[0])
+      const districtMatch = address.match(/^([^省]*省?[^市]*市[^区]*区?[^县]*县?)/)
+      if (districtMatch && districtMatch[1]) {
+        const districtLevel = districtMatch[1]
+        if (districtLevel && districtLevel !== address && !fallbacks.includes(districtLevel)) {
+          fallbacks.push(districtLevel)
+        }
       }
     }
     
-    // 提取关键地名（如"班庄村"）
-    const keyPlaceMatch = address.match(/([^省市区县镇乡街道]+(?:村|庄|社区|小区|路|街|巷|弄))/)
+    // 如果有关键地名，尝试在城市+关键地名的组合
     if (keyPlaceMatch && keyPlaceMatch[1]) {
-      const keyPlace = keyPlaceMatch[1]
-      if (!fallbacks.includes(keyPlace)) {
-        fallbacks.push(keyPlace)
-      }
-      // 尝试添加"（公交站）"后缀
-      const busStop = `${keyPlace}（公交站）`
-      if (!fallbacks.includes(busStop)) {
-        fallbacks.push(busStop)
+      const cityMatch = address.match(/^([^省]*省?[^市]*市)/)
+      if (cityMatch && cityMatch[1]) {
+        const cityKeyPlace = `${cityMatch[1]}${keyPlaceMatch[1]}`
+        if (!fallbacks.includes(cityKeyPlace)) {
+          fallbacks.push(cityKeyPlace)
+        }
       }
     }
     
+    console.log('[地址降级] 原始地址:', address, '-> 降级列表:', fallbacks)
     return [...new Set(fallbacks)] // 去重
   }, [])
 
@@ -322,6 +348,29 @@ export default function AdminDashboard() {
       }
 
       const AMap = (window as any).AMap
+      
+      // 检查 Geocoder 是否可用（可能是插件未加载）
+      if (!AMap.Geocoder || typeof AMap.Geocoder !== 'function') {
+        console.warn('[地理编码] AMap.Geocoder 插件未加载，尝试动态加载...')
+        // 尝试动态加载 Geocoder 插件
+        if (AMap.plugin) {
+          AMap.plugin('AMap.Geocoder', () => {
+            if (AMap.Geocoder) {
+              console.log('[地理编码] Geocoder 插件加载成功')
+              // 重新调用地理编码
+              geocodeAddress(address).then(resolve)
+            } else {
+              console.error('[地理编码] Geocoder 插件加载失败')
+              resolve(null)
+            }
+          })
+        } else {
+          console.error('[地理编码] AMap.plugin 不可用，无法加载 Geocoder 插件')
+          resolve(null)
+        }
+        return
+      }
+      
       const geocoder = new AMap.Geocoder({
         city: '全国', // 全国范围搜索
       })
@@ -362,6 +411,29 @@ export default function AdminDashboard() {
 
       // POI搜索作为最后备选
       const tryPOISearch = (searchText: string) => {
+        // 检查 PlaceSearch 是否可用
+        if (!AMap.PlaceSearch || typeof AMap.PlaceSearch !== 'function') {
+          console.warn('[地理编码] AMap.PlaceSearch 插件未加载，尝试动态加载...')
+          if (AMap.plugin) {
+            AMap.plugin('AMap.PlaceSearch', () => {
+              if (AMap.PlaceSearch) {
+                console.log('[地理编码] PlaceSearch 插件加载成功')
+                // 重新尝试 POI 搜索
+                tryPOISearch(searchText)
+              } else {
+                console.error('[地理编码] PlaceSearch 插件加载失败')
+                console.warn('[地理编码] 所有尝试都失败:', address)
+                resolve(null)
+              }
+            })
+          } else {
+            console.error('[地理编码] AMap.plugin 不可用，无法加载 PlaceSearch 插件')
+            console.warn('[地理编码] 所有尝试都失败:', address)
+            resolve(null)
+          }
+          return
+        }
+        
         const placeSearch = new AMap.PlaceSearch({
           city: '全国',
           citylimit: false,
@@ -389,6 +461,15 @@ export default function AdminDashboard() {
           const keyPlaceMatch = searchText.match(/([^省市区县镇乡街道]+(?:村|庄|社区|小区|路|街|巷|弄|公交站))/)
           if (keyPlaceMatch && keyPlaceMatch[1] && keyPlaceMatch[1] !== searchText) {
             console.log('[地理编码] POI搜索失败，尝试关键地名:', keyPlaceMatch[1])
+            
+            // 再次检查 PlaceSearch 是否可用
+            if (!AMap.PlaceSearch || typeof AMap.PlaceSearch !== 'function') {
+              console.warn('[地理编码] PlaceSearch 插件不可用，跳过关键地名搜索')
+              console.warn('[地理编码] 所有尝试都失败:', address)
+              resolve(null)
+              return
+            }
+            
             const placeSearch2 = new AMap.PlaceSearch({
               city: '全国',
               citylimit: false,
@@ -516,13 +597,61 @@ export default function AdminDashboard() {
       }
 
       if (data) {
-        setRestaurants(data)
-        // 如果地图已加载，尝试更新没有经纬度的餐厅坐标
+        // 确保经纬度是数字类型
+        const processedData = data.map(restaurant => ({
+          ...restaurant,
+          latitude: restaurant.latitude ? (typeof restaurant.latitude === 'string' ? parseFloat(restaurant.latitude) : restaurant.latitude) : null,
+          longitude: restaurant.longitude ? (typeof restaurant.longitude === 'string' ? parseFloat(restaurant.longitude) : restaurant.longitude) : null,
+        }))
+        
+        console.log('[Admin Dashboard] 加载餐厅数据:', processedData.length, '个餐厅')
+        processedData.forEach(r => {
+          console.log('[Admin Dashboard] 餐厅:', r.name, {
+            latitude: r.latitude,
+            longitude: r.longitude,
+            address: r.address,
+            hasValidCoords: !!(r.latitude && r.longitude && !isNaN(r.latitude) && !isNaN(r.longitude))
+          })
+        })
+        
+        setRestaurants(processedData)
+        
+        // 自动为没有经纬度的餐厅进行地理编码（不依赖地图是否加载）
+        // 检查是否有需要地理编码的餐厅
+        const needsGeocode = processedData.some(
+          r => r.address && 
+          r.address.trim() !== '' && 
+          r.address !== '地址待完善' &&
+          (!r.latitude || !r.longitude || isNaN(r.latitude) || isNaN(r.longitude))
+        )
+        
+        if (needsGeocode) {
+          console.log('[Admin Dashboard] 检测到需要地理编码的餐厅，等待AMap加载后自动处理...')
+          // 等待AMap加载完成（最多等待10秒）
+          let attempts = 0
+          const maxAttempts = 20 // 20次 * 500ms = 10秒
+          const checkAMap = setInterval(() => {
+            attempts++
+            if (typeof window !== 'undefined' && (window as any).AMap) {
+              clearInterval(checkAMap)
+              console.log('[Admin Dashboard] AMap已加载，开始自动地理编码...')
+              // 延迟一下，确保AMap插件也加载完成
+              setTimeout(() => {
+                updateRestaurantCoordinates(processedData)
+              }, 1000)
+            } else if (attempts >= maxAttempts) {
+              clearInterval(checkAMap)
+              console.warn('[Admin Dashboard] AMap加载超时，地理编码将在地图加载后自动执行')
+            }
+          }, 500)
+        }
+        
+        // 如果地图已加载，立即更新标记
         if (mapLoaded && typeof window !== 'undefined' && (window as any).AMap) {
           // 延迟一下，确保地图完全加载
           setTimeout(() => {
-            updateRestaurantCoordinates(data)
-          }, 1000)
+            updateMarkers()
+          }, 500)
         }
       }
     } catch (error) {
@@ -1410,11 +1539,19 @@ export default function AdminDashboard() {
 
   // 更新地图标记
   const updateMarkers = useCallback(() => {
-    if (!mapInstanceRef.current) return
+    if (!mapInstanceRef.current) {
+      console.warn('[Map] 地图实例不存在，跳过标记更新')
+      return
+    }
 
     const map = mapInstanceRef.current
     const AMap = (window as any).AMap
-    if (!AMap) return
+    if (!AMap) {
+      console.warn('[Map] AMap未加载，跳过标记更新')
+      return
+    }
+
+    console.log('[Map] 开始更新标记，当前餐厅数量:', restaurants.length)
 
     // 清除现有标记
     markersRef.current.forEach(marker => {
@@ -1500,15 +1637,28 @@ export default function AdminDashboard() {
 
       // 为每个餐厅创建标记
       restaurants.forEach(restaurant => {
+        console.log('[Map] 处理餐厅:', restaurant.name, {
+          latitude: restaurant.latitude,
+          longitude: restaurant.longitude,
+          address: restaurant.address,
+          hasLat: !!restaurant.latitude,
+          hasLng: !!restaurant.longitude,
+          latValid: restaurant.latitude && !isNaN(Number(restaurant.latitude)),
+          lngValid: restaurant.longitude && !isNaN(Number(restaurant.longitude))
+        })
+        
         // 检查经纬度是否有效
-        if (!restaurant.latitude || !restaurant.longitude || 
-            isNaN(restaurant.latitude) || isNaN(restaurant.longitude)) {
+        const lat = typeof restaurant.latitude === 'number' ? restaurant.latitude : parseFloat(restaurant.latitude as any)
+        const lng = typeof restaurant.longitude === 'number' ? restaurant.longitude : parseFloat(restaurant.longitude as any)
+        
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
           // 如果有地址但没有经纬度，尝试地理编码（异步，不阻塞标记创建）
           if (restaurant.address && restaurant.address.trim() !== '' && restaurant.address !== '地址待完善') {
             console.log('[Map] 餐厅有地址但无经纬度，尝试地理编码:', restaurant.name, restaurant.address)
             // 异步地理编码，不阻塞当前标记创建
             geocodeAddress(restaurant.address).then(location => {
               if (location && supabase) {
+                console.log('[Map] 地理编码成功，获得坐标:', location)
                 // 更新数据库
                 supabase
                   .from("restaurants")
@@ -1520,7 +1670,7 @@ export default function AdminDashboard() {
                   .eq("id", restaurant.id)
                   .then(({ error }) => {
                     if (!error) {
-                      console.log('[Map] 地理编码成功，更新餐厅坐标:', restaurant.name)
+                      console.log('[Map] 数据库更新成功，餐厅坐标已保存:', restaurant.name)
                       // 更新本地状态并重新创建标记
                       setRestaurants(prev => prev.map(r => 
                         r.id === restaurant.id 
@@ -1528,13 +1678,22 @@ export default function AdminDashboard() {
                           : r
                       ))
                       // 触发标记更新
-                      setTimeout(() => updateMarkers(), 500)
+                      setTimeout(() => {
+                        console.log('[Map] 触发标记更新，餐厅:', restaurant.name)
+                        updateMarkers()
+                      }, 500)
+                    } else {
+                      console.error('[Map] 数据库更新失败:', error)
                     }
                   })
+              } else {
+                console.warn('[Map] 地理编码返回空结果或Supabase未配置')
               }
             }).catch(err => {
-              console.warn('[Map] 地理编码失败:', restaurant.name, err)
+              console.error('[Map] 地理编码失败:', restaurant.name, err)
             })
+          } else {
+            console.warn('[Map] 餐厅无有效地址，跳过标记创建:', restaurant.name, '地址:', restaurant.address)
           }
           return
         }
@@ -1542,9 +1701,13 @@ export default function AdminDashboard() {
         const hasActiveOrders = activeOrderRestaurantIds.has(restaurant.id)
         const markerHTML = createMarkerHTML(restaurant, hasActiveOrders)
 
+        // 使用解析后的经纬度
+        const markerPosition = [lng, lat]
+        console.log('[Map] 创建标记:', restaurant.name, '位置:', markerPosition)
+
         // 创建HTML标记
         const marker = new AMap.Marker({
-          position: [restaurant.longitude, restaurant.latitude],
+          position: markerPosition,
           content: markerHTML,
           offset: new AMap.Pixel(-20, -20),
           zIndex: 100,
@@ -1607,7 +1770,10 @@ export default function AdminDashboard() {
         
         // 存储标记和信息窗口的映射关系，用于定位功能
         markerMapRef.current.set(restaurant.id, { marker, infoWindow })
+        console.log('[Map] 标记已添加到地图:', restaurant.name, '当前标记总数:', markersRef.current.length)
       })
+      
+      console.log('[Map] 标记创建完成，共创建', markersRef.current.length, '个标记，餐厅总数:', restaurants.length)
     }
 
     // 根据状态决定是否绘制服务点范围圆圈
@@ -1692,6 +1858,13 @@ export default function AdminDashboard() {
 
         mapInstanceRef.current = map
 
+        // 加载必要的地图插件（Geocoder 和 PlaceSearch）
+        if (AMap.plugin) {
+          AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => {
+            console.log('[Map] 地图插件加载完成 (Geocoder, PlaceSearch)')
+          })
+        }
+
         // 地图加载完成
         map.on('complete', () => {
           console.log('[Map] 地图加载完成')
@@ -1746,8 +1919,23 @@ export default function AdminDashboard() {
     if (mapInstanceRef.current && mapLoaded) {
       console.log('[Map] 更新标记，餐厅数量:', restaurants.length, '订单数量:', orders.length, '服务点数量:', servicePoints.length, '显示服务点:', showServicePoints, '显示热力图:', showHeatmap)
       updateMarkers()
+      
+      // 如果餐厅数据更新后，检查是否有需要地理编码的餐厅
+      const needsGeocode = restaurants.some(
+        r => r.address && 
+        r.address.trim() !== '' && 
+        r.address !== '地址待完善' &&
+        (!r.latitude || !r.longitude || isNaN(r.latitude) || isNaN(r.longitude))
+      )
+      
+      if (needsGeocode && typeof window !== 'undefined' && (window as any).AMap) {
+        console.log('[Map] 检测到需要地理编码的餐厅，自动处理...')
+        setTimeout(() => {
+          updateRestaurantCoordinates(restaurants)
+        }, 1000)
+      }
     }
-  }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap, mapLoaded, updateMarkers])
+  }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap, mapLoaded, updateMarkers, updateRestaurantCoordinates])
 
   // 获取订单状态样式
   const getOrderStatusStyle = (status: string) => {
