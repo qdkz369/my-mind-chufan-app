@@ -827,6 +827,19 @@ export default function AdminDashboard() {
         console.error("[Admin Dashboard] 错误提示:", error.hint)
         
         // 提供更详细的错误信息
+        if (error.message?.includes("Invalid API key") || error.code === "PGRST301" || error.code === "401") {
+          throw new Error(
+            `API Key 无效！\n\n` +
+            `请按以下步骤操作：\n` +
+            `1. 打开 Supabase Dashboard (https://app.supabase.com)\n` +
+            `2. 选择你的项目\n` +
+            `3. 进入 Settings > API\n` +
+            `4. 复制 "anon" "public" 的 API Key\n` +
+            `5. 在 Vercel Dashboard 中更新环境变量 NEXT_PUBLIC_SUPABASE_ANON_KEY\n` +
+            `6. 重新部署项目`
+          )
+        }
+        
         if (error.message?.includes("schema cache") || error.message?.includes("not found") || error.code === "42P01") {
           throw new Error(
             `数据库表不存在！\n\n` +

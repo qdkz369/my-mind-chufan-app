@@ -18,9 +18,15 @@ const isSupabaseConfigured = !!(
 
 // 调试日志（仅在开发环境或服务器端输出）
 if (typeof window === 'undefined') {
-  console.log('[Supabase 配置] 使用环境变量:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+  console.log('[Supabase 配置] 使用环境变量 URL:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+  console.log('[Supabase 配置] 使用环境变量 Key:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   console.log('[Supabase 配置] Supabase URL:', supabaseUrl.substring(0, 30) + '...')
+  console.log('[Supabase 配置] Supabase Key 前10字符:', supabaseAnonKey.substring(0, 10) + '...')
   console.log('[Supabase 配置] 配置有效:', isSupabaseConfigured)
+} else {
+  // 客户端也输出部分信息（用于调试）
+  console.log('[Supabase 配置] Supabase URL:', supabaseUrl.substring(0, 30) + '...')
+  console.log('[Supabase 配置] Supabase Key 前10字符:', supabaseAnonKey.substring(0, 10) + '...')
 }
 
 // 创建客户端函数（确保在服务器端和客户端都能正确初始化）
