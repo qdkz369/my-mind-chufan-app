@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { apiRequest } from "@/lib/api-client"
 import {
   Package,
   MapPin,
@@ -64,7 +65,16 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
         params.append("worker_id", workerId)
       }
 
-      const response = await fetch(`/api/orders/pending?${params.toString()}`)
+      const headers: HeadersInit = {}
+      
+      // 如果提供了workerId，添加到请求头
+      if (workerId) {
+        headers["x-worker-id"] = workerId
+      }
+
+      const response = await fetch(`/api/orders/pending?${params.toString()}`, {
+        headers,
+      })
       const result = await response.json()
 
       if (!response.ok || result.error) {
@@ -91,20 +101,31 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
     setError("")
 
     try {
-      const response = await fetch("/api/orders/dispatch", {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+      
+      // 如果提供了workerId，添加到请求头
+      if (workerId) {
+        headers["x-worker-id"] = workerId
+      }
+
+      const result = await apiRequest({
+        endpoint: "/api/orders/dispatch",
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+        headers,
+        body: {
           order_id: orderId,
-          worker_id: workerId,
-        }),
+          worker_id: workerId || undefined,
+        },
+        showToast: true,
+        successMessage: "接单成功",
+        errorMessage: "接单失败",
+        operationType: "order",
+        enableOfflineStorage: true,
       })
 
-      const result = await response.json()
-
-      if (!response.ok || result.error) {
+      if (!result.success) {
         throw new Error(result.error || "接单失败")
       }
 

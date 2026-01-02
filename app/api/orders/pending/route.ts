@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { OrderStatus, ProductType } from "@/lib/types/order"
+import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 /**
  * GET: 获取待接单订单列表
  * 根据产品类型和配送员ID筛选
+ * 如果请求头中包含 x-worker-id，则验证配送员权限
  */
 export async function GET(request: Request) {
   try {
@@ -15,9 +17,19 @@ export async function GET(request: Request) {
       )
     }
 
+    // 如果请求头中包含worker_id，验证配送员权限
+    const headerWorkerId = request.headers.get("x-worker-id")
+    if (headerWorkerId) {
+      const authResult = await verifyWorkerPermission(request, "delivery")
+      if (authResult instanceof NextResponse) {
+        return authResult // 返回错误响应
+      }
+      console.log("[待接单订单API] 权限验证通过，配送员:", authResult.worker.name)
+    }
+
     const { searchParams } = new URL(request.url)
     const productType = searchParams.get("product_type") // 产品类型筛选
-    const workerId = searchParams.get("worker_id") // 配送员ID（可选，用于查看已接单的订单）
+    const queryWorkerId = searchParams.get("worker_id") // 配送员ID（可选，用于查看已接单的订单）
 
     // 构建查询
     let query = supabase
@@ -32,7 +44,8 @@ export async function GET(request: Request) {
       query = query.eq("product_type", productType)
     }
 
-    // 如果指定了配送员ID，显示该配送员的订单
+    // 如果指定了配送员ID，显示该配送员的订单（优先使用查询参数，如果没有则使用请求头中的）
+    const workerId = queryWorkerId || headerWorkerId
     if (workerId) {
       query = query.or(`assigned_to.eq.${workerId},worker_id.eq.${workerId}`)
     } else {

@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { OrderStatus, canTransitionOrderStatus } from "@/lib/types/order"
+import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 /**
  * POST: 完成配送
  * 将订单状态从 delivering 转为 completed
  * 需要提供 tracking_code 和 proof_image
+ * 需要配送员权限
  */
 export async function POST(request: Request) {
   try {
@@ -17,6 +19,14 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
+    
+    // 验证配送员权限
+    const authResult = await verifyWorkerPermission(request, "delivery", body)
+    if (authResult instanceof NextResponse) {
+      return authResult // 返回错误响应
+    }
+    const worker = authResult.worker
+    console.log("[完成配送API] 权限验证通过，配送员:", worker.name)
     const { order_id, tracking_code, proof_image } = body
 
     if (!order_id) {

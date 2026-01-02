@@ -26,13 +26,21 @@ import {
   List,
   Trash2,
   Plus,
+  LogIn,
+  HardHat,
+  LogOut,
+  Wifi,
+  WifiOff,
 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { WorkerOrderList } from "@/components/worker/order-list"
+import { WorkerRepairList } from "@/components/worker/repair-list"
 import { QRScanner } from "@/components/worker/qr-scanner"
 import { ImageUploader } from "@/components/worker/image-uploader"
 import { OrderStatus } from "@/lib/types/order"
+import { useOfflineSync } from "@/hooks/use-offline-sync"
+import { apiRequest } from "@/lib/api-client"
 
 // 设备型号选项
 const DEVICE_MODELS = [
@@ -50,12 +58,13 @@ interface DeviceListItem {
 }
 
 // 安装登记表单组件（批量绑定版本）
-function InstallForm({ onBack }: { onBack: () => void }) {
+function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: string | null }) {
   const [address, setAddress] = useState("")
   const [installer, setInstaller] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [error, setError] = useState("")
+  const [installProofImageUrl, setInstallProofImageUrl] = useState<string | null>(null) // 安装凭证图片URL
   
   // 客户信息相关状态
   const [customerId, setCustomerId] = useState<string | null>(null) // 客户ID（餐厅ID）
@@ -163,36 +172,39 @@ function InstallForm({ onBack }: { onBack: () => void }) {
       for (const device of deviceList) {
         try {
           // 1. 安装设备
-          const installResponse = await fetch("/api/install", {
+          const installHeaders: HeadersInit = {
+            "Content-Type": "application/json",
+          }
+          
+          // 如果已登录，添加worker_id到请求头
+          if (workerId) {
+            installHeaders["x-worker-id"] = workerId
+          }
+
+          const installResult = await apiRequest({
+            endpoint: "/api/install",
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
+            headers: installHeaders,
+            body: {
               device_id: device.deviceId,
               model: device.model,
               address: address.trim(),
               installer: installer.trim(),
               install_date: installDate,
-            }),
+              install_proof_image: installProofImageUrl || undefined, // 安装凭证图片URL
+              worker_id: workerId || undefined,
+            },
+            showToast: false, // 批量操作时不显示单个设备的Toast
+            successMessage: `设备 ${device.deviceId} 安装成功`,
+            operationType: "install",
+            enableOfflineStorage: true,
           })
 
-          let installData
-          try {
-            installData = await installResponse.json()
-          } catch (parseError) {
-            console.error(`解析响应失败 (设备 ${device.deviceId}):`, parseError)
-            throw new Error(`服务器响应格式错误 (状态码: ${installResponse.status})`)
+          if (!installResult.success) {
+            throw new Error(installResult.error || `设备 ${device.deviceId} 安装失败`)
           }
-
-          if (!installResponse.ok) {
-            const errorMsg = installData?.error || installData?.details || `安装失败 (状态码: ${installResponse.status})`
-            console.error(`设备 ${device.deviceId} 安装失败:`, {
-              status: installResponse.status,
-              error: installData,
-            })
-            throw new Error(errorMsg)
-          }
+          
+          const installData = installResult.data
 
           // 2. 将设备关联到客户
           if (supabase) {
@@ -263,6 +275,7 @@ function InstallForm({ onBack }: { onBack: () => void }) {
       setCurrentDeviceId("")
       setAddress("")
       setInstaller("")
+      setInstallProofImageUrl(null) // 清空图片
       setCustomerId(null)
       setCustomerName("")
       setCustomerAutoFilled(false)
@@ -715,6 +728,33 @@ function InstallForm({ onBack }: { onBack: () => void }) {
             <p className="text-xs text-slate-500">请输入您的真实姓名</p>
           </div>
 
+          {/* 安装凭证图片上传 */}
+          <div className="space-y-2">
+            <Label className="text-slate-300 flex items-center gap-2">
+              <Camera className="h-4 w-4" />
+              安装凭证照片
+              <span className="text-xs text-slate-500 ml-2">（可选，建议上传安装完成后的现场照片）</span>
+            </Label>
+            <ImageUploader
+              onUploadSuccess={(imageUrl) => {
+                setInstallProofImageUrl(imageUrl)
+                console.log("[安装表单] 图片上传成功:", imageUrl)
+              }}
+              onRemove={() => {
+                setInstallProofImageUrl(null)
+                console.log("[安装表单] 图片已移除")
+              }}
+              currentImageUrl={installProofImageUrl}
+              label="上传安装凭证照片"
+            />
+            {installProofImageUrl && (
+              <p className="text-xs text-green-400 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                安装凭证照片已上传
+              </p>
+            )}
+          </div>
+
           {/* 客户信息显示（如果已识别） */}
           {customerAutoFilled && customerId && (
             <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
@@ -1078,10 +1118,11 @@ function BindDevicePage({ restaurantInfo, onComplete, onBack }: {
 }
 
 // 新客安装引导页组件
-function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
+function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack, workerId }: {
   restaurantInfo: RestaurantInfo | null
   onComplete: () => void
   onBack: () => void
+  workerId?: string | null
 }) {
   const [deviceId, setDeviceId] = useState("")
   const [model, setModel] = useState("")
@@ -1092,6 +1133,7 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
   const [error, setError] = useState("")
   const [showQRScanner, setShowQRScanner] = useState(false) // 显示二维码扫描器
   const [manualInput, setManualInput] = useState("") // 手动输入（用于测试）
+  const [installProofImageUrl, setInstallProofImageUrl] = useState<string | null>(null) // 安装凭证图片URL
 
   const handleSubmit = async () => {
     if (!deviceId.trim() || !model.trim() || !address.trim() || !installer.trim()) {
@@ -1109,25 +1151,40 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
 
     try {
       // 1. 安装设备
-      const installResponse = await fetch("/api/install", {
+      const installHeaders: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+      
+      // 如果已登录，添加worker_id到请求头
+      if (workerId) {
+        installHeaders["x-worker-id"] = workerId
+      }
+
+      const installResult = await apiRequest({
+        endpoint: "/api/install",
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+        headers: installHeaders,
+        body: {
           device_id: deviceId.trim(),
           model: model.trim(),
           address: address.trim(),
           installer: installer.trim(),
           install_date: new Date().toISOString(),
-        }),
+          install_proof_image: installProofImageUrl || undefined, // 安装凭证图片URL
+          worker_id: workerId || undefined,
+        },
+        showToast: true,
+        successMessage: "设备安装信息已成功保存",
+        errorMessage: "设备安装失败",
+        operationType: "install",
+        enableOfflineStorage: true,
       })
-
-      const installResult = await installResponse.json()
-
+      
       if (!installResult.success) {
         throw new Error(installResult.error || "设备安装失败")
       }
+      
+      const installData = installResult.data
 
       // 2. 关联设备到餐厅
       if (supabase && process.env.NEXT_PUBLIC_SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")) {
@@ -1299,6 +1356,33 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
             </div>
           </div>
 
+          {/* 安装凭证图片上传 */}
+          <div className="space-y-2">
+            <Label className="text-slate-300 flex items-center gap-2">
+              <Camera className="h-4 w-4" />
+              安装凭证照片
+              <span className="text-xs text-slate-500 ml-2">（可选，建议上传安装完成后的现场照片）</span>
+            </Label>
+            <ImageUploader
+              onUploadSuccess={(imageUrl) => {
+                setInstallProofImageUrl(imageUrl)
+                console.log("[新客安装] 图片上传成功:", imageUrl)
+              }}
+              onRemove={() => {
+                setInstallProofImageUrl(null)
+                console.log("[新客安装] 图片已移除")
+              }}
+              currentImageUrl={installProofImageUrl}
+              label="上传安装凭证照片"
+            />
+            {installProofImageUrl && (
+              <p className="text-xs text-green-400 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                安装凭证照片已上传
+              </p>
+            )}
+          </div>
+
           <div className="flex gap-3 pt-2">
             <Button
               onClick={onBack}
@@ -1337,7 +1421,7 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack }: {
 }
 
 // 燃料配送组件（重构版：支持订单配送，包含扫码和拍照）
-function DeliveryForm({ onBack }: { onBack: () => void }) {
+function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: string | null }) {
   const [step, setStep] = useState<"select_order" | "order_list" | "scan_restaurant" | "device_list" | "filling" | "cylinder_scan" | "new_customer_install" | "bind_device" | "delivery_proof">("select_order")
   const [qrToken, setQrToken] = useState("")
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null)
@@ -1517,15 +1601,23 @@ function DeliveryForm({ onBack }: { onBack: () => void }) {
 
       try {
         // 调用完成配送API
+        const headers: HeadersInit = {
+          "Content-Type": "application/json",
+        }
+        
+        // 如果已登录，添加worker_id到请求头
+        if (workerId) {
+          headers["x-worker-id"] = workerId
+        }
+
         const response = await fetch("/api/orders/complete", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({
             order_id: selectedOrder.id,
             tracking_code: trackingCode.trim(),
             proof_image: proofImageUrl,
+            worker_id: workerId || undefined, // 也添加到请求体，兼容性考虑
           }),
         })
 
@@ -1601,12 +1693,22 @@ function DeliveryForm({ onBack }: { onBack: () => void }) {
         requestBody.fuel_amount_liters = parseFloat(fuelAmountLiters)
       }
 
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+      
+      // 如果已登录，添加worker_id到请求头
+      if (workerId) {
+        headers["x-worker-id"] = workerId
+      }
+
       const response = await fetch("/api/filling", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
+        headers,
+        body: JSON.stringify({
+          ...requestBody,
+          worker_id: workerId || undefined, // 也添加到请求体，兼容性考虑
+        }),
       })
 
       const data = await response.json()
@@ -2370,17 +2472,239 @@ export default function WorkerPage() {
   const [currentView, setCurrentView] = useState<"home" | "install" | "delivery" | "orders" | "repair">("home")
   const [workerId, setWorkerId] = useState<string | null>(null)
   const [productType, setProductType] = useState<string | null>(null) // 当前配送员的产品类型
+  const [repairStatusFilter, setRepairStatusFilter] = useState<"all" | "pending" | "processing" | "completed">("all") // 维修工单状态筛选
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false)
+  const [loginWorkerId, setLoginWorkerId] = useState("")
+  const [loginPhone, setLoginPhone] = useState("")
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [workerInfo, setWorkerInfo] = useState<{
+    id: string
+    name: string
+    phone: string | null
+    worker_types: string[]
+    product_types: string[]
+  } | null>(null)
 
-  // 加载配送员ID（从localStorage或设置）
+  // 离线同步功能
+  const { isOnline, pendingCount, isSyncing, sync } = useOfflineSync()
+
+  // 检查登录状态
   useEffect(() => {
-    // 确保只在客户端执行
     if (typeof window === 'undefined') return
     
-    const wid = localStorage.getItem("workerId") || "worker_001" // 默认值，实际应从登录获取
-    setWorkerId(wid)
-    // 可以根据workerId查询配送员的产品类型
-    // 这里先使用默认值
+    const savedWorkerId = localStorage.getItem("workerId")
+    const savedWorkerInfo = localStorage.getItem("workerInfo")
+    
+    if (savedWorkerId && savedWorkerInfo) {
+      try {
+        const info = JSON.parse(savedWorkerInfo)
+        console.log("[工人端] 从localStorage恢复登录信息:", info)
+        
+        // 确保worker_types是数组，并处理可能的嵌套JSON字符串
+        if (info.worker_types) {
+          if (!Array.isArray(info.worker_types)) {
+            console.warn("[工人端] worker_types不是数组，尝试修复:", info.worker_types)
+            if (typeof info.worker_types === 'string') {
+              try {
+                const parsed = JSON.parse(info.worker_types)
+                info.worker_types = Array.isArray(parsed) ? parsed : [info.worker_types]
+              } catch (e) {
+                info.worker_types = [info.worker_types]
+              }
+            } else {
+              info.worker_types = []
+            }
+          } else {
+            // 是数组，但需要检查数组元素是否是JSON字符串
+            const processedTypes: string[] = []
+            for (const item of info.worker_types) {
+              if (typeof item === 'string') {
+                // 检查是否是JSON字符串（如 '["delivery","repair"]'）
+                if (item.startsWith('[') && item.endsWith(']')) {
+                  try {
+                    const parsed = JSON.parse(item)
+                    if (Array.isArray(parsed)) {
+                      parsed.forEach((t: any) => {
+                        if (typeof t === 'string' && ['delivery', 'repair', 'install'].includes(t) && !processedTypes.includes(t)) {
+                          processedTypes.push(t)
+                        }
+                      })
+                    }
+                  } catch (e) {
+                    // 解析失败，检查是否是有效类型
+                    if (['delivery', 'repair', 'install'].includes(item) && !processedTypes.includes(item)) {
+                      processedTypes.push(item)
+                    }
+                  }
+                } else {
+                  // 普通字符串，检查是否是有效类型
+                  if (['delivery', 'repair', 'install'].includes(item) && !processedTypes.includes(item)) {
+                    processedTypes.push(item)
+                  }
+                }
+              }
+            }
+            if (processedTypes.length > 0) {
+              info.worker_types = processedTypes
+            }
+          }
+        } else {
+          info.worker_types = []
+        }
+        
+        console.log("[工人端] 恢复后的worker_types:", info.worker_types, "长度:", info.worker_types?.length)
+        console.log("[工人端] 检查权限:", {
+          hasInstall: info.worker_types?.includes("install"),
+          hasDelivery: info.worker_types?.includes("delivery"),
+          hasRepair: info.worker_types?.includes("repair")
+        })
+        
+        setWorkerId(savedWorkerId)
+        setWorkerInfo(info)
+        setIsLoggedIn(true)
+        // 如果是配送员且有产品类型，设置默认产品类型
+        if (info.worker_types?.includes("delivery") && info.product_types?.length > 0) {
+          setProductType(info.product_types[0])
+        }
+      } catch (error) {
+        console.error("[工人端] 解析保存的工人信息失败:", error)
+        localStorage.removeItem("workerId")
+        localStorage.removeItem("workerInfo")
+        setIsLoginDialogOpen(true)
+      }
+    } else {
+      // 如果没有登录信息，显示登录对话框
+      setIsLoginDialogOpen(true)
+    }
   }, [])
+
+  // 工人登录
+  const handleLogin = async () => {
+    if (!loginWorkerId && !loginPhone) {
+      alert("请输入工人ID或电话号码")
+      return
+    }
+
+    setIsLoggingIn(true)
+    try {
+      const response = await fetch("/api/worker/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          worker_id: loginWorkerId || undefined,
+          phone: loginPhone || undefined,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "登录失败")
+      }
+
+      // 保存登录信息
+      const workerData = result.data
+      console.log("[工人端] 登录成功，接收到的数据:", workerData)
+      
+      // 确保worker_types是数组，并处理可能的嵌套JSON字符串
+      if (workerData.worker_types) {
+        if (!Array.isArray(workerData.worker_types)) {
+          console.warn("[工人端] worker_types不是数组，尝试修复:", workerData.worker_types)
+          if (typeof workerData.worker_types === 'string') {
+            try {
+              const parsed = JSON.parse(workerData.worker_types)
+              workerData.worker_types = Array.isArray(parsed) ? parsed : [workerData.worker_types]
+            } catch (e) {
+              workerData.worker_types = [workerData.worker_types]
+            }
+          } else {
+            workerData.worker_types = []
+          }
+        } else {
+          // 是数组，但需要检查数组元素是否是JSON字符串
+          const processedTypes: string[] = []
+          for (const item of workerData.worker_types) {
+            if (typeof item === 'string') {
+              // 检查是否是JSON字符串（如 '["delivery","repair"]'）
+              if (item.startsWith('[') && item.endsWith(']')) {
+                try {
+                  const parsed = JSON.parse(item)
+                  if (Array.isArray(parsed)) {
+                    parsed.forEach((t: any) => {
+                      if (typeof t === 'string' && ['delivery', 'repair', 'install'].includes(t) && !processedTypes.includes(t)) {
+                        processedTypes.push(t)
+                      }
+                    })
+                  }
+                } catch (e) {
+                  // 解析失败，检查是否是有效类型
+                  if (['delivery', 'repair', 'install'].includes(item) && !processedTypes.includes(item)) {
+                    processedTypes.push(item)
+                  }
+                }
+              } else {
+                // 普通字符串，检查是否是有效类型
+                if (['delivery', 'repair', 'install'].includes(item) && !processedTypes.includes(item)) {
+                  processedTypes.push(item)
+                }
+              }
+            }
+          }
+          if (processedTypes.length > 0) {
+            workerData.worker_types = processedTypes
+          }
+        }
+      } else {
+        workerData.worker_types = []
+      }
+      
+      console.log("[工人端] 处理后的worker_types:", workerData.worker_types, "长度:", workerData.worker_types?.length)
+      console.log("[工人端] 检查权限:", {
+        hasInstall: workerData.worker_types?.includes("install"),
+        hasDelivery: workerData.worker_types?.includes("delivery"),
+        hasRepair: workerData.worker_types?.includes("repair")
+      })
+      
+      setWorkerId(workerData.id)
+      setWorkerInfo(workerData)
+      setIsLoggedIn(true)
+      setIsLoginDialogOpen(false)
+
+      // 保存到localStorage
+      localStorage.setItem("workerId", workerData.id)
+      localStorage.setItem("workerInfo", JSON.stringify(workerData))
+
+      // 如果是配送员且有产品类型，设置默认产品类型
+      if (workerData.worker_types?.includes("delivery") && workerData.product_types?.length > 0) {
+        setProductType(workerData.product_types[0])
+      }
+
+      // 清空登录表单
+      setLoginWorkerId("")
+      setLoginPhone("")
+    } catch (error: any) {
+      console.error("[工人端] 登录失败:", error)
+      alert(`登录失败: ${error.message || "未知错误"}`)
+    } finally {
+      setIsLoggingIn(false)
+    }
+  }
+
+  // 退出登录
+  const handleLogout = () => {
+    if (typeof window !== 'undefined' && window.confirm("确定要退出登录吗？")) {
+      localStorage.removeItem("workerId")
+      localStorage.removeItem("workerInfo")
+      setWorkerId(null)
+      setWorkerInfo(null)
+      setIsLoggedIn(false)
+      setIsLoginDialogOpen(true)
+      setCurrentView("home")
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
@@ -2407,7 +2731,7 @@ export default function WorkerPage() {
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-500/30">
                 <Package className="h-6 w-6 text-white" />
               </div>
-              <div>
+              <div className="flex-1">
                 <h1 className="text-lg font-bold leading-tight text-white">
                   {currentView === "home" && "服务端工作台"}
                   {currentView === "install" && "设备安装登记"}
@@ -2424,9 +2748,162 @@ export default function WorkerPage() {
                 </p>
               </div>
             </div>
+            {/* 登录状态 */}
+            <div className="flex items-center gap-3">
+              {isLoggedIn && workerInfo ? (
+                <>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-white">{workerInfo.name}</div>
+                    <div className="text-xs text-slate-400 flex items-center gap-1 mt-1">
+                      {workerInfo.worker_types?.map((type) => {
+                        const labels: Record<string, string> = {
+                          delivery: "配送员",
+                          repair: "维修工",
+                          install: "安装工",
+                        }
+                        return (
+                          <Badge key={type} variant="outline" className="text-xs border-blue-500/50 text-blue-400">
+                            {labels[type] || type}
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="text-white hover:bg-white/10"
+                  >
+                    <LogOut className="h-4 w-4 mr-1" />
+                    退出
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsLoginDialogOpen(true)}
+                  className="text-white hover:bg-white/10"
+                >
+                  <LogIn className="h-4 w-4 mr-1" />
+                  登录
+                </Button>
+              )}
+            </div>
+          </div>
+          
+          {/* 网络状态和暂存操作提示 */}
+          <div className="flex items-center gap-2">
+            {!isOnline && (
+              <Badge variant="outline" className="bg-yellow-500/20 border-yellow-500/50 text-yellow-400">
+                <WifiOff className="h-3 w-3 mr-1" />
+                离线模式
+              </Badge>
+            )}
+            {pendingCount > 0 && (
+              <Badge 
+                variant="outline" 
+                className="bg-blue-500/20 border-blue-500/50 text-blue-400 cursor-pointer hover:bg-blue-500/30"
+                onClick={sync}
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    同步中...
+                  </>
+                ) : (
+                  <>
+                    <Wifi className="h-3 w-3 mr-1" />
+                    {pendingCount} 个待提交
+                  </>
+                )}
+              </Badge>
+            )}
           </div>
         </div>
       </header>
+
+      {/* 登录对话框 */}
+      {isLoginDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <Card className="w-full max-w-md bg-slate-900 border-slate-700 p-6">
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <LogIn className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">工人登录</h2>
+                <p className="text-sm text-slate-400">请输入工人ID或电话号码登录</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-slate-300">工人ID</Label>
+                  <Input
+                    placeholder="请输入工人ID（可选）"
+                    value={loginWorkerId}
+                    onChange={(e) => setLoginWorkerId(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-slate-300">
+                    电话号码 <span className="text-red-400">*</span>
+                  </Label>
+                  <Input
+                    type="tel"
+                    placeholder="请输入电话号码"
+                    value={loginPhone}
+                    onChange={(e) => setLoginPhone(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleLogin()
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (isLoggedIn) {
+                        setIsLoginDialogOpen(false)
+                      } else {
+                        alert("请先登录才能使用系统")
+                      }
+                    }}
+                    className="flex-1 border-slate-700 text-slate-400 hover:bg-slate-800"
+                    disabled={isLoggingIn}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleLogin}
+                    disabled={isLoggingIn || (!loginWorkerId && !loginPhone)}
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white"
+                  >
+                    {isLoggingIn ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        登录中...
+                      </>
+                    ) : (
+                      <>
+                        <LogIn className="h-4 w-4 mr-2" />
+                        登录
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
@@ -2444,75 +2921,102 @@ export default function WorkerPage() {
                 </div>
               </Card>
 
-              {/* 三个功能按钮 */}
+              {/* 功能按钮 - 根据工人类型显示 */}
               <div className="space-y-4">
-                {/* 设备安装 */}
-                <Card
-                  className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
-                  onClick={() => setCurrentView("install")}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
-                      <Package className="h-8 w-8 text-white" />
+                {/* 设备安装 - 仅安装工可见 */}
+                {workerInfo?.worker_types?.includes("install") && (
+                  <Card
+                    className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
+                    onClick={() => setCurrentView("install")}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
+                        <HardHat className="h-8 w-8 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">设备安装</h3>
+                        <p className="text-sm text-slate-400">扫码登记新设备安装信息</p>
+                      </div>
+                      <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">设备安装</h3>
-                      <p className="text-sm text-slate-400">扫码登记新设备安装信息</p>
-                    </div>
-                    <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
-                  </div>
-                </Card>
+                  </Card>
+                )}
 
-                {/* 待接单订单 */}
-                <Card
-                  className="bg-slate-900/40 backdrop-blur-md border border-orange-500/30 shadow-lg shadow-orange-500/20 p-6 hover:scale-[1.02] hover:shadow-orange-500/30 transition-all cursor-pointer"
-                  onClick={() => setCurrentView("orders")}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 flex-shrink-0">
-                      <Package className="h-8 w-8 text-white" />
+                {/* 待接单订单 - 仅配送员可见 */}
+                {workerInfo?.worker_types?.includes("delivery") && (
+                  <Card
+                    className="bg-slate-900/40 backdrop-blur-md border border-orange-500/30 shadow-lg shadow-orange-500/20 p-6 hover:scale-[1.02] hover:shadow-orange-500/30 transition-all cursor-pointer"
+                    onClick={() => setCurrentView("orders")}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 flex-shrink-0">
+                        <Truck className="h-8 w-8 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">待接单订单</h3>
+                        <p className="text-sm text-slate-400">查看和接单配送任务</p>
+                      </div>
+                      <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">待接单订单</h3>
-                      <p className="text-sm text-slate-400">查看和接单配送任务</p>
-                    </div>
-                    <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
-                  </div>
-                </Card>
+                  </Card>
+                )}
 
-                {/* 燃料配送 */}
-                <Card
-                  className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
-                  onClick={() => setCurrentView("delivery")}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
-                      <Truck className="h-8 w-8 text-white" />
+                {/* 燃料配送 - 仅配送员可见 */}
+                {workerInfo?.worker_types?.includes("delivery") && (
+                  <Card
+                    className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
+                    onClick={() => setCurrentView("delivery")}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
+                        <Truck className="h-8 w-8 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">燃料配送</h3>
+                        <p className="text-sm text-slate-400">记录燃料补给信息</p>
+                      </div>
+                      <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">燃料配送</h3>
-                      <p className="text-sm text-slate-400">记录燃料补给信息</p>
-                    </div>
-                    <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
-                  </div>
-                </Card>
+                  </Card>
+                )}
 
-                {/* 故障维修 */}
-                <Card
-                  className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
-                  onClick={() => setCurrentView("repair")}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/30 flex-shrink-0">
-                      <Wrench className="h-8 w-8 text-white" />
+                {/* 故障维修 - 仅维修工可见 */}
+                {workerInfo?.worker_types?.includes("repair") && (
+                  <Card
+                    className="bg-slate-900/40 backdrop-blur-md border border-purple-500/30 shadow-lg shadow-purple-500/20 p-6 hover:scale-[1.02] hover:shadow-purple-500/30 transition-all cursor-pointer"
+                    onClick={() => setCurrentView("repair")}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30 flex-shrink-0">
+                        <Wrench className="h-8 w-8 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">故障维修</h3>
+                        <p className="text-sm text-slate-400">处理设备故障和申请解锁</p>
+                      </div>
+                      <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">故障维修</h3>
-                      <p className="text-sm text-slate-400">处理设备故障和申请解锁</p>
+                  </Card>
+                )}
+
+                {/* 如果没有任何权限，显示提示 */}
+                {(!workerInfo || !workerInfo.worker_types || workerInfo.worker_types.length === 0) && (
+                  <Card className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 p-6">
+                    <div className="text-center">
+                      <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-3" />
+                      <h3 className="text-lg font-semibold text-white mb-2">暂无可用功能</h3>
+                      <p className="text-sm text-slate-400 mb-4">请联系管理员分配工作权限</p>
+                      <div className="text-xs text-slate-500 mt-4 p-3 bg-slate-800/50 rounded-lg text-left">
+                        <p className="mb-2 font-semibold">调试信息：</p>
+                        <p>workerInfo: {workerInfo ? "存在" : "不存在"}</p>
+                        <p>worker_types: {workerInfo?.worker_types ? JSON.stringify(workerInfo.worker_types) : "无"}</p>
+                        <p>worker_types类型: {workerInfo?.worker_types ? typeof workerInfo.worker_types : "无"}</p>
+                        <p>是否为数组: {workerInfo?.worker_types ? Array.isArray(workerInfo.worker_types) ? "是" : "否" : "无"}</p>
+                        <p>数组长度: {workerInfo?.worker_types ? Array.isArray(workerInfo.worker_types) ? workerInfo.worker_types.length : "N/A" : "无"}</p>
+                      </div>
                     </div>
-                    <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
-                  </div>
-                </Card>
+                  </Card>
+                )}
               </div>
 
               {/* 使用说明 */}
@@ -2544,7 +3048,7 @@ export default function WorkerPage() {
           )}
 
           {currentView === "install" && (
-            <InstallForm onBack={() => setCurrentView("home")} />
+            <InstallForm onBack={() => setCurrentView("home")} workerId={workerId} />
           )}
 
           {currentView === "orders" && (
@@ -2571,31 +3075,64 @@ export default function WorkerPage() {
             </div>
           )}
 
-          {currentView === "delivery" && (
-            <DeliveryForm onBack={() => setCurrentView("home")} />
-          )}
+            {currentView === "delivery" && workerInfo?.worker_types?.includes("delivery") ? (
+            <DeliveryForm onBack={() => setCurrentView("home")} workerId={workerId} />
+          ) : currentView === "delivery" ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-3" />
+              <p className="text-slate-400">您没有配送权限，请联系管理员</p>
+              <Button onClick={() => setCurrentView("home")} className="mt-4">返回首页</Button>
+            </div>
+          ) : null}
 
-          {currentView === "repair" && (
-            <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-yellow-500/30">
-                  <Wrench className="h-8 w-8 text-white" />
+          {currentView === "repair" && workerInfo?.worker_types?.includes("repair") ? (
+            <div className="space-y-6">
+              <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/30">
+                    <Wrench className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">维修工单管理</h2>
+                    <p className="text-sm text-slate-400">接收和处理设备维修工单</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-white mb-2">故障维修功能</h2>
-                  <p className="text-sm text-slate-400">该功能正在开发中，敬请期待</p>
+
+                {/* 状态筛选 */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {[
+                    { value: "all", label: "全部" },
+                    { value: "pending", label: "待处理" },
+                    { value: "processing", label: "处理中" },
+                    { value: "completed", label: "已完成" },
+                  ].map((filter) => (
+                    <Button
+                      key={filter.value}
+                      variant={repairStatusFilter === filter.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setRepairStatusFilter(filter.value as any)}
+                      className={
+                        repairStatusFilter === filter.value
+                          ? "bg-yellow-600 hover:bg-yellow-700"
+                          : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                      }
+                    >
+                      {filter.label}
+                    </Button>
+                  ))}
                 </div>
-                <Button
-                  onClick={() => setCurrentView("home")}
-                  variant="outline"
-                  className="border-slate-700 text-slate-300 hover:bg-slate-800/50"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  返回首页
-                </Button>
-              </div>
-            </Card>
-          )}
+
+                {/* 维修工单列表 */}
+                <WorkerRepairList workerId={workerId} statusFilter={repairStatusFilter} />
+              </Card>
+            </div>
+          ) : currentView === "repair" ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-3" />
+              <p className="text-slate-400">您没有维修权限，请联系管理员</p>
+              <Button onClick={() => setCurrentView("home")} className="mt-4">返回首页</Button>
+            </div>
+          ) : null}
         </div>
       </main>
     </div>

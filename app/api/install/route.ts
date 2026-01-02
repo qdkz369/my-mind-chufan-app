@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 // POST: 提交设备安装信息
+// 需要安装工权限
 export async function POST(request: Request) {
   try {
     // 检查 Supabase 是否已配置（使用 isSupabaseConfigured 而不是直接检查环境变量）
@@ -22,8 +24,16 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+    
+    // 验证安装工权限
+    const authResult = await verifyWorkerPermission(request, "install", body)
+    if (authResult instanceof NextResponse) {
+      return authResult // 返回错误响应
+    }
+    const worker = authResult.worker
+    console.log("[安装API] 权限验证通过，安装工:", worker.name)
 
-    const { device_id, model, address, installer, install_date } = body
+    const { device_id, model, address, installer, install_date, install_proof_image } = body
 
     // 验证必要参数
     if (!device_id) {
@@ -97,6 +107,7 @@ export async function POST(request: Request) {
           address: address,
           installer: installer,
           install_date: installDate,
+          install_proof_image: install_proof_image || null, // 安装凭证图片URL
           status: "online",
           is_locked: false,
           updated_at: new Date().toISOString(),
@@ -137,6 +148,7 @@ export async function POST(request: Request) {
           address: address,
           installer: installer,
           install_date: installDate,
+          install_proof_image: install_proof_image || null, // 安装凭证图片URL
           status: "online",
           is_locked: false,
           created_at: new Date().toISOString(),
@@ -177,6 +189,7 @@ export async function POST(request: Request) {
         address: deviceData.address,
         installer: deviceData.installer,
         install_date: deviceData.install_date,
+        install_proof_image: deviceData.install_proof_image || null,
         status: deviceData.status,
       },
     })

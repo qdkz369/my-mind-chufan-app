@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 // POST: 记录配送操作到 filling_logs
+// 需要配送员权限
 export async function POST(request: Request) {
   try {
     // 检查环境变量
@@ -22,6 +24,14 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+    
+    // 验证配送员权限
+    const authResult = await verifyWorkerPermission(request, "delivery", body)
+    if (authResult instanceof NextResponse) {
+      return authResult // 返回错误响应
+    }
+    const worker = authResult.worker
+    console.log("[配送记录API] 权限验证通过，配送员:", worker.name)
 
     const {
       restaurant_id,

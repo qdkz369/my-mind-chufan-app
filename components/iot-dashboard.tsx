@@ -1,6 +1,6 @@
 "use client"
 
-import { Flame, TrendingDown, TrendingUp, Activity, Zap } from "lucide-react"
+import { Flame, TrendingDown, TrendingUp, Activity, Zap, Wrench } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
@@ -90,7 +90,7 @@ export function IoTDashboard() {
       <div className="grid grid-cols-2 gap-3">
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/30 backdrop-blur-sm p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">租赁设备</span>
+            <span className="text-sm text-slate-300">我的设备</span>
             <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">5台在用</Badge>
           </div>
           <div className="text-3xl font-bold text-white mb-1">100%</div>
@@ -102,11 +102,13 @@ export function IoTDashboard() {
 
         <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/30 backdrop-blur-sm p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">维修预警</span>
-            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">2个待处理</Badge>
+            <span className="text-sm text-slate-300">一键报修</span>
+            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs">快速报修</Badge>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">15</div>
-          <div className="text-xs text-slate-400">天内需保养</div>
+          <div className="text-3xl font-bold text-white mb-1">
+            <Wrench className="h-8 w-8 inline-block mb-1" />
+          </div>
+          <div className="text-xs text-purple-400">点击提交报修</div>
         </Card>
       </div>
     </div>

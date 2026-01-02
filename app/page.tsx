@@ -31,12 +31,20 @@ import {
   QrCode,
   X,
   AlertCircle,
+  Mic,
+  MicOff,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { useEffect, useState } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { useEffect, useState, useRef } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
@@ -589,7 +597,7 @@ function Header() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* 二维码图标 - 放在搜索图标左侧，带亮绿色呼吸灯特效 */}
+              {/* 二维码图标 - 放在搜索图标左侧，带心电图脉冲特效和轻微外发光 */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -598,30 +606,10 @@ function Header() {
                 className="relative text-white hover:bg-white/10 transition-all overflow-visible group"
                 title={isGeneratingToken ? "正在生成令牌..." : deviceCount === 0 ? "查看提示信息" : "查看身份二维码"}
               >
-                {/* 呼吸灯光晕效果 - 已注册时显示绿色光晕，未注册时不显示光晕 */}
-                {restaurantId && (
-                  <>
-                    <div 
-                      className="absolute inset-0 rounded-full bg-[#4ade80] blur-md"
-                      style={{
-                        animation: 'breathe-glow 3s ease-in-out infinite',
-                        opacity: 0.08,
-                      }}
-                    ></div>
-                    <div 
-                      className="absolute inset-0 rounded-full bg-[#4ade80] blur-sm"
-                      style={{
-                        animation: 'breathe-glow 3s ease-in-out infinite 0.5s',
-                        opacity: 0.05,
-                      }}
-                    ></div>
-                  </>
-                )}
-                
                 {isGeneratingToken ? (
                   <div className={`h-5 w-5 border-2 border-t-transparent rounded-full animate-spin relative z-10 ${restaurantId ? 'border-[#4ade80]' : 'border-slate-500'}`} />
                 ) : (
-                  <QrCode className={`h-5 w-5 relative z-10 transition-all group-hover:scale-110 ${restaurantId ? 'text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'text-slate-500'}`} />
+                  <QrCode className={`h-5 w-5 relative z-10 transition-all group-hover:scale-110 ${restaurantId ? 'text-[#4ade80] animate-pulse drop-shadow-[0_0_12px_rgba(74,222,128,0.8),0_0_20px_rgba(74,222,128,0.4)]' : 'text-slate-500'}`} />
                 )}
               </Button>
               
@@ -663,6 +651,66 @@ function IoTDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [isLocked, setIsLocked] = useState(false)
   const [deviceId, setDeviceId] = useState<string>("default")
+  const [deviceCount, setDeviceCount] = useState(0)
+  const [onlineDeviceCount, setOnlineDeviceCount] = useState(0)
+  const [restaurantId, setRestaurantId] = useState<string | null>(null)
+  const [devices, setDevices] = useState<Array<{device_id: string, status: string}>>([])
+  const [isRepairDialogOpen, setIsRepairDialogOpen] = useState(false)
+  const [repairDescription, setRepairDescription] = useState("")
+  const [repairDeviceId, setRepairDeviceId] = useState<string>("")
+  const [repairUrgency, setRepairUrgency] = useState<"low" | "medium" | "high">("medium")
+  const [isSubmittingRepair, setIsSubmittingRepair] = useState(false)
+  const [repairHistory, setRepairHistory] = useState<Array<{
+    id: string
+    service_type: string
+    status: string
+    created_at: string
+    amount: number
+  }>>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [repairTab, setRepairTab] = useState<"submit" | "history">("submit")
+  const [isRecording, setIsRecording] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
+  useEffect(() => {
+    // 获取 restaurantId
+    if (typeof window !== "undefined") {
+      const rid = localStorage.getItem("restaurantId")
+      setRestaurantId(rid)
+    }
+  }, [])
+
+  useEffect(() => {
+    // 加载设备数据
+    const loadDeviceData = async () => {
+      if (!restaurantId || !supabase) return
+
+      try {
+        // 查询该餐厅绑定的所有设备
+        const { data: devices, error } = await supabase
+          .from("devices")
+          .select("device_id, status")
+          .eq("restaurant_id", restaurantId)
+
+        if (error) {
+          console.error("[我的设备] 查询失败:", error)
+          return
+        }
+
+        if (devices) {
+          const totalCount = devices.length
+          const onlineCount = devices.filter(d => d.status === "online").length
+          setDeviceCount(totalCount)
+          setOnlineDeviceCount(onlineCount)
+          setDevices(devices) // 保存设备列表供报修使用
+        }
+      } catch (error) {
+        console.error("[我的设备] 加载失败:", error)
+      }
+    }
+
+    loadDeviceData()
+  }, [restaurantId])
 
   useEffect(() => {
     // 加载燃料剩余百分比和锁机状态
@@ -769,6 +817,173 @@ function IoTDashboard() {
     }
   }, [])
 
+  // 初始化语音识别
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // 检查浏览器是否支持语音识别
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      if (SpeechRecognition) {
+        const recognitionInstance = new SpeechRecognition()
+        recognitionInstance.lang = "zh-CN" // 设置为中文
+        recognitionInstance.continuous = true // 持续识别
+        recognitionInstance.interimResults = true // 返回临时结果
+
+        recognitionInstance.onresult = (event: any) => {
+          let finalTranscript = ""
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript + " "
+            }
+          }
+          
+          // 只追加最终结果，避免重复添加
+          if (finalTranscript) {
+            setRepairDescription((prev) => prev + finalTranscript)
+          }
+        }
+
+        recognitionInstance.onerror = (event: any) => {
+          console.error("[语音识别] 错误:", event.error)
+          if (event.error === "no-speech") {
+            // 没有检测到语音，可以忽略
+            return
+          }
+          setIsRecording(false)
+          if (event.error !== "aborted") {
+            alert(`语音识别错误: ${event.error}`)
+          }
+        }
+
+        recognitionInstance.onend = () => {
+          setIsRecording(false)
+        }
+
+        recognitionRef.current = recognitionInstance
+      }
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop()
+        } catch (error) {
+          // 忽略停止时的错误
+        }
+      }
+    }
+  }, [])
+
+  // 开始/停止语音录入
+  const toggleRecording = () => {
+    if (!recognitionRef.current) {
+      alert("您的浏览器不支持语音识别功能，请使用Chrome或Edge浏览器")
+      return
+    }
+
+    if (isRecording) {
+      try {
+        recognitionRef.current.stop()
+        setIsRecording(false)
+      } catch (error) {
+        console.error("[语音识别] 停止失败:", error)
+        setIsRecording(false)
+      }
+    } else {
+      try {
+        recognitionRef.current.start()
+        setIsRecording(true)
+      } catch (error) {
+        console.error("[语音识别] 启动失败:", error)
+        alert("无法启动语音识别，请检查麦克风权限")
+        setIsRecording(false)
+      }
+    }
+  }
+
+  // 加载历史维修记录
+  useEffect(() => {
+    const loadRepairHistory = async () => {
+      if (!restaurantId || !supabase) return
+
+      setIsLoadingHistory(true)
+      try {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("id, service_type, status, created_at, amount")
+          .eq("restaurant_id", restaurantId)
+          .like("service_type", "维修服务%")
+          .order("created_at", { ascending: false })
+          .limit(20)
+
+        if (error) {
+          console.error("[历史维修] 查询失败:", error)
+          return
+        }
+
+        if (data) {
+          setRepairHistory(data)
+        }
+      } catch (error) {
+        console.error("[历史维修] 加载失败:", error)
+      } finally {
+        setIsLoadingHistory(false)
+      }
+    }
+
+    // 当切换到历史记录标签页时加载数据
+    if (repairTab === "history" && isRepairDialogOpen && restaurantId) {
+      loadRepairHistory()
+    }
+  }, [repairTab, isRepairDialogOpen, restaurantId])
+
+  // 提交报修
+  const handleSubmitRepair = async () => {
+    if (!restaurantId) {
+      alert("请先登录")
+      return
+    }
+
+    if (!repairDescription.trim()) {
+      alert("请填写问题描述")
+      return
+    }
+
+    setIsSubmittingRepair(true)
+    try {
+      const response = await fetch("/api/repair/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          restaurant_id: restaurantId,
+          device_id: repairDeviceId || undefined,
+          description: repairDescription.trim(),
+          urgency: repairUrgency,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "提交报修失败")
+      }
+
+      alert("报修工单提交成功！我们会尽快安排维修人员联系您。")
+      setRepairDescription("")
+      setRepairDeviceId("")
+      setRepairUrgency("medium")
+      // 切换到历史记录标签页（会自动触发加载）
+      setRepairTab("history")
+    } catch (error) {
+      console.error("[报修] 提交失败:", error)
+      alert(error instanceof Error ? error.message : "提交报修失败，请重试")
+    } finally {
+      setIsSubmittingRepair(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card className="bg-gradient-to-br from-blue-950/90 to-slate-900/90 border-blue-800/50 backdrop-blur-sm p-6">
@@ -861,25 +1076,320 @@ function IoTDashboard() {
       <div className="grid grid-cols-2 gap-3">
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/30 backdrop-blur-sm p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">租赁设备</span>
-            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">5台在用</Badge>
+            <span className="text-sm text-slate-300">我的设备</span>
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+              {deviceCount > 0 ? `${deviceCount}台绑定` : "未绑定"}
+            </Badge>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">100%</div>
-          <div className="text-xs text-green-400 flex items-center gap-1">
+          <div className="text-3xl font-bold text-white mb-1">
+            {deviceCount > 0 ? Math.round((onlineDeviceCount / deviceCount) * 100) : 0}%
+          </div>
+          <div className={`text-xs flex items-center gap-1 ${deviceCount > 0 && onlineDeviceCount === deviceCount ? 'text-green-400' : deviceCount > 0 ? 'text-yellow-400' : 'text-slate-400'}`}>
             <TrendingUp className="h-3 w-3" />
-            运行正常
+            {deviceCount > 0 
+              ? onlineDeviceCount === deviceCount 
+                ? "全部在线" 
+                : `${onlineDeviceCount}台在线`
+              : "暂无设备"}
           </div>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/30 backdrop-blur-sm p-4">
+        <Card 
+          className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/30 backdrop-blur-sm p-4 cursor-pointer hover:border-purple-700/50 transition-colors"
+          onClick={() => setIsRepairDialogOpen(true)}
+        >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">维修预警</span>
-            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">2个待处理</Badge>
+            <span className="text-sm text-slate-300">一键报修</span>
+            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs">
+              <Wrench className="h-3 w-3 mr-1" />
+              快速报修
+            </Badge>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">15</div>
-          <div className="text-xs text-slate-400">天内需保养</div>
+          <div className="text-3xl font-bold text-white mb-1">
+            <Wrench className="h-8 w-8 inline-block mb-1" />
+          </div>
+          <div className="text-xs text-purple-400 flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" />
+            点击提交报修
+          </div>
         </Card>
       </div>
+
+      {/* 报修对话框 */}
+      <Dialog open={isRepairDialogOpen} onOpenChange={(open) => {
+        setIsRepairDialogOpen(open)
+        if (!open) {
+          setRepairTab("submit") // 关闭时重置到提交标签页
+        }
+      }}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-purple-400" />
+              一键报修
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              提交报修或查看历史维修记录
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs value={repairTab} onValueChange={(value) => setRepairTab(value as "submit" | "history")} className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="grid w-full grid-cols-2 bg-slate-800">
+              <TabsTrigger value="submit" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+                提交报修
+              </TabsTrigger>
+              <TabsTrigger value="history" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+                历史记录
+              </TabsTrigger>
+            </TabsList>
+
+            {/* 提交报修标签页 */}
+            <TabsContent value="submit" className="flex-1 overflow-y-auto space-y-4 py-4 mt-4">
+              {/* 设备选择 */}
+              {devices.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="device" className="text-slate-300">选择设备（可选）</Label>
+                  <Select value={repairDeviceId || "none"} onValueChange={(value) => setRepairDeviceId(value === "none" ? "" : value)}>
+                    <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                      <SelectValue placeholder="选择需要报修的设备" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      <SelectItem value="none" className="text-white hover:bg-slate-700">
+                        不指定设备
+                      </SelectItem>
+                      {devices.map((device) => (
+                        <SelectItem 
+                          key={device.device_id} 
+                          value={device.device_id}
+                          className="text-white hover:bg-slate-700"
+                        >
+                          {device.device_id} {device.status === "online" ? "(在线)" : "(离线)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* 问题描述 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="description" className="text-slate-300">
+                    问题描述 <span className="text-red-400">*</span>
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleRecording}
+                    className={`h-7 px-2 text-xs ${isRecording ? 'text-red-400 hover:text-red-300' : 'text-slate-400 hover:text-white'}`}
+                    disabled={!recognitionRef.current}
+                  >
+                    {isRecording ? (
+                      <>
+                        <div className="h-3 w-3 rounded-full bg-red-400 animate-pulse mr-1.5" />
+                        <MicOff className="h-3.5 w-3.5 mr-1" />
+                        停止录音
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-3.5 w-3.5 mr-1" />
+                        语音录入
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="relative">
+                  <Textarea
+                    id="description"
+                    placeholder="请详细描述设备故障或需要维修的问题...（或点击右上角语音录入）"
+                    value={repairDescription}
+                    onChange={(e) => setRepairDescription(e.target.value)}
+                    className="min-h-[100px] bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 pr-10"
+                    rows={4}
+                  />
+                  {isRecording && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 bg-red-500/20 border border-red-500/30 rounded text-xs text-red-400">
+                      <div className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+                      正在录音...
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 紧急程度 */}
+              <div className="space-y-2">
+                <Label htmlFor="urgency" className="text-slate-300">紧急程度</Label>
+                <Select value={repairUrgency} onValueChange={(value: "low" | "medium" | "high") => setRepairUrgency(value)}>
+                  <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    <SelectItem value="low" className="text-white hover:bg-slate-700">
+                      低 - 可延后处理
+                    </SelectItem>
+                    <SelectItem value="medium" className="text-white hover:bg-slate-700">
+                      中 - 尽快处理
+                    </SelectItem>
+                    <SelectItem value="high" className="text-white hover:bg-slate-700">
+                      高 - 紧急处理
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <DialogFooter className="mt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setIsRepairDialogOpen(false)}
+                  className="text-slate-400 hover:text-white"
+                  disabled={isSubmittingRepair}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleSubmitRepair}
+                  disabled={isSubmittingRepair || !repairDescription.trim()}
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  {isSubmittingRepair ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      提交中...
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-4 w-4 mr-2" />
+                      提交报修
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </TabsContent>
+
+            {/* 历史记录标签页 */}
+            <TabsContent value="history" className="flex-1 overflow-y-auto py-4 mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-slate-300">历史维修记录</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (restaurantId && supabase) {
+                      const loadRepairHistory = async () => {
+                        setIsLoadingHistory(true)
+                        try {
+                          const { data, error } = await supabase
+                            .from("orders")
+                            .select("id, service_type, status, created_at, amount")
+                            .eq("restaurant_id", restaurantId)
+                            .like("service_type", "维修服务%")
+                            .order("created_at", { ascending: false })
+                            .limit(20)
+
+                          if (error) {
+                            console.error("[历史维修] 查询失败:", error)
+                            return
+                          }
+
+                          if (data) {
+                            setRepairHistory(data)
+                          }
+                        } catch (error) {
+                          console.error("[历史维修] 加载失败:", error)
+                        } finally {
+                          setIsLoadingHistory(false)
+                        }
+                      }
+                      loadRepairHistory()
+                    }
+                  }}
+                  disabled={isLoadingHistory || !restaurantId}
+                  className="text-slate-400 hover:text-white h-7"
+                >
+                  <Clock className="h-3.5 w-3.5 mr-1" />
+                  刷新
+                </Button>
+              </div>
+
+              {isLoadingHistory ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="h-8 w-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : repairHistory.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <Wrench className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm">暂无维修记录</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {repairHistory.map((record) => {
+                    // 解析service_type获取详细信息
+                    const parts = record.service_type.split(" - ")
+                    const deviceInfo = parts.find(p => p.startsWith("设备:"))?.replace("设备:", "") || ""
+                    const urgencyInfo = parts.find(p => p.startsWith("紧急:"))?.replace("紧急:", "") || ""
+                    const description = parts[parts.length - 1] || record.service_type
+
+                    // 状态颜色映射
+                    const statusColors: Record<string, string> = {
+                      pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+                      processing: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+                      completed: "bg-green-500/20 text-green-400 border-green-500/30",
+                      cancelled: "bg-red-500/20 text-red-400 border-red-500/30",
+                    }
+
+                    const statusLabels: Record<string, string> = {
+                      pending: "待处理",
+                      processing: "处理中",
+                      completed: "已完成",
+                      cancelled: "已取消",
+                    }
+
+                    const statusColor = statusColors[record.status] || "bg-slate-500/20 text-slate-400 border-slate-500/30"
+                    const statusLabel = statusLabels[record.status] || record.status
+
+                    // 格式化时间
+                    const date = new Date(record.created_at)
+                    const timeStr = date.toLocaleString("zh-CN", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+
+                    return (
+                      <Card key={record.id} className="bg-slate-800/50 border-slate-700 p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Wrench className="h-4 w-4 text-purple-400" />
+                              <span className="text-sm font-medium text-white">维修工单</span>
+                              <Badge className={`text-xs ${statusColor}`}>
+                                {statusLabel}
+                              </Badge>
+                            </div>
+                            {deviceInfo && (
+                              <p className="text-xs text-slate-400 mb-1">设备: {deviceInfo}</p>
+                            )}
+                            <p className="text-sm text-slate-300 line-clamp-2">{description}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
+                          <span className="text-xs text-slate-500">{timeStr}</span>
+                          {record.amount > 0 && (
+                            <span className="text-sm font-semibold text-white">¥{record.amount}</span>
+                          )}
+                        </div>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

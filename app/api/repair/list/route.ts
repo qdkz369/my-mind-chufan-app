@@ -1,0 +1,79 @@
+import { NextResponse } from "next/server"
+import { supabase } from "@/lib/supabase"
+import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
+
+/**
+ * GET: 获取报修工单列表
+ * 支持按状态筛选，用于管理端或维修工查看
+ * 如果请求头中包含 x-worker-id，则验证维修工权限
+ */
+export async function GET(request: Request) {
+  try {
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "数据库连接失败" },
+        { status: 500 }
+      )
+    }
+
+    // 如果请求头中包含worker_id，验证维修工权限
+    const workerId = request.headers.get("x-worker-id")
+    if (workerId) {
+      const authResult = await verifyWorkerPermission(request, "repair")
+      if (authResult instanceof NextResponse) {
+        return authResult // 返回错误响应
+      }
+      console.log("[报修列表API] 权限验证通过，工人:", authResult.worker.name)
+    }
+
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
+    const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
+
+    // 构建查询
+    let query = supabase
+      .from("orders")
+      .select(
+        "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, restaurants(id, name, address, contact_phone, contact_name)"
+      )
+      .eq("service_type", "维修服务") // 只查询维修服务订单（使用精确匹配）
+
+    // 状态筛选
+    if (status) {
+      query = query.eq("status", status)
+    }
+
+    // 餐厅筛选
+    if (restaurantId) {
+      query = query.eq("restaurant_id", restaurantId)
+    }
+
+    const { data: repairs, error } = await query.order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("[报修列表API] 查询失败:", error)
+      return NextResponse.json(
+        {
+          error: "查询失败",
+          details: error.message,
+        },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: repairs || [],
+    })
+  } catch (error) {
+    console.error("[报修列表API] 处理请求时出错:", error)
+    return NextResponse.json(
+      {
+        error: "服务器内部错误",
+        details: error instanceof Error ? error.message : "未知错误",
+      },
+      { status: 500 }
+    )
+  }
+}
+

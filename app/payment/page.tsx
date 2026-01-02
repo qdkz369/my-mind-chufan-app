@@ -227,6 +227,7 @@ function PaymentContent() {
     if (typeof window === "undefined") return
 
     try {
+      if (typeof window === "undefined") return
       const savedOrder = localStorage.getItem("lastSuccessfulOrder")
       if (savedOrder) {
         const orderData = JSON.parse(savedOrder)
@@ -588,6 +589,10 @@ function PaymentContent() {
     if (typeof window === "undefined") return
     
     // 获取当前用户的 restaurant_id
+    if (typeof window === "undefined") {
+      setError("无法在服务器端获取用户信息")
+      return
+    }
     const restaurantId = localStorage.getItem("restaurantId")
     
     if (!restaurantId) {
@@ -645,7 +650,9 @@ function PaymentContent() {
           useGPS,
           savedAt: Date.now(),
         }
-        localStorage.setItem("lastSuccessfulOrder", JSON.stringify(orderDataToSave))
+        if (typeof window !== "undefined") {
+          localStorage.setItem("lastSuccessfulOrder", JSON.stringify(orderDataToSave))
+        }
       } catch (error) {
         console.error("保存订单信息失败:", error)
       }

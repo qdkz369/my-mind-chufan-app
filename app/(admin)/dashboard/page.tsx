@@ -49,6 +49,7 @@ import {
   DollarSign,
   TrendingUp,
   Loader2,
+  HardHat,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -115,6 +116,11 @@ interface Worker {
   id: string
   name: string
   phone: string | null
+  worker_type?: "delivery" | "repair" | "install" | string[] | null // 工人类型：配送员、维修工、安装工（支持多选）
+  product_types?: string[] | null // 产品类型（仅配送员）：lpg, clean, alcohol, outdoor
+  status?: "active" | "inactive" | null // 状态：在职、离职
+  created_at?: string
+  updated_at?: string
 }
 
 interface Device {
@@ -153,6 +159,7 @@ const menuItems = [
   { icon: Home, label: "工作台", key: "dashboard" },
   { icon: Users, label: "餐厅管理", key: "restaurants" },
   { icon: Package, label: "订单管理", key: "orders" },
+  { icon: Wrench, label: "报修管理", key: "repairs" },
   { icon: Wrench, label: "设备监控", key: "devices" },
   { icon: Truck, label: "工人管理", key: "workers" },
   { icon: DollarSign, label: "燃料实时价格监控", key: "fuelPricing" },
@@ -178,6 +185,47 @@ export default function AdminDashboard() {
   const [isAssigning, setIsAssigning] = useState(false)
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [isLoadingOrders, setIsLoadingOrders] = useState(false)
+  const [repairs, setRepairs] = useState<any[]>([])
+  const [isLoadingRepairs, setIsLoadingRepairs] = useState(false)
+  const [repairStatusFilter, setRepairStatusFilter] = useState<string>("all")
+  const [selectedRepair, setSelectedRepair] = useState<any | null>(null)
+  const [isRepairDetailDialogOpen, setIsRepairDetailDialogOpen] = useState(false)
+  const [isUpdatingRepair, setIsUpdatingRepair] = useState(false)
+  const [repairUpdateAmount, setRepairUpdateAmount] = useState<string>("")
+  const [repairUpdateStatus, setRepairUpdateStatus] = useState<string>("")
+  const [isAddWorkerDialogOpen, setIsAddWorkerDialogOpen] = useState(false)
+  const [newWorker, setNewWorker] = useState<{
+    name: string
+    phone: string
+    worker_types: string[] // 支持多选
+    product_types: string[]
+    status: "active" | "inactive"
+  }>({
+    name: "",
+    phone: "",
+    worker_types: [],
+    product_types: [],
+    status: "active",
+  })
+  const [isAddingWorker, setIsAddingWorker] = useState(false)
+  const [isEditWorkerDialogOpen, setIsEditWorkerDialogOpen] = useState(false)
+  const [editingWorker, setEditingWorker] = useState<Worker | null>(null)
+  const [editWorker, setEditWorker] = useState<{
+    name: string
+    phone: string
+    worker_types: string[] // 支持多选
+    product_types: string[]
+    status: "active" | "inactive"
+  }>({
+    name: "",
+    phone: "",
+    worker_types: [],
+    product_types: [],
+    status: "active",
+  })
+  const [isUpdatingWorker, setIsUpdatingWorker] = useState(false)
+  const [isDeletingWorker, setIsDeletingWorker] = useState(false)
+  const [deletingWorkerId, setDeletingWorkerId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const [newApiConfig, setNewApiConfig] = useState<ApiConfig>({
     name: "",
@@ -541,6 +589,71 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  // 加载报修数据
+  const loadRepairs = useCallback(async () => {
+    try {
+      setIsLoadingRepairs(true)
+      const statusParam = repairStatusFilter !== "all" ? `?status=${repairStatusFilter}` : ""
+      const response = await fetch(`/api/repair/list${statusParam}`)
+      const result = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(result.error || "加载报修失败")
+      }
+      
+      if (result.success && result.data) {
+        setRepairs(result.data || [])
+      } else {
+        console.error("[Admin Dashboard] 加载报修失败:", result.error || "未知错误")
+        setRepairs([]) // 确保设置为空数组而不是undefined
+      }
+    } catch (error) {
+      console.error("[Admin Dashboard] 加载报修时出错:", error)
+      setRepairs([]) // 出错时设置为空数组
+    } finally {
+      setIsLoadingRepairs(false)
+    }
+  }, [repairStatusFilter])
+
+  // 更新报修状态
+  const updateRepairStatus = useCallback(async (repairId: string, status: string, amount?: number) => {
+    try {
+      setIsUpdatingRepair(true)
+      const response = await fetch("/api/repair/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repair_id: repairId,
+          status: status,
+          amount: amount,
+        }),
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        await loadRepairs()
+        setIsRepairDetailDialogOpen(false)
+        setSelectedRepair(null)
+        setRepairUpdateAmount("")
+        setRepairUpdateStatus("")
+      } else {
+        alert(`更新失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error("[Admin Dashboard] 更新报修时出错:", error)
+      alert("更新报修失败")
+    } finally {
+      setIsUpdatingRepair(false)
+    }
+  }, [loadRepairs])
+
+  // 当切换到报修管理或状态筛选改变时加载数据
+  useEffect(() => {
+    if (activeMenu === "repairs") {
+      loadRepairs()
+    }
+  }, [activeMenu, repairStatusFilter, loadRepairs])
+
   // 加载工人数据
   const loadWorkers = useCallback(async () => {
     if (!supabase) return
@@ -548,26 +661,364 @@ export default function AdminDashboard() {
     try {
       const { data, error } = await supabase
         .from("workers")
-        .select("id, name, phone")
-        .order("name", { ascending: true })
+        .select("id, name, phone, worker_type, product_types, status, created_at, updated_at")
+        .order("created_at", { ascending: false })
 
       if (error) {
         console.error("[Admin Dashboard] 加载工人列表失败:", error)
-        setWorkers([
-          { id: "worker_001", name: "张师傅", phone: "13800138001" },
-          { id: "worker_002", name: "李师傅", phone: "13800138002" },
-          { id: "worker_003", name: "王师傅", phone: "13800138003" },
-        ])
+        setWorkers([])
         return
       }
 
       if (data) {
-        setWorkers(data)
+        // 处理product_types和worker_type（可能是JSON字符串或数组）
+        const processedData = data.map((worker: any) => {
+          // 处理product_types
+          let productTypes = worker.product_types || []
+          if (typeof worker.product_types === 'string') {
+            try {
+              productTypes = JSON.parse(worker.product_types || '[]')
+            } catch (e) {
+              productTypes = []
+            }
+          }
+
+          // 处理worker_type（可能是字符串、数组或JSON字符串）
+          let workerType: string | string[] | null = worker.worker_type
+          if (typeof worker.worker_type === 'string') {
+            // 尝试解析为JSON（如果是JSON字符串）
+            try {
+              const parsed = JSON.parse(worker.worker_type)
+              if (Array.isArray(parsed)) {
+                // 确保数组中的每个元素都是有效的类型字符串，过滤掉无效值
+                const validTypes = parsed.filter((p: any) => 
+                  typeof p === 'string' && ['delivery', 'repair', 'install'].includes(p)
+                )
+                if (validTypes.length > 0) {
+                  workerType = validTypes.length === 1 ? validTypes[0] : validTypes
+                } else {
+                  workerType = null
+                }
+              } else if (typeof parsed === 'string' && ['delivery', 'repair', 'install'].includes(parsed)) {
+                // 如果解析后是单个有效类型字符串
+                workerType = parsed
+              } else {
+                // 解析后不是有效类型，检查原字符串是否是有效类型
+                if (['delivery', 'repair', 'install'].includes(worker.worker_type)) {
+                  workerType = worker.worker_type
+                } else {
+                  workerType = null
+                }
+              }
+            } catch (e) {
+              // 不是JSON，检查是否是有效的单个类型字符串
+              if (['delivery', 'repair', 'install'].includes(worker.worker_type)) {
+                workerType = worker.worker_type
+              } else {
+                workerType = null
+              }
+            }
+          } else if (Array.isArray(worker.worker_type)) {
+            // 如果是数组，过滤出有效类型
+            const validTypes = worker.worker_type.filter((t: any) => 
+              typeof t === 'string' && ['delivery', 'repair', 'install'].includes(t)
+            )
+            workerType = validTypes.length > 0 ? (validTypes.length === 1 ? validTypes[0] : validTypes) : null
+          } else if (worker.worker_type === null || worker.worker_type === undefined) {
+            workerType = null
+          }
+
+          console.log("[加载工人] 原始worker_type:", worker.worker_type, "类型:", typeof worker.worker_type)
+          console.log("[加载工人] 处理后的workerType:", workerType)
+
+          return {
+            ...worker,
+            product_types: productTypes,
+            worker_type: workerType,
+          }
+        })
+        setWorkers(processedData)
       }
     } catch (error) {
       console.error("[Admin Dashboard] 加载工人列表失败:", error)
+      setWorkers([])
     }
   }, [])
+
+  // 添加工人
+  const handleAddWorker = async () => {
+    if (!newWorker.name || !newWorker.phone || newWorker.worker_types.length === 0) {
+      alert("请填写完整信息：姓名、电话和至少选择一个工人类型")
+      return
+    }
+
+    if (newWorker.worker_types.includes("delivery") && newWorker.product_types.length === 0) {
+      alert("配送员必须至少选择一个产品类型")
+      return
+    }
+
+    setIsAddingWorker(true)
+    try {
+      if (!supabase) {
+        throw new Error("数据库连接失败，请检查 Supabase 配置")
+      }
+
+      // 先检查表是否存在
+      const checkResponse = await fetch("/api/worker/check-table")
+      const checkResult = await checkResponse.json()
+      
+      if (!checkResult.exists) {
+        throw new Error(
+          `数据库表不存在！\n\n` +
+          `请按以下步骤操作：\n` +
+          `1. 打开 Supabase Dashboard (https://app.supabase.com)\n` +
+          `2. 选择你的项目\n` +
+          `3. 点击左侧 "SQL Editor"\n` +
+          `4. 点击 "New query"\n` +
+          `5. 复制 CREATE_WORKERS_TABLE_FINAL.sql 文件中的 SQL 代码\n` +
+          `6. 粘贴并执行\n` +
+          `7. 刷新页面后重试`
+        )
+      }
+
+      // 构建worker_type：单个类型保存为字符串，多个保存为JSON字符串（因为数据库字段是TEXT类型）
+      let workerTypeValue: string
+      if (newWorker.worker_types.length === 1) {
+        workerTypeValue = newWorker.worker_types[0]
+      } else if (newWorker.worker_types.length > 1) {
+        // 多个类型保存为JSON字符串
+        workerTypeValue = JSON.stringify(newWorker.worker_types)
+      } else {
+        throw new Error("至少需要选择一个工人类型")
+      }
+
+      const workerData: any = {
+        name: newWorker.name.trim(),
+        phone: newWorker.phone.trim(),
+        worker_type: workerTypeValue,
+        status: newWorker.status,
+      }
+
+      // 如果包含配送员，保存产品类型
+      if (newWorker.worker_types.includes("delivery")) {
+        workerData.product_types = newWorker.product_types
+      } else {
+        workerData.product_types = []
+      }
+
+      console.log("[添加工人] worker_types:", newWorker.worker_types)
+      console.log("[添加工人] 保存的worker_type:", workerData.worker_type, "类型:", typeof workerData.worker_type, "是否为数组:", Array.isArray(workerData.worker_type))
+
+      const { data, error } = await supabase
+        .from("workers")
+        .insert(workerData)
+        .select("id, name, phone, worker_type, product_types, status, created_at, updated_at")
+        .single()
+
+      if (error) {
+        console.error("[Admin Dashboard] 添加工人失败 - 详细错误:", error)
+        console.error("[Admin Dashboard] 错误代码:", error.code)
+        console.error("[Admin Dashboard] 错误详情:", error.details)
+        console.error("[Admin Dashboard] 错误提示:", error.hint)
+        
+        // 提供更详细的错误信息
+        if (error.message?.includes("schema cache") || error.message?.includes("not found") || error.code === "42P01") {
+          throw new Error(
+            `数据库表不存在！\n\n` +
+            `请按以下步骤操作：\n` +
+            `1. 打开 Supabase Dashboard\n` +
+            `2. 进入 SQL Editor\n` +
+            `3. 执行 CREATE_WORKERS_TABLE_FINAL.sql 中的 SQL 代码\n` +
+            `4. 刷新页面后重试`
+          )
+        }
+        
+        if (error.code === "42501") {
+          throw new Error("权限不足，请检查 Supabase RLS 策略设置")
+        }
+        
+        throw new Error(error.message || `添加工人失败 (错误代码: ${error.code || "未知"})`)
+      }
+
+      // 刷新工人列表
+      await loadWorkers()
+      
+      // 重置表单
+      setNewWorker({
+        name: "",
+        phone: "",
+        worker_types: [],
+        product_types: [],
+        status: "active",
+      })
+      setIsAddWorkerDialogOpen(false)
+      alert("工人添加成功")
+    } catch (error: any) {
+      console.error("[Admin Dashboard] 添加工人失败:", error)
+      alert(`添加工人失败: ${error.message || "未知错误"}`)
+    } finally {
+      setIsAddingWorker(false)
+    }
+  }
+
+  // 打开编辑对话框
+  const handleOpenEditDialog = (worker: Worker) => {
+    setEditingWorker(worker)
+    
+    // 处理product_types（可能是JSON字符串或数组）
+    let productTypes: string[] = []
+    if (typeof worker.product_types === 'string') {
+      try {
+        productTypes = JSON.parse(worker.product_types || '[]')
+      } catch (e) {
+        productTypes = []
+      }
+    } else if (Array.isArray(worker.product_types)) {
+      productTypes = worker.product_types
+    }
+    
+    // 处理worker_type（可能是单个类型、数组或JSON字符串）
+    let workerTypes: string[] = []
+    if (Array.isArray(worker.worker_type)) {
+      workerTypes = worker.worker_type
+    } else if (typeof worker.worker_type === 'string') {
+      // 尝试解析为JSON（如果是JSON字符串）
+      try {
+        const parsed = JSON.parse(worker.worker_type)
+        if (Array.isArray(parsed)) {
+          workerTypes = parsed
+        } else {
+          workerTypes = [worker.worker_type] // 单个类型
+        }
+      } catch (e) {
+        // 不是JSON，是普通字符串
+        workerTypes = [worker.worker_type]
+      }
+    }
+
+    console.log("[编辑工人] 原始worker_type:", worker.worker_type)
+    console.log("[编辑工人] 解析后的workerTypes:", workerTypes)
+
+    setEditWorker({
+      name: worker.name || "",
+      phone: worker.phone || "",
+      worker_types: workerTypes,
+      product_types: productTypes,
+      status: (worker.status as "active" | "inactive") || "active",
+    })
+    setIsEditWorkerDialogOpen(true)
+  }
+
+  // 更新工人信息
+  const handleUpdateWorker = async () => {
+    if (!editingWorker) return
+
+    if (!editWorker.name || !editWorker.phone || editWorker.worker_types.length === 0) {
+      alert("请填写完整信息：姓名、电话和至少选择一个工人类型")
+      return
+    }
+
+    if (editWorker.worker_types.includes("delivery") && editWorker.product_types.length === 0) {
+      alert("配送员必须至少选择一个产品类型")
+      return
+    }
+
+    setIsUpdatingWorker(true)
+    try {
+      if (!supabase) {
+        throw new Error("数据库连接失败，请检查 Supabase 配置")
+      }
+
+      // 构建worker_type：单个类型保存为字符串，多个保存为JSON字符串（因为数据库字段是TEXT类型）
+      let workerTypeValue: string
+      if (editWorker.worker_types.length === 1) {
+        workerTypeValue = editWorker.worker_types[0]
+      } else if (editWorker.worker_types.length > 1) {
+        // 多个类型保存为JSON字符串
+        workerTypeValue = JSON.stringify(editWorker.worker_types)
+      } else {
+        throw new Error("至少需要选择一个工人类型")
+      }
+
+      const updateData: any = {
+        name: editWorker.name.trim(),
+        phone: editWorker.phone.trim(),
+        worker_type: workerTypeValue,
+        status: editWorker.status,
+        updated_at: new Date().toISOString(),
+      }
+
+      console.log("[更新工人] worker_types:", editWorker.worker_types)
+      console.log("[更新工人] 保存的worker_type:", updateData.worker_type, "类型:", typeof updateData.worker_type, "是否为数组:", Array.isArray(updateData.worker_type))
+
+      // 如果包含配送员，保存产品类型
+      if (editWorker.worker_types.includes("delivery")) {
+        updateData.product_types = editWorker.product_types
+      } else {
+        updateData.product_types = []
+      }
+
+      const { data, error } = await supabase
+        .from("workers")
+        .update(updateData)
+        .eq("id", editingWorker.id)
+        .select("id, name, phone, worker_type, product_types, status, created_at, updated_at")
+        .single()
+
+      if (error) {
+        console.error("[Admin Dashboard] 更新工人失败 - 详细错误:", error)
+        throw new Error(error.message || "更新工人失败")
+      }
+
+      // 刷新工人列表
+      await loadWorkers()
+      
+      // 关闭对话框
+      setIsEditWorkerDialogOpen(false)
+      setEditingWorker(null)
+      alert("工人信息更新成功")
+    } catch (error: any) {
+      console.error("[Admin Dashboard] 更新工人失败:", error)
+      alert(`更新工人失败: ${error.message || "未知错误"}`)
+    } finally {
+      setIsUpdatingWorker(false)
+    }
+  }
+
+  // 删除工人
+  const handleDeleteWorker = async (workerId: string, workerName: string) => {
+    if (!window.confirm(`确定要删除工人 "${workerName}" 吗？此操作不可恢复！`)) {
+      return
+    }
+
+    setIsDeletingWorker(true)
+    setDeletingWorkerId(workerId)
+    try {
+      if (!supabase) {
+        throw new Error("数据库连接失败，请检查 Supabase 配置")
+      }
+
+      const { error } = await supabase
+        .from("workers")
+        .delete()
+        .eq("id", workerId)
+
+      if (error) {
+        console.error("[Admin Dashboard] 删除工人失败 - 详细错误:", error)
+        throw new Error(error.message || "删除工人失败")
+      }
+
+      // 刷新工人列表
+      await loadWorkers()
+      alert("工人删除成功")
+    } catch (error: any) {
+      console.error("[Admin Dashboard] 删除工人失败:", error)
+      alert(`删除工人失败: ${error.message || "未知错误"}`)
+    } finally {
+      setIsDeletingWorker(false)
+      setDeletingWorkerId(null)
+    }
+  }
 
   // 加载设备数据
   const loadDevices = useCallback(async () => {
@@ -1888,6 +2339,375 @@ export default function AdminDashboard() {
     )
   }
 
+  // 渲染报修管理
+  const renderRepairs = () => {
+    const pendingRepairs = repairs.filter((r) => r.status === "pending")
+    const processingRepairs = repairs.filter((r) => r.status === "processing")
+    const completedRepairs = repairs.filter((r) => r.status === "completed")
+    const cancelledRepairs = repairs.filter((r) => r.status === "cancelled")
+
+    const filteredRepairs = repairStatusFilter === "all" 
+      ? repairs 
+      : repairs.filter((r) => r.status === repairStatusFilter)
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "pending":
+          return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+        case "processing":
+          return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+        case "completed":
+          return "bg-green-500/20 text-green-400 border-green-500/30"
+        case "cancelled":
+          return "bg-red-500/20 text-red-400 border-red-500/30"
+        default:
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+      }
+    }
+
+    const getStatusLabel = (status: string) => {
+      switch (status) {
+        case "pending":
+          return "待处理"
+        case "processing":
+          return "处理中"
+        case "completed":
+          return "已完成"
+        case "cancelled":
+          return "已取消"
+        default:
+          return status
+      }
+    }
+
+    const getUrgencyColor = (urgency?: string) => {
+      switch (urgency) {
+        case "high":
+          return "text-red-400"
+        case "medium":
+          return "text-yellow-400"
+        case "low":
+          return "text-green-400"
+        default:
+          return "text-slate-400"
+      }
+    }
+
+    const getUrgencyLabel = (urgency?: string) => {
+      switch (urgency) {
+        case "high":
+          return "高"
+        case "medium":
+          return "中"
+        case "low":
+          return "低"
+        default:
+          return "未设置"
+      }
+    }
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">报修管理</h1>
+          <p className="text-slate-400">管理所有报修工单和维修状态</p>
+        </div>
+
+        {/* 报修统计 */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">总报修数</CardDescription>
+              <CardTitle className="text-3xl text-white">{repairs.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-yellow-950/90 border-yellow-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">待处理</CardDescription>
+              <CardTitle className="text-3xl text-yellow-400">{pendingRepairs.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">处理中</CardDescription>
+              <CardTitle className="text-3xl text-blue-400">{processingRepairs.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">已完成</CardDescription>
+              <CardTitle className="text-3xl text-green-400">{completedRepairs.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">已取消</CardDescription>
+              <CardTitle className="text-3xl text-red-400">{cancelledRepairs.length}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* 状态筛选 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white">状态筛选</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {["all", "pending", "processing", "completed", "cancelled"].map((status) => (
+                <Button
+                  key={status}
+                  variant={repairStatusFilter === status ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setRepairStatusFilter(status)}
+                  className={
+                    repairStatusFilter === status
+                      ? "bg-purple-600 hover:bg-purple-700"
+                      : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                  }
+                >
+                  {status === "all" ? "全部" : getStatusLabel(status)}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 报修列表 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white">报修工单列表</CardTitle>
+            <CardDescription className="text-slate-400">点击工单查看详情和更新状态</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingRepairs ? (
+              <div className="text-center py-8">
+                <div className="inline-block h-6 w-6 border-3 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-slate-400 mt-2 text-sm">加载中...</p>
+              </div>
+            ) : filteredRepairs.length === 0 ? (
+              <div className="text-center py-8">
+                <Wrench className="h-8 w-8 text-slate-600 mx-auto mb-2" />
+                <p className="text-slate-400 text-sm">暂无报修工单</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredRepairs.map((repair) => {
+                  const restaurant = repair.restaurants
+                  return (
+                    <div
+                      key={repair.id}
+                      className={`p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer hover:border-purple-500/50 ${
+                        repair.status === "pending"
+                          ? "border-yellow-500/50 bg-yellow-500/5"
+                          : "border-slate-700/50 bg-slate-800/50"
+                      }`}
+                      onClick={() => {
+                        setSelectedRepair(repair)
+                        setRepairUpdateStatus(repair.status)
+                        setRepairUpdateAmount(repair.amount?.toString() || "")
+                        setIsRepairDetailDialogOpen(true)
+                      }}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Building2 className="h-4 w-4 text-purple-400" />
+                            <span className="font-semibold text-white">
+                              {restaurant?.name || "未知餐厅"}
+                            </span>
+                            <Badge variant="outline" className="text-xs border-slate-600 text-slate-400">
+                              {repair.id.slice(0, 8)}
+                            </Badge>
+                            {repair.urgency && (
+                              <Badge className={`text-xs ${getUrgencyColor(repair.urgency)} border-current/30`}>
+                                紧急: {getUrgencyLabel(repair.urgency)}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-slate-300 ml-6 mb-1">
+                            {repair.description || "无描述"}
+                          </div>
+                          {restaurant?.contact_phone && (
+                            <div className="text-xs text-slate-500 ml-6 flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {restaurant.contact_phone}
+                            </div>
+                          )}
+                        </div>
+                        <Badge className={`text-xs ${getStatusColor(repair.status)}`}>
+                          {getStatusLabel(repair.status)}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700/50">
+                        <div className="flex items-center gap-4 text-xs text-slate-400">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(repair.created_at).toLocaleString("zh-CN")}
+                          </div>
+                        </div>
+                        <div className="text-lg font-semibold text-white">
+                          {repair.amount > 0 ? `¥${repair.amount.toFixed(2)}` : "待定价"}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 报修详情对话框 */}
+        <Dialog open={isRepairDetailDialogOpen} onOpenChange={setIsRepairDetailDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+                <Wrench className="h-5 w-5 text-purple-400" />
+                报修工单详情
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                查看报修详情并更新状态
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedRepair && (
+              <div className="space-y-4">
+                {/* 基本信息 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">餐厅信息</Label>
+                  <div className="bg-slate-800/50 p-3 rounded-lg">
+                    <p className="text-white font-medium">
+                      {selectedRepair.restaurants?.name || "未知餐厅"}
+                    </p>
+                    {selectedRepair.restaurants?.address && (
+                      <p className="text-sm text-slate-400 mt-1">
+                        <MapPin className="h-3 w-3 inline mr-1" />
+                        {selectedRepair.restaurants.address}
+                      </p>
+                    )}
+                    {selectedRepair.restaurants?.contact_phone && (
+                      <p className="text-sm text-slate-400 mt-1">
+                        <Phone className="h-3 w-3 inline mr-1" />
+                        {selectedRepair.restaurants.contact_phone}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* 问题描述 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">问题描述</Label>
+                  <div className="bg-slate-800/50 p-3 rounded-lg">
+                    <p className="text-white">{selectedRepair.description || "无描述"}</p>
+                  </div>
+                </div>
+
+                {/* 当前状态 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">当前状态</Label>
+                  <Badge className={getStatusColor(selectedRepair.status)}>
+                    {getStatusLabel(selectedRepair.status)}
+                  </Badge>
+                </div>
+
+                {/* 更新状态 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">更新状态</Label>
+                  <Select value={repairUpdateStatus} onValueChange={setRepairUpdateStatus}>
+                    <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      <SelectItem value="pending" className="text-white hover:bg-slate-700">
+                        待处理
+                      </SelectItem>
+                      <SelectItem value="processing" className="text-white hover:bg-slate-700">
+                        处理中
+                      </SelectItem>
+                      <SelectItem value="completed" className="text-white hover:bg-slate-700">
+                        已完成
+                      </SelectItem>
+                      <SelectItem value="cancelled" className="text-white hover:bg-slate-700">
+                        已取消
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* 维修金额 */}
+                {repairUpdateStatus === "completed" && (
+                  <div className="space-y-2">
+                    <Label className="text-slate-300">
+                      维修金额 <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      placeholder="请输入维修金额"
+                      value={repairUpdateAmount}
+                      onChange={(e) => setRepairUpdateAmount(e.target.value)}
+                      className="bg-slate-800 border-slate-700 text-white"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                )}
+
+                {/* 时间信息 */}
+                <div className="grid grid-cols-2 gap-4 text-sm text-slate-400">
+                  <div>
+                    <span className="text-slate-500">创建时间:</span>
+                    <p className="text-white mt-1">
+                      {new Date(selectedRepair.created_at).toLocaleString("zh-CN")}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">更新时间:</span>
+                    <p className="text-white mt-1">
+                      {new Date(selectedRepair.updated_at).toLocaleString("zh-CN")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-6">
+              <Button
+                variant="ghost"
+                onClick={() => setIsRepairDetailDialogOpen(false)}
+                className="text-slate-400 hover:text-white"
+                disabled={isUpdatingRepair}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => {
+                  if (repairUpdateStatus === "completed" && !repairUpdateAmount) {
+                    alert("完成报修必须填写维修金额")
+                    return
+                  }
+                  const amount = repairUpdateStatus === "completed" ? parseFloat(repairUpdateAmount) : undefined
+                  updateRepairStatus(selectedRepair.id, repairUpdateStatus, amount)
+                }}
+                disabled={isUpdatingRepair || !repairUpdateStatus}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {isUpdatingRepair ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    更新中...
+                  </>
+                ) : (
+                  "更新状态"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
+
   // 渲染设备监控
   const renderDevices = () => {
     return (
@@ -1957,17 +2777,165 @@ export default function AdminDashboard() {
 
   // 渲染工人管理
   const renderWorkers = () => {
+    const getWorkerTypeLabel = (type?: string | string[] | null) => {
+      if (Array.isArray(type)) {
+        // 处理数组，确保每个元素都是有效的类型字符串
+        const validTypes: string[] = []
+        for (const t of type) {
+          if (typeof t === 'string') {
+            // 检查是否是JSON字符串
+            if (t.startsWith('[') && t.endsWith(']')) {
+              try {
+                const parsed = JSON.parse(t)
+                if (Array.isArray(parsed)) {
+                  // 如果是数组，递归处理
+                  validTypes.push(...parsed.filter((p: any) => typeof p === 'string' && ['delivery', 'repair', 'install'].includes(p)))
+                } else if (typeof parsed === 'string' && ['delivery', 'repair', 'install'].includes(parsed)) {
+                  validTypes.push(parsed)
+                }
+              } catch (e) {
+                // 不是JSON，检查是否是有效类型
+                if (['delivery', 'repair', 'install'].includes(t)) {
+                  validTypes.push(t)
+                }
+              }
+            } else if (['delivery', 'repair', 'install'].includes(t)) {
+              validTypes.push(t)
+            }
+          }
+        }
+        // 去重并排序
+        const uniqueTypes = Array.from(new Set(validTypes))
+        return uniqueTypes.map(t => {
+          switch (t) {
+            case "delivery": return "配送员"
+            case "repair": return "维修工"
+            case "install": return "安装工"
+            default: return t
+          }
+        }).join("、")
+      }
+      if (typeof type === 'string') {
+        // 检查是否是JSON字符串
+        if (type.startsWith('[') && type.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(type)
+            if (Array.isArray(parsed)) {
+              return getWorkerTypeLabel(parsed) // 递归处理
+            }
+          } catch (e) {
+            // 不是JSON，继续处理
+          }
+        }
+        switch (type) {
+          case "delivery":
+            return "配送员"
+          case "repair":
+            return "维修工"
+          case "install":
+            return "安装工"
+          default:
+            return "未分类"
+        }
+      }
+      return "未分类"
+    }
+
+    const getWorkerTypeColor = (type?: string | string[] | null) => {
+      if (Array.isArray(type) && type.length > 1) {
+        return "bg-gradient-to-r from-orange-500/20 via-purple-500/20 to-blue-500/20 text-white border-orange-500/30"
+      }
+      if (Array.isArray(type) && type.length === 1) {
+        type = type[0]
+      }
+      switch (type) {
+        case "delivery":
+          return "bg-orange-500/20 text-orange-400 border-orange-500/30"
+        case "repair":
+          return "bg-purple-500/20 text-purple-400 border-purple-500/30"
+        case "install":
+          return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+        default:
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+      }
+    }
+
+    const getProductTypeLabel = (productType: string) => {
+      switch (productType) {
+        case "lpg":
+          return "液化气"
+        case "clean":
+          return "热能清洁燃料"
+        case "alcohol":
+          return "醇基燃料"
+        case "outdoor":
+          return "户外环保燃料"
+        default:
+          return productType
+      }
+    }
+
+    const deliveryWorkers = workers.filter((w) => {
+      if (Array.isArray(w.worker_type)) {
+        return w.worker_type.includes("delivery")
+      }
+      return w.worker_type === "delivery"
+    })
+    const repairWorkers = workers.filter((w) => {
+      if (Array.isArray(w.worker_type)) {
+        return w.worker_type.includes("repair")
+      }
+      return w.worker_type === "repair"
+    })
+    const installWorkers = workers.filter((w) => {
+      if (Array.isArray(w.worker_type)) {
+        return w.worker_type.includes("install")
+      }
+      return w.worker_type === "install"
+    })
+
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">工人管理</h1>
-            <p className="text-slate-400">管理配送工人信息</p>
+            <p className="text-slate-400">管理配送、维修、安装工人信息</p>
           </div>
-          <Button className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700">
+          <Button 
+            onClick={() => setIsAddWorkerDialogOpen(true)}
+            className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
+          >
             <Plus className="h-4 w-4 mr-2" />
             添加工人
           </Button>
+        </div>
+
+        {/* 工人统计 */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">总工人数</CardDescription>
+              <CardTitle className="text-3xl text-white">{workers.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-orange-950/90 border-orange-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">配送员</CardDescription>
+              <CardTitle className="text-3xl text-orange-400">{deliveryWorkers.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">维修工</CardDescription>
+              <CardTitle className="text-3xl text-purple-400">{repairWorkers.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-cyan-950/90 border-cyan-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">安装工</CardDescription>
+              <CardTitle className="text-3xl text-cyan-400">{installWorkers.length}</CardTitle>
+            </CardHeader>
+          </Card>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1976,32 +2944,107 @@ export default function AdminDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
-                      <User className="h-6 w-6 text-white" />
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                      (() => {
+                        const types = Array.isArray(worker.worker_type) ? worker.worker_type : worker.worker_type ? [worker.worker_type] : []
+                        if (types.length > 1) {
+                          return "bg-gradient-to-br from-orange-500 via-purple-500 to-blue-500"
+                        } else if (types.includes("delivery")) {
+                          return "bg-gradient-to-br from-orange-500 to-red-600"
+                        } else if (types.includes("repair")) {
+                          return "bg-gradient-to-br from-purple-500 to-pink-600"
+                        } else if (types.includes("install")) {
+                          return "bg-gradient-to-br from-blue-500 to-cyan-600"
+                        }
+                        return "bg-gradient-to-br from-slate-500 to-slate-600"
+                      })()
+                    }`}>
+                      {(() => {
+                        const types = Array.isArray(worker.worker_type) ? worker.worker_type : worker.worker_type ? [worker.worker_type] : []
+                        if (types.length > 1) {
+                          return <Package className="h-6 w-6 text-white" />
+                        } else if (types.includes("delivery")) {
+                          return <Truck className="h-6 w-6 text-white" />
+                        } else if (types.includes("repair")) {
+                          return <Wrench className="h-6 w-6 text-white" />
+                        } else if (types.includes("install")) {
+                          return <HardHat className="h-6 w-6 text-white" />
+                        }
+                        return <User className="h-6 w-6 text-white" />
+                      })()}
                     </div>
                     <div>
                       <CardTitle className="text-white">{worker.name}</CardTitle>
-                      <CardDescription className="text-slate-400">工人ID: {worker.id}</CardDescription>
+                      <CardDescription className="text-slate-400">ID: {worker.id.slice(0, 12)}</CardDescription>
                     </div>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge className={getWorkerTypeColor(worker.worker_type)}>
+                      {getWorkerTypeLabel(worker.worker_type)}
+                    </Badge>
+                    {worker.status === "inactive" && (
+                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30">
+                        已离职
+                      </Badge>
+                    )}
+                  </div>
+                  
                   {worker.phone && (
                     <div className="flex items-center gap-2 text-sm text-slate-400">
                       <Phone className="h-4 w-4" />
                       {worker.phone}
                     </div>
                   )}
-                  <div className="flex gap-2 mt-4">
-                    <Button variant="outline" size="sm" className="flex-1 border-blue-500/50 text-blue-400 hover:bg-blue-500/10">
+
+                  {(() => {
+                    const types = Array.isArray(worker.worker_type) ? worker.worker_type : worker.worker_type ? [worker.worker_type] : []
+                    return types.includes("delivery")
+                  })() && worker.product_types && worker.product_types.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-xs text-slate-500">负责产品类型:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {worker.product_types.map((pt) => (
+                          <Badge key={pt} variant="outline" className="text-xs border-slate-600 text-slate-400">
+                            {getProductTypeLabel(pt)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 mt-4 pt-3 border-t border-slate-700/50">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                      onClick={() => handleOpenEditDialog(worker)}
+                      disabled={isDeletingWorker}
+                    >
                       <Edit className="h-4 w-4 mr-1" />
                       编辑
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10">
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      删除
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
+                      onClick={() => handleDeleteWorker(worker.id, worker.name)}
+                      disabled={isDeletingWorker && deletingWorkerId === worker.id}
+                    >
+                      {isDeletingWorker && deletingWorkerId === worker.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          删除中...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          删除
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -2018,6 +3061,401 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* 添加工人对话框 */}
+        <Dialog open={isAddWorkerDialogOpen} onOpenChange={setIsAddWorkerDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+                <Plus className="h-5 w-5 text-blue-400" />
+                添加工人
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                添加新的工人并设置业务类型和权限
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* 姓名 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  姓名 <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  placeholder="请输入工人姓名"
+                  value={newWorker.name}
+                  onChange={(e) => setNewWorker({ ...newWorker, name: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+
+              {/* 电话 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  联系电话 <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  type="tel"
+                  placeholder="请输入联系电话"
+                  value={newWorker.phone}
+                  onChange={(e) => setNewWorker({ ...newWorker, phone: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+
+              {/* 工人类型 - 支持多选 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  工人类型 <span className="text-red-400">*</span>
+                  <span className="text-xs text-slate-500 ml-2">（可多选，支持一人多职）</span>
+                </Label>
+                <div className="space-y-2 border border-slate-700 rounded-lg p-3 bg-slate-800/50">
+                  {[
+                    { id: "delivery", name: "配送员", icon: Truck, color: "text-orange-400" },
+                    { id: "repair", name: "维修工", icon: Wrench, color: "text-purple-400" },
+                    { id: "install", name: "安装工", icon: HardHat, color: "text-blue-400" },
+                  ].map((type) => {
+                    const Icon = type.icon
+                    return (
+                      <div key={type.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`worker-type-${type.id}`}
+                          checked={newWorker.worker_types.includes(type.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewWorker({
+                                ...newWorker,
+                                worker_types: [...newWorker.worker_types, type.id],
+                              })
+                            } else {
+                              setNewWorker({
+                                ...newWorker,
+                                worker_types: newWorker.worker_types.filter((wt) => wt !== type.id),
+                                product_types: type.id === "delivery" ? [] : newWorker.product_types,
+                              })
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                        />
+                        <Label
+                          htmlFor={`worker-type-${type.id}`}
+                          className="text-sm text-slate-300 cursor-pointer flex items-center gap-2 flex-1"
+                        >
+                          <Icon className={`h-4 w-4 ${type.color}`} />
+                          {type.name}
+                        </Label>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 产品类型（仅配送员） */}
+              {newWorker.worker_types.includes("delivery") && (
+                <div className="space-y-2">
+                  <Label className="text-slate-300">
+                    负责产品类型 <span className="text-red-400">*</span>
+                  </Label>
+                  <div className="space-y-2">
+                    {[
+                      { id: "lpg", name: "液化气" },
+                      { id: "clean", name: "热能清洁燃料" },
+                      { id: "alcohol", name: "醇基燃料" },
+                      { id: "outdoor", name: "户外环保燃料" },
+                    ].map((product) => (
+                      <div key={product.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`product-${product.id}`}
+                          checked={newWorker.product_types.includes(product.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewWorker({
+                                ...newWorker,
+                                product_types: [...newWorker.product_types, product.id],
+                              })
+                            } else {
+                              setNewWorker({
+                                ...newWorker,
+                                product_types: newWorker.product_types.filter((pt) => pt !== product.id),
+                              })
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                        />
+                        <Label
+                          htmlFor={`product-${product.id}`}
+                          className="text-sm text-slate-300 cursor-pointer"
+                        >
+                          {product.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 状态 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">状态</Label>
+                <Select
+                  value={newWorker.status}
+                  onValueChange={(value: "active" | "inactive") => {
+                    setNewWorker({ ...newWorker, status: value })
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    <SelectItem value="active" className="text-white hover:bg-slate-700">
+                      在职
+                    </SelectItem>
+                    <SelectItem value="inactive" className="text-white hover:bg-slate-700">
+                      离职
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsAddWorkerDialogOpen(false)
+                  setNewWorker({
+                    name: "",
+                    phone: "",
+                    worker_types: [],
+                    product_types: [],
+                    status: "active",
+                  })
+                }}
+                className="text-slate-400 hover:text-white"
+                disabled={isAddingWorker}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleAddWorker}
+                disabled={isAddingWorker}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isAddingWorker ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    添加中...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    添加
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 编辑工人对话框 */}
+        <Dialog open={isEditWorkerDialogOpen} onOpenChange={setIsEditWorkerDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+                <Edit className="h-5 w-5 text-blue-400" />
+                编辑工人信息
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                修改工人的业务类型和权限
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* 姓名 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  姓名 <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  placeholder="请输入工人姓名"
+                  value={editWorker.name}
+                  onChange={(e) => setEditWorker({ ...editWorker, name: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+
+              {/* 电话 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  联系电话 <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  type="tel"
+                  placeholder="请输入联系电话"
+                  value={editWorker.phone}
+                  onChange={(e) => setEditWorker({ ...editWorker, phone: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+
+              {/* 工人类型 - 支持多选 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  工人类型 <span className="text-red-400">*</span>
+                  <span className="text-xs text-slate-500 ml-2">（可多选，支持一人多职）</span>
+                </Label>
+                <div className="space-y-2 border border-slate-700 rounded-lg p-3 bg-slate-800/50">
+                  {[
+                    { id: "delivery", name: "配送员", icon: Truck, color: "text-orange-400" },
+                    { id: "repair", name: "维修工", icon: Wrench, color: "text-purple-400" },
+                    { id: "install", name: "安装工", icon: HardHat, color: "text-blue-400" },
+                  ].map((type) => {
+                    const Icon = type.icon
+                    return (
+                      <div key={type.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`edit-worker-type-${type.id}`}
+                          checked={editWorker.worker_types.includes(type.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditWorker({
+                                ...editWorker,
+                                worker_types: [...editWorker.worker_types, type.id],
+                              })
+                            } else {
+                              setEditWorker({
+                                ...editWorker,
+                                worker_types: editWorker.worker_types.filter((wt) => wt !== type.id),
+                                product_types: type.id === "delivery" ? [] : editWorker.product_types,
+                              })
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                        />
+                        <Label
+                          htmlFor={`edit-worker-type-${type.id}`}
+                          className="text-sm text-slate-300 cursor-pointer flex items-center gap-2 flex-1"
+                        >
+                          <Icon className={`h-4 w-4 ${type.color}`} />
+                          {type.name}
+                        </Label>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 产品类型（仅配送员） */}
+              {editWorker.worker_types.includes("delivery") && (
+                <div className="space-y-2">
+                  <Label className="text-slate-300">
+                    负责产品类型 <span className="text-red-400">*</span>
+                  </Label>
+                  <div className="space-y-2">
+                    {[
+                      { id: "lpg", name: "液化气" },
+                      { id: "clean", name: "热能清洁燃料" },
+                      { id: "alcohol", name: "醇基燃料" },
+                      { id: "outdoor", name: "户外环保燃料" },
+                    ].map((product) => (
+                      <div key={product.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`edit-product-${product.id}`}
+                          checked={editWorker.product_types.includes(product.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditWorker({
+                                ...editWorker,
+                                product_types: [...editWorker.product_types, product.id],
+                              })
+                            } else {
+                              setEditWorker({
+                                ...editWorker,
+                                product_types: editWorker.product_types.filter((pt) => pt !== product.id),
+                              })
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                        />
+                        <Label
+                          htmlFor={`edit-product-${product.id}`}
+                          className="text-sm text-slate-300 cursor-pointer"
+                        >
+                          {product.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 状态 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">状态</Label>
+                <Select
+                  value={editWorker.status}
+                  onValueChange={(value: "active" | "inactive") => {
+                    setEditWorker({ ...editWorker, status: value })
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    <SelectItem value="active" className="text-white hover:bg-slate-700">
+                      在职
+                    </SelectItem>
+                    <SelectItem value="inactive" className="text-white hover:bg-slate-700">
+                      离职
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsEditWorkerDialogOpen(false)
+                  setEditingWorker(null)
+                  setEditWorker({
+                    name: "",
+                    phone: "",
+                    worker_types: [],
+                    product_types: [],
+                    status: "active",
+                  })
+                }}
+                className="text-slate-400 hover:text-white"
+                disabled={isUpdatingWorker}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleUpdateWorker}
+                disabled={isUpdatingWorker}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isUpdatingWorker ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    更新中...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    保存更改
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }
@@ -2672,6 +4110,7 @@ export default function AdminDashboard() {
           {activeMenu === "dashboard" && renderDashboard()}
           {activeMenu === "restaurants" && renderRestaurants()}
           {activeMenu === "orders" && renderOrders()}
+          {activeMenu === "repairs" && renderRepairs()}
           {activeMenu === "devices" && renderDevices()}
           {activeMenu === "workers" && renderWorkers()}
           {activeMenu === "api" && renderApiConfig()}

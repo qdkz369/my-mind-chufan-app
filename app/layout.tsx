@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -39,6 +40,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body className={`${inter.className} antialiased`}>
         {children}
+        <Toaster />
         <Analytics />
       </body>
     </html>
