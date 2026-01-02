@@ -267,6 +267,8 @@ export default function AdminDashboard() {
   const serviceCirclesRef = useRef<any[]>([])
   const markerMapRef = useRef<Map<string, { marker: any; infoWindow: any }>>(new Map())
   const heatmapRef = useRef<any>(null)
+  const markerClickTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const markerDoubleClickFlagsRef = useRef<Map<string, boolean>>(new Map())
 
   // 生成地址降级列表（逐步简化地址）
   const generateAddressFallbacks = useCallback((address: string): string[] => {
@@ -1566,6 +1568,13 @@ export default function AdminDashboard() {
 
     // 清除标记映射
     markerMapRef.current.clear()
+    
+    // 清除所有点击定时器和双击标志
+    markerClickTimersRef.current.forEach(timer => {
+      clearTimeout(timer)
+    })
+    markerClickTimersRef.current.clear()
+    markerDoubleClickFlagsRef.current.clear()
 
         // 清除现有服务点圆圈
         serviceCirclesRef.current.forEach(circle => {
@@ -1749,18 +1758,92 @@ export default function AdminDashboard() {
 
         // 点击标记显示信息窗口
         marker.on('click', () => {
-          infoWindow.open(map, marker.getPosition())
-          setSelectedMarkerRestaurant(restaurant)
+          const restaurantId = restaurant.id
+          
+          // 清除之前的定时器
+          const existingTimer = markerClickTimersRef.current.get(restaurantId)
+          if (existingTimer) {
+            clearTimeout(existingTimer)
+          }
+
+          // 延迟执行，如果300ms内没有双击，则执行单击操作
+          const clickTimer = setTimeout(() => {
+            const isDoubleClick = markerDoubleClickFlagsRef.current.get(restaurantId) || false
+            if (!isDoubleClick) {
+              // 关闭其他信息窗口
+              infoWindowsRef.current.forEach(iw => {
+                try {
+                  iw.close()
+                } catch (e) {
+                  // 忽略错误
+                }
+              })
+              
+              // 打开当前信息窗口
+              const position = marker.getPosition()
+              if (position) {
+                infoWindow.open(map, position)
+                setSelectedMarkerRestaurant(restaurant)
+                console.log('[Map] 单击显示餐厅信息:', restaurant.name)
+              }
+            }
+            // 重置双击标志
+            markerDoubleClickFlagsRef.current.set(restaurantId, false)
+            markerClickTimersRef.current.delete(restaurantId)
+          }, 300)
+          
+          markerClickTimersRef.current.set(restaurantId, clickTimer)
         })
 
         // 双击标记平滑追踪到该餐厅并放大到最大视图
-        marker.on('dblclick', () => {
+        marker.on('dblclick', (e: any) => {
+          const restaurantId = restaurant.id
+          
+          // 阻止事件冒泡
+          if (e && e.domEvent) {
+            e.domEvent.stopPropagation()
+            e.domEvent.preventDefault()
+          }
+          
+          // 标记为双击，阻止单击事件执行
+          markerDoubleClickFlagsRef.current.set(restaurantId, true)
+          
+          // 清除单击定时器
+          const existingTimer = markerClickTimersRef.current.get(restaurantId)
+          if (existingTimer) {
+            clearTimeout(existingTimer)
+            markerClickTimersRef.current.delete(restaurantId)
+          }
+
+          // 关闭所有信息窗口
+          infoWindowsRef.current.forEach(iw => {
+            try {
+              iw.close()
+            } catch (e) {
+              // 忽略错误
+            }
+          })
+
           const position = marker.getPosition()
           if (position) {
-            // 使用 setZoomAndCenter 实现平滑动画
-            // 参数：缩放级别、中心点、是否立即执行、动画时长（毫秒）
-            map.setZoomAndCenter(18, position, false, 1000)
             console.log('[Map] 双击追踪到餐厅:', restaurant.name, '位置:', position)
+            
+            // 使用 setZoomAndCenter 实现平滑动画
+            // 参数：缩放级别、中心点、是否立即执行（false表示使用动画）
+            map.setZoomAndCenter(18, position, false)
+            
+            // 等待动画完成后再打开信息窗口
+            setTimeout(() => {
+              // 再次检查是否仍然是双击（防止用户快速操作）
+              const stillDoubleClick = markerDoubleClickFlagsRef.current.get(restaurantId)
+              if (stillDoubleClick) {
+                infoWindow.open(map, position)
+                setSelectedMarkerRestaurant(restaurant)
+                console.log('[Map] 双击后显示餐厅信息:', restaurant.name)
+                // 重置标志
+                markerDoubleClickFlagsRef.current.set(restaurantId, false)
+              }
+            }, 1000) // 等待动画完成
           }
         })
 
