@@ -989,13 +989,22 @@ export default function AdminDashboard() {
       const validStatuses = ["pending", "processing", "completed", "cancelled"]
       if (!validStatuses.includes(status)) {
         alert(`无效的状态值: ${status}。有效值: ${validStatuses.join(", ")}`)
+        setIsUpdatingRepair(false)
         return
       }
 
-      // 如果状态是completed，必须提供金额
-      if (status === "completed" && (amount === undefined || amount === null)) {
-        alert("完成报修必须提供维修金额")
-        return
+      // 如果状态是completed，必须提供金额且金额必须大于0
+      if (status === "completed") {
+        if (amount === undefined || amount === null) {
+          alert("完成报修必须提供维修金额")
+          setIsUpdatingRepair(false)
+          return
+        }
+        if (isNaN(amount) || amount <= 0) {
+          alert("维修金额必须是大于0的有效数字")
+          setIsUpdatingRepair(false)
+          return
+        }
       }
 
       // 构建更新数据
@@ -1004,18 +1013,32 @@ export default function AdminDashboard() {
         updated_at: new Date().toISOString(),
       }
 
-      // 如果提供了金额，更新金额
+      // 如果提供了金额，更新金额（确保金额是数字类型）
       if (amount !== undefined && amount !== null) {
-        updateData.amount = amount
+        const numericAmount = typeof amount === 'number' ? amount : parseFloat(String(amount))
+        if (!isNaN(numericAmount) && numericAmount > 0) {
+          updateData.amount = numericAmount
+        }
+      }
+
+      // 如果状态是 completed，确保金额被设置
+      if (status === "completed" && (!updateData.amount || updateData.amount <= 0)) {
+        alert("完成报修必须提供有效的维修金额（大于0）")
+        setIsUpdatingRepair(false)
+        return
       }
 
       // 如果提供了分配的工人ID，更新 assigned_to 和 worker_id
-      if (assignedTo !== undefined && assignedTo !== null) {
-        updateData.assigned_to = assignedTo || null
-        updateData.worker_id = assignedTo || null // 兼容旧字段
+      if (assignedTo !== undefined && assignedTo !== null && assignedTo.trim() !== "") {
+        updateData.assigned_to = assignedTo.trim()
+        updateData.worker_id = assignedTo.trim() // 兼容旧字段
+      } else if (assignedTo === null || assignedTo === "") {
+        // 如果明确设置为空，清除分配
+        updateData.assigned_to = null
+        updateData.worker_id = null
       }
 
-      // 直接使用 Supabase 更新
+      // 直接使用 Supabase 更新 orders 表
       const { data: updatedRepair, error: updateError } = await retryOnNetworkError(
         async () => await supabase
           .from("orders")
@@ -1028,19 +1051,41 @@ export default function AdminDashboard() {
       if (updateError) {
         console.error("[Admin Dashboard] 更新报修失败:", updateError)
         alert(`更新失败: ${updateError.message || "未知错误"}`)
+        setIsUpdatingRepair(false)
         return
+      }
+
+      if (!updatedRepair) {
+        console.error("[Admin Dashboard] 更新报修后未返回数据")
+        alert("更新失败: 未返回更新后的数据")
+        setIsUpdatingRepair(false)
+        return
+      }
+
+      // 验证更新结果
+      if (status === "completed" && (!updatedRepair.amount || updatedRepair.amount <= 0)) {
+        console.warn("[Admin Dashboard] 警告: 完成状态但金额未正确设置", updatedRepair)
       }
 
       // 更新成功，刷新列表
       await loadRepairs()
+      
+      // 关闭对话框并重置状态
       setIsRepairDetailDialogOpen(false)
       setSelectedRepair(null)
       setRepairUpdateAmount("")
       setRepairUpdateStatus("")
       setRepairAssignedWorker("")
-    } catch (error) {
+      
+      // 显示成功提示
+      if (status === "completed") {
+        alert(`报修工单已完成，维修金额: ¥${updateData.amount.toFixed(2)}`)
+      } else {
+        alert(`报修工单状态已更新为: ${status === "pending" ? "待处理" : status === "processing" ? "处理中" : status === "cancelled" ? "已取消" : status}`)
+      }
+    } catch (error: any) {
       console.error("[Admin Dashboard] 更新报修时出错:", error)
-      alert("更新报修失败")
+      alert(`更新报修失败: ${error?.message || "未知错误"}`)
     } finally {
       setIsUpdatingRepair(false)
     }
