@@ -884,86 +884,59 @@ export default function AdminDashboard() {
 
   // 加载报修数据 - 直接使用 Supabase 查询（符合官方最佳实践）
   const loadRepairs = useCallback(async () => {
-    if (!supabase) {
-      console.error("[Admin Dashboard] Supabase未配置")
-      setRepairs([])
-      return
-    }
-
     try {
       setIsLoadingRepairs(true)
       
-      // 策略: 先查询所有订单，然后在客户端过滤（最可靠的方式）
-      // 注意：只查询数据库中实际存在的字段，避免查询失败
-      // 暂时移除 restaurants 关联查询，先确保能显示 orders 表的原始数据
-      const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
-        async () => await supabase
-          .from("orders")
-          .select("id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url")
-          .order("created_at", { ascending: false })
-          .limit(500) // 限制查询最近500条订单
-      )
-
-      // 添加详细的错误捕获和提示
-      if (allOrdersError) {
-        console.error("[Admin Dashboard] 查询所有订单失败:", allOrdersError)
-        const errorMessage = `数据库错误详情: ${allOrdersError.message || "未知错误"} 错误代码: ${allOrdersError.code || "N/A"}`
-        alert(errorMessage)
-        setRepairs([])
-        return
-      }
-
-      // 验证数据是否获取成功
-      console.log("[Admin Dashboard] 原始订单数据:", allOrders)
-      console.log("[Admin Dashboard] 订单数量:", allOrders?.length || 0)
-
-      // 在客户端过滤维修订单（重要：只要 audio_url 不为空，就必须显示，不管 service_type 是什么）
-      console.log("[Admin Dashboard] 开始过滤维修订单，原始订单数量:", (allOrders || []).length)
-      const repairOrders = (allOrders || []).filter((order: any) => {
-        // 重要：只要 audio_url 不为空，就必须显示在维修列表里
-        const hasAudio = order.audio_url && order.audio_url.trim() !== ""
-        if (hasAudio) {
-          console.log("[Admin Dashboard] 匹配到语音报修单:", order.id, "audio_url: 有")
-          return true
-        }
-        
-        // 如果没有音频，则按 service_type 判断
-        const serviceType = order.service_type || ""
-        const normalizedType = serviceType.toLowerCase()
-        const isRepairByType = 
-          serviceType === "维修服务" ||
-          serviceType.includes("维修") ||
-          normalizedType.includes("repair")
-        
-        if (isRepairByType) {
-          console.log("[Admin Dashboard] 匹配到维修订单:", order.id, "service_type:", serviceType)
-        }
-        
-        return isRepairByType
-      })
-      console.log("[Admin Dashboard] 过滤后的维修订单数量:", repairOrders.length)
+      // 强制适配接口返回：调用 /api/repair/list 接口
+      const url = `/api/repair/list${repairStatusFilter && repairStatusFilter !== "all" ? `?status=${repairStatusFilter}` : ''}`
+      console.log("[Admin Dashboard] 调用接口:", url)
       
-      // 如果找到了维修订单，应用状态筛选
-      let filteredRepairs = repairOrders
-      if (repairStatusFilter && repairStatusFilter !== "all") {
-        // 使用小写状态值进行匹配
-        filteredRepairs = repairOrders.filter((r: any) => r.status === repairStatusFilter.toLowerCase())
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("[Admin Dashboard] 接口返回错误:", response.status, errorText)
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
       }
-
-      // 暂时移除 restaurants 关联查询，直接使用原始数据
-      // 如果后续需要显示餐厅名称，可以单独查询 restaurants 表
-      setRepairs(filteredRepairs)
+      
+      const result = await response.json()
+      
+      // 前端强制调试：打印接口返回结果
+      console.log("[Admin Dashboard] 接口返回结果:", result)
+      
+      if (result.success) {
+        // 暴力显示逻辑：移除所有多余的过滤逻辑，直接使用接口返回的数据
+        const repairs = result.data || []
+        
+        // 前端强制调试：如果接口返回成功但列表依然是空的，显示alert
+        if (repairs.length === 0) {
+          console.warn(`[Admin Dashboard] 匹配到的维修单数量: ${repairs.length}`)
+          console.warn(`[Admin Dashboard] 总订单数: ${result.debug?.totalOrders || 0}`)
+          console.warn(`[Admin Dashboard] 过滤后维修单: ${result.debug?.filteredRepairs || 0}`)
+          console.warn(`[Admin Dashboard] 语音工单: ${result.debug?.audioOrders || 0}`)
+          alert(`匹配到的维修单数量: ${repairs.length}\n总订单数: ${result.debug?.totalOrders || 0}\n过滤后维修单: ${result.debug?.filteredRepairs || 0}\n语音工单: ${result.debug?.audioOrders || 0}`)
+        } else {
+          console.log(`[Admin Dashboard] 匹配到的维修单数量: ${repairs.length}`)
+          console.log(`[Admin Dashboard] 语音工单数量: ${result.debug?.audioOrders || 0}`)
+        }
+        
+        // 直接使用接口返回的数据，不进行任何额外过滤
+        setRepairs(repairs)
+      } else {
+        throw new Error(result.error || "获取维修列表失败")
+      }
 
     } catch (error) {
       console.error("[Admin Dashboard] 加载报修时出错:", error)
       if (error instanceof Error) {
         console.error("[Admin Dashboard] 错误详情:", error.message, error.stack)
+        alert(`加载报修列表失败: ${error.message}`)
       }
       setRepairs([])
     } finally {
       setIsLoadingRepairs(false)
     }
-  }, [repairStatusFilter, supabase])
+  }, [repairStatusFilter])
 
   // 更新报修状态 - 直接使用 Supabase 更新（符合官方最佳实践）
   const updateRepairStatus = useCallback(async (repairId: string, status: string, amount?: number, assignedTo?: string) => {
@@ -3338,7 +3311,8 @@ export default function AdminDashboard() {
               <div className="space-y-3">
                 {/* 暴力显示逻辑：移除所有多余的过滤逻辑，只要接口返回了数据，就必须全部列出来 */}
                 {repairs.map((repair) => {
-                  const restaurant = repair.restaurants
+                  // 从 restaurants state 中查找餐厅信息（因为 API 不返回 restaurants 关联数据）
+                  const restaurant = restaurants.find((r) => r.id === repair.restaurant_id)
                   return (
                     <div
                       key={repair.id}
