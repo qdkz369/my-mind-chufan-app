@@ -880,92 +880,189 @@ export default function AdminDashboard() {
     }
   }, [orderServiceTypeFilter, orderStatusFilter])
 
-  // 加载报修数据
+  // 加载报修数据 - 直接使用 Supabase 查询（符合官方最佳实践）
   const loadRepairs = useCallback(async () => {
+    if (!supabase) {
+      console.error("[Admin Dashboard] Supabase未配置")
+      setRepairs([])
+      return
+    }
+
     try {
       setIsLoadingRepairs(true)
-      const statusParam = repairStatusFilter !== "all" ? `?status=${repairStatusFilter}` : ""
-      const url = `/api/repair/list${statusParam}`
       
-      // 使用网络重试机制
-      const response = await retryFetch(url)
-      const result = await response.json()
+      // 构建查询 - 直接使用 Supabase 查询 orders 表
+      let query = supabase
+        .from("orders")
+        .select(
+          "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url, restaurants(id, name, address, contact_phone, contact_name)"
+        )
+        .ilike("service_type", "%维修%") // 匹配包含"维修"的订单
       
-      // 移除调试日志，避免控制台刷屏（仅在开发环境需要时启用）
-      // console.log("[Admin Dashboard] API 响应:", { ok: response.ok, status: response.status, success: result.success, dataLength: result.data?.length || 0, error: result.error })
-      
-      if (!response.ok) {
-        console.error("[Admin Dashboard] API 返回错误:", {
-          status: response.status,
-          error: result.error,
-          details: result.details,
-        })
-        throw new Error(result.error || result.details || "加载报修失败")
+      // 状态筛选
+      if (repairStatusFilter && repairStatusFilter !== "all") {
+        query = query.eq("status", repairStatusFilter)
       }
-      
-      if (result.success && result.data) {
-        if (result.data.length > 0) {
-          // 移除调试日志，避免控制台刷屏（仅在开发环境需要时启用）
-          // console.log("[Admin Dashboard] 成功加载报修工单，第一条记录:", { id: result.data[0].id, service_type: result.data[0].service_type, status: result.data[0].status, restaurant_name: result.data[0].restaurants?.name })
-        } else {
-          console.warn("[Admin Dashboard] API返回成功但数据为空，可能原因:")
-          console.warn("1. 数据库中确实没有维修工单")
-          console.warn("2. service_type 字段值不匹配（当前查询: 包含'维修'）")
-          console.warn("3. 状态筛选条件不匹配")
+
+      // 执行查询（使用重试机制）
+      const { data: repairsData, error: queryError } = await retryOnNetworkError(
+        async () => await query.order("created_at", { ascending: false })
+      )
+
+      // 如果关联查询失败（可能是 restaurants 表不存在或外键关系问题），尝试基础查询
+      if (queryError && (queryError.message?.includes("restaurants") || queryError.code === "PGRST116" || queryError.code === "42P01")) {
+        // 重新构建基础查询（不包含 restaurants 关联）
+        let baseQuery = supabase
+          .from("orders")
+          .select(
+            "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url"
+          )
+          .ilike("service_type", "%维修%")
+        
+        if (repairStatusFilter && repairStatusFilter !== "all") {
+          baseQuery = baseQuery.eq("status", repairStatusFilter)
         }
-        setRepairs(result.data || [])
-      } else {
-        console.warn("[Admin Dashboard] API 返回成功但数据为空:", {
-          success: result.success,
-          data: result.data,
-          error: result.error,
-        })
-        setRepairs([]) // 确保设置为空数组而不是undefined
+        
+        const baseResult = await retryOnNetworkError(
+          async () => await baseQuery.order("created_at", { ascending: false })
+        )
+        
+        if (baseResult.error) {
+          console.error("[Admin Dashboard] 基础查询也失败:", baseResult.error)
+          setRepairs([])
+          return
+        }
+        
+        // 如果基础查询成功，手动获取餐厅信息
+        if (baseResult.data && baseResult.data.length > 0) {
+          const restaurantIds = [...new Set(baseResult.data.map((r: any) => r.restaurant_id).filter(Boolean))]
+          if (restaurantIds.length > 0) {
+            const { data: restaurantsData } = await retryOnNetworkError(
+              async () => await supabase
+                .from("restaurants")
+                .select("id, name, address, contact_phone, contact_name")
+                .in("id", restaurantIds)
+            )
+            
+            // 将餐厅信息附加到每个订单，并转换为兼容格式
+            if (restaurantsData) {
+              const restaurantMap = new Map(restaurantsData.map((r: any) => [r.id, r]))
+              const processedRepairs = baseResult.data.map((repair: any) => {
+                const restaurant = restaurantMap.get(repair.restaurant_id)
+                return {
+                  ...repair,
+                  restaurants: restaurant || null,
+                  restaurant_name: restaurant?.name || undefined, // 兼容 Order 接口
+                }
+              })
+              setRepairs(processedRepairs)
+              return
+            }
+          }
+        }
+        
+        setRepairs(baseResult.data || [])
+        return
       }
+
+      if (queryError) {
+        console.error("[Admin Dashboard] 加载报修失败:", queryError)
+        setRepairs([])
+        return
+      }
+
+      // 处理数据，确保与 Order 接口兼容
+      const processedRepairs = (repairsData || []).map((repair: any) => {
+        // 如果 restaurants 是对象，提取 restaurant_name
+        const restaurant = repair.restaurants
+        return {
+          ...repair,
+          restaurant_name: restaurant?.name || undefined, // 兼容 Order 接口
+        }
+      })
+
+      setRepairs(processedRepairs)
     } catch (error) {
       console.error("[Admin Dashboard] 加载报修时出错:", error)
       if (error instanceof Error) {
         console.error("[Admin Dashboard] 错误详情:", error.message, error.stack)
       }
-      setRepairs([]) // 出错时设置为空数组
+      setRepairs([])
     } finally {
       setIsLoadingRepairs(false)
     }
-  }, [repairStatusFilter])
+  }, [repairStatusFilter, supabase])
 
-  // 更新报修状态
+  // 更新报修状态 - 直接使用 Supabase 更新（符合官方最佳实践）
   const updateRepairStatus = useCallback(async (repairId: string, status: string, amount?: number, assignedTo?: string) => {
+    if (!supabase) {
+      alert("数据库连接失败")
+      return
+    }
+
     try {
       setIsUpdatingRepair(true)
-      const response = await fetch("/api/repair/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repair_id: repairId,
-          status: status,
-          amount: amount,
-          assigned_to: assignedTo || undefined, // 分配的工人ID
-        }),
-      })
-      const result = await response.json()
-      
-      if (result.success) {
-        await loadRepairs()
-        setIsRepairDetailDialogOpen(false)
-        setSelectedRepair(null)
-        setRepairUpdateAmount("")
-        setRepairUpdateStatus("")
-        setRepairAssignedWorker("")
-      } else {
-        alert(`更新失败: ${result.error}`)
+
+      // 验证状态值
+      const validStatuses = ["pending", "processing", "completed", "cancelled"]
+      if (!validStatuses.includes(status)) {
+        alert(`无效的状态值: ${status}。有效值: ${validStatuses.join(", ")}`)
+        return
       }
+
+      // 如果状态是completed，必须提供金额
+      if (status === "completed" && (amount === undefined || amount === null)) {
+        alert("完成报修必须提供维修金额")
+        return
+      }
+
+      // 构建更新数据
+      const updateData: any = {
+        status: status,
+        updated_at: new Date().toISOString(),
+      }
+
+      // 如果提供了金额，更新金额
+      if (amount !== undefined && amount !== null) {
+        updateData.amount = amount
+      }
+
+      // 如果提供了分配的工人ID，更新 assigned_to 和 worker_id
+      if (assignedTo !== undefined && assignedTo !== null) {
+        updateData.assigned_to = assignedTo || null
+        updateData.worker_id = assignedTo || null // 兼容旧字段
+      }
+
+      // 直接使用 Supabase 更新
+      const { data: updatedRepair, error: updateError } = await retryOnNetworkError(
+        async () => await supabase
+          .from("orders")
+          .update(updateData)
+          .eq("id", repairId)
+          .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to, worker_id")
+          .single()
+      )
+
+      if (updateError) {
+        console.error("[Admin Dashboard] 更新报修失败:", updateError)
+        alert(`更新失败: ${updateError.message || "未知错误"}`)
+        return
+      }
+
+      // 更新成功，刷新列表
+      await loadRepairs()
+      setIsRepairDetailDialogOpen(false)
+      setSelectedRepair(null)
+      setRepairUpdateAmount("")
+      setRepairUpdateStatus("")
+      setRepairAssignedWorker("")
     } catch (error) {
       console.error("[Admin Dashboard] 更新报修时出错:", error)
       alert("更新报修失败")
     } finally {
       setIsUpdatingRepair(false)
     }
-  }, [loadRepairs])
+  }, [loadRepairs, supabase])
 
   // 当切换到报修管理或状态筛选改变时加载数据
   useEffect(() => {
@@ -981,37 +1078,45 @@ export default function AdminDashboard() {
     }
   }, [activeMenu, orderServiceTypeFilter, orderStatusFilter, loadAllOrders])
 
-  // 实时推送：监听维修工单变化
+  // 实时推送：监听维修工单变化（使用 Supabase Realtime，符合官方最佳实践）
+  // 此接口保留用于后期扩展实时派单功能
+  // 后期扩展建议：
+  // 1. 可以添加按 assigned_to 过滤，实现工人级别的实时推送
+  // 2. 可以添加按 status 过滤，只推送特定状态的订单变化
+  // 3. 可以优化 payload 处理，只更新变化的订单而不是重新加载整个列表
   useEffect(() => {
     if (!supabase || activeMenu !== "repairs") return
 
-    // 移除频繁的调试日志，避免控制台刷屏
-
     // 订阅 orders 表的变化（只监听维修服务）
+    // 注意：Supabase Realtime 的 filter 使用精确匹配，不支持 ilike
+    // 如果需要匹配多种 service_type 值，可以创建多个订阅或使用 PostgreSQL 函数
     const channel = supabase
-      .channel("repairs-realtime")
+      .channel("repairs-realtime-admin")
       .on(
         "postgres_changes",
         {
           event: "*", // 监听所有事件（INSERT, UPDATE, DELETE）
           schema: "public",
           table: "orders",
-          filter: "service_type=eq.维修服务", // 只监听维修服务
+          // 精确匹配：根据实际数据中的 service_type 值调整
+          // 如果数据中使用 "维修服务"，则使用该值；如果使用其他值，需要相应调整
+          filter: "service_type=eq.维修服务", // 精确匹配
         },
         (payload) => {
-          // 移除频繁的调试日志，避免控制台刷屏
-          // 重新加载报修列表
+          // 实时更新：当 orders 表发生变化时，自动刷新报修列表
+          // 后期扩展：可以在这里添加更细粒度的更新逻辑
+          // 例如：payload.eventType === 'INSERT' 时只添加新订单，UPDATE 时只更新对应订单
           loadRepairs()
         }
       )
       .subscribe()
 
     return () => {
-      // 移除频繁的调试日志，避免控制台刷屏
+      // 清理订阅
       supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, activeMenu])
+  }, [supabase, activeMenu, loadRepairs])
 
   // 加载工人数据
   const loadWorkers = useCallback(async () => {
@@ -2666,23 +2771,31 @@ export default function AdminDashboard() {
                             await loadRepairs()
                             // 使用 setTimeout 确保状态已更新
                             setTimeout(() => {
-                              // 重新获取最新的 repairs 状态
-                              fetch(`/api/repair/list`)
-                                .then((res) => res.json())
-                                .then((result) => {
-                                  if (result.success && result.data) {
-                                    const repair = result.data.find((r: any) => r.id === order.id)
-                                    if (repair) {
-                                      setSelectedRepair(repair)
-                                      setRepairUpdateStatus(repair.status)
-                                      setRepairUpdateAmount(repair.amount?.toString() || "")
-                                      setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+                              // 直接从 repairs 状态中查找对应的报修订单（已改为直接使用 Supabase）
+                              const repair = repairs.find((r: any) => r.id === order.id)
+                              if (repair) {
+                                setSelectedRepair(repair)
+                                setRepairUpdateStatus(repair.status)
+                                setRepairUpdateAmount(repair.amount?.toString() || "")
+                                setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+                                setIsRepairDetailDialogOpen(true)
+                              } else {
+                                // 如果状态中找不到，重新加载一次
+                                loadRepairs().then(() => {
+                                  setTimeout(() => {
+                                    const repairAfterReload = repairs.find((r: any) => r.id === order.id)
+                                    if (repairAfterReload) {
+                                      setSelectedRepair(repairAfterReload)
+                                      setRepairUpdateStatus(repairAfterReload.status)
+                                      setRepairUpdateAmount(repairAfterReload.amount?.toString() || "")
+                                      setRepairAssignedWorker(repairAfterReload.assigned_to || repairAfterReload.worker_id || "")
                                       setIsRepairDetailDialogOpen(true)
                                     } else {
                                       console.warn("[Admin Dashboard] 未找到对应的报修订单:", order.id)
                                     }
-                                  }
+                                  }, 300)
                                 })
+                              }
                             }, 300)
                           } catch (error) {
                             console.error("[Admin Dashboard] 加载报修失败:", error)
@@ -2968,20 +3081,31 @@ export default function AdminDashboard() {
                           setActiveMenu("repairs")
                           setTimeout(() => {
                             loadRepairs().then(() => {
-                              fetch(`/api/repair/list`)
-                                .then((res) => res.json())
-                                .then((result) => {
-                                  if (result.success && result.data) {
-                                    const repair = result.data.find((r: any) => r.id === order.id)
-                                    if (repair) {
-                                      setSelectedRepair(repair)
-                                      setRepairUpdateStatus(repair.status)
-                                      setRepairUpdateAmount(repair.amount?.toString() || "")
-                                      setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
-                                      setIsRepairDetailDialogOpen(true)
-                                    }
-                                  }
-                                })
+                              // 直接从 repairs 状态中查找对应的报修订单（已改为直接使用 Supabase）
+                              setTimeout(() => {
+                                const repair = repairs.find((r: any) => r.id === order.id)
+                                if (repair) {
+                                  setSelectedRepair(repair)
+                                  setRepairUpdateStatus(repair.status)
+                                  setRepairUpdateAmount(repair.amount?.toString() || "")
+                                  setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+                                  setIsRepairDetailDialogOpen(true)
+                                } else {
+                                  // 如果状态中找不到，重新加载一次
+                                  loadRepairs().then(() => {
+                                    setTimeout(() => {
+                                      const repairAfterReload = repairs.find((r: any) => r.id === order.id)
+                                      if (repairAfterReload) {
+                                        setSelectedRepair(repairAfterReload)
+                                        setRepairUpdateStatus(repairAfterReload.status)
+                                        setRepairUpdateAmount(repairAfterReload.amount?.toString() || "")
+                                        setRepairAssignedWorker(repairAfterReload.assigned_to || repairAfterReload.worker_id || "")
+                                        setIsRepairDetailDialogOpen(true)
+                                      }
+                                    }, 300)
+                                  })
+                                }
+                              }, 300)
                             })
                           }, 300)
                         }
