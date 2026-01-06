@@ -339,7 +339,7 @@ export default function AdminDashboard() {
       }
     }
     
-    console.log('[地址降级] 原始地址:', address, '-> 降级列表:', fallbacks)
+    // 移除调试日志，避免控制台刷屏
     return [...new Set(fallbacks)] // 去重
   }, [])
 
@@ -522,11 +522,11 @@ export default function AdminDashboard() {
     )
 
     if (restaurantsToGeocode.length === 0) {
-      console.log('[更新坐标] 所有餐厅都有有效的经纬度')
+      // 移除调试日志，避免控制台刷屏
       return
     }
 
-    console.log(`[更新坐标] 发现 ${restaurantsToGeocode.length} 个餐厅需要地理编码`)
+    // 移除调试日志，避免控制台刷屏
 
     // 批量处理地理编码（限制并发数，避免API限制）
     const batchSize = 3
@@ -550,7 +550,7 @@ export default function AdminDashboard() {
           if (updateError) {
             console.error(`[更新坐标] 更新餐厅 ${restaurant.id} 失败:`, updateError)
           } else {
-            console.log(`[更新坐标] 成功更新餐厅 ${restaurant.id} 的坐标`)
+            // 移除调试日志，避免控制台刷屏
             // 更新本地状态
             setRestaurants(prev => prev.map(r => 
               r.id === restaurant.id 
@@ -892,13 +892,8 @@ export default function AdminDashboard() {
       const response = await retryFetch(url)
       const result = await response.json()
       
-      console.log("[Admin Dashboard] API 响应:", {
-        ok: response.ok,
-        status: response.status,
-        success: result.success,
-        dataLength: result.data?.length || 0,
-        error: result.error,
-      })
+      // 移除调试日志，避免控制台刷屏（仅在开发环境需要时启用）
+      // console.log("[Admin Dashboard] API 响应:", { ok: response.ok, status: response.status, success: result.success, dataLength: result.data?.length || 0, error: result.error })
       
       if (!response.ok) {
         console.error("[Admin Dashboard] API 返回错误:", {
@@ -911,12 +906,8 @@ export default function AdminDashboard() {
       
       if (result.success && result.data) {
         if (result.data.length > 0) {
-          console.log("[Admin Dashboard] 成功加载报修工单，第一条记录:", {
-            id: result.data[0].id,
-            service_type: result.data[0].service_type,
-            status: result.data[0].status,
-            restaurant_name: result.data[0].restaurants?.name,
-          })
+          // 移除调试日志，避免控制台刷屏（仅在开发环境需要时启用）
+          // console.log("[Admin Dashboard] 成功加载报修工单，第一条记录:", { id: result.data[0].id, service_type: result.data[0].service_type, status: result.data[0].status, restaurant_name: result.data[0].restaurants?.name })
         } else {
           console.warn("[Admin Dashboard] API返回成功但数据为空，可能原因:")
           console.warn("1. 数据库中确实没有维修工单")
@@ -1099,8 +1090,7 @@ export default function AdminDashboard() {
             workerType = null
           }
 
-          console.log("[加载工人] 原始worker_type:", worker.worker_type, "类型:", typeof worker.worker_type)
-          console.log("[加载工人] 处理后的workerType:", workerType)
+          // 移除调试日志，避免控制台刷屏
 
           return {
             ...worker,
@@ -1135,11 +1125,11 @@ export default function AdminDashboard() {
       }
 
       // 先检查表是否存在
-      console.log("[添加工人] 检查 workers 表是否存在...")
+      // 移除调试日志，避免控制台刷屏
       const checkResponse = await fetch("/api/worker/check-table")
       const checkResult = await checkResponse.json()
-      
-      console.log("[添加工人] 表检查结果:", checkResult)
+
+      // 移除调试日志，避免控制台刷屏
       
       if (!checkResult.exists) {
         throw new Error(
@@ -1155,7 +1145,7 @@ export default function AdminDashboard() {
         )
       }
       
-      console.log("[添加工人] 表检查通过，开始添加工人...")
+      // 移除调试日志，避免控制台刷屏
 
       // 构建worker_type：单个类型保存为字符串，多个保存为JSON字符串（因为数据库字段是TEXT类型）
       let workerTypeValue: string
@@ -1182,8 +1172,7 @@ export default function AdminDashboard() {
         workerData.product_types = []
       }
 
-      console.log("[添加工人] worker_types:", newWorker.worker_types)
-      console.log("[添加工人] 保存的worker_type:", workerData.worker_type, "类型:", typeof workerData.worker_type, "是否为数组:", Array.isArray(workerData.worker_type))
+      // 移除调试日志，避免控制台刷屏
 
       const { data, error } = await supabase
         .from("workers")
@@ -1285,8 +1274,7 @@ export default function AdminDashboard() {
       }
     }
 
-    console.log("[编辑工人] 原始worker_type:", worker.worker_type)
-    console.log("[编辑工人] 解析后的workerTypes:", workerTypes)
+    // 移除调试日志，避免控制台刷屏
 
     setEditWorker({
       name: worker.name || "",
@@ -1337,8 +1325,7 @@ export default function AdminDashboard() {
         updated_at: new Date().toISOString(),
       }
 
-      console.log("[更新工人] worker_types:", editWorker.worker_types)
-      console.log("[更新工人] 保存的worker_type:", updateData.worker_type, "类型:", typeof updateData.worker_type, "是否为数组:", Array.isArray(updateData.worker_type))
+      // 移除调试日志，避免控制台刷屏
 
       // 如果包含配送员，保存产品类型
       if (editWorker.worker_types.includes("delivery")) {
@@ -1713,7 +1700,7 @@ export default function AdminDashboard() {
     //   zoom, 
     //   restaurantCount: restaurantsWithLocation.length,
     //   range: { lngDiff, latDiff, maxDiff }
-    })
+    // }
 
     return {
       center: [centerLng, centerLat] as [number, number],
@@ -4492,7 +4479,7 @@ export default function AdminDashboard() {
       //   })
       // }
       
-      console.log('[Fuel Pricing] 价格已更新:', fuelId, newPrice)
+      // 移除调试日志，避免控制台刷屏
       alert('价格已保存')
     } catch (error) {
       console.error('[Fuel Pricing] 保存价格失败:', error)
@@ -4536,7 +4523,7 @@ export default function AdminDashboard() {
         }
       }))
       
-      console.log('[Fuel Pricing] 市场价格已同步')
+      // 移除调试日志，避免控制台刷屏
       alert('市场价格已同步')
     } catch (error) {
       console.error('[Fuel Pricing] 同步市场价格失败:', error)
