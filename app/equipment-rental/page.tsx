@@ -139,12 +139,14 @@ export default function EquipmentRentalPage() {
     loadCategories()
   }, [])
 
-  // 加载设备列表
+  // 加载设备列表（页面加载时自动加载，或当筛选条件改变时重新加载）
   useEffect(() => {
-    if (selectedCategory || searchKeyword) {
+    // 页面初始加载时，即使 selectedCategory 是 "all"，也应该加载所有设备
+    // 如果分类还在加载中，等待分类加载完成后再加载设备（避免分类筛选时找不到分类）
+    if (selectedCategory === "all" || categories.length > 0) {
       loadEquipment()
     }
-  }, [selectedCategory, searchKeyword])
+  }, [selectedCategory, searchKeyword, categories])
 
   // 加载租赁订单
   useEffect(() => {
@@ -159,6 +161,8 @@ export default function EquipmentRentalPage() {
       const result = await response.json()
       if (result.success) {
         setCategories(result.data || [])
+      } else {
+        console.error("[设备租赁] 加载分类失败:", result.error)
       }
     } catch (err) {
       console.error("[设备租赁] 加载分类失败:", err)
@@ -179,13 +183,19 @@ export default function EquipmentRentalPage() {
         params.append("search", searchKeyword)
       }
 
-      const response = await fetch(`/api/equipment/list?${params.toString()}`)
+      const url = `/api/equipment/list${params.toString() ? `?${params.toString()}` : ""}`
+      const response = await fetch(url)
       const result = await response.json()
+      
       if (result.success) {
         setEquipment(result.data || [])
+      } else {
+        console.error("[设备租赁] 加载设备失败:", result.error)
+        setEquipment([])
       }
     } catch (err) {
       console.error("[设备租赁] 加载设备失败:", err)
+      setEquipment([])
     } finally {
       setIsLoading(false)
     }
@@ -384,7 +394,14 @@ export default function EquipmentRentalPage() {
             ) : equipment.length === 0 ? (
               <Card className="bg-slate-900/50 border-slate-800 p-8 text-center">
                 <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
-                <p className="text-slate-400">暂无设备</p>
+                <p className="text-slate-400 mb-2">暂无设备</p>
+                {searchKeyword ? (
+                  <p className="text-sm text-slate-500">未找到与"{searchKeyword}"相关的设备</p>
+                ) : selectedCategory !== "all" ? (
+                  <p className="text-sm text-slate-500">该分类下暂无设备</p>
+                ) : (
+                  <p className="text-sm text-slate-500">当前没有可租赁的设备，请稍后再试</p>
+                )}
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
