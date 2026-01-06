@@ -1670,7 +1670,7 @@ export default function AdminDashboard() {
   // 更新地图标记
   const updateMarkers = useCallback(() => {
     if (!mapInstanceRef.current) {
-      console.warn('[Map] 地图实例不存在，跳过标记更新')
+      // 移除调试日志，避免控制台刷屏
       return
     }
 
@@ -4064,6 +4064,7 @@ export default function AdminDashboard() {
 
   // 加载API配置
   useEffect(() => {
+    if (typeof window === 'undefined') return
     const saved = localStorage.getItem("apiConfigs")
     if (saved) {
       try {
@@ -4086,7 +4087,9 @@ export default function AdminDashboard() {
       // 这里可以保存到数据库或localStorage
       const configs = [...apiConfigs, { ...newApiConfig, id: Date.now().toString() }]
       setApiConfigs(configs)
-      localStorage.setItem("apiConfigs", JSON.stringify(configs))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem("apiConfigs", JSON.stringify(configs))
+      }
       setNewApiConfig({ name: "", endpoint: "", method: "POST", description: "", is_active: true })
       alert("API配置已添加")
     } catch (error) {
