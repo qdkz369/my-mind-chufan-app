@@ -153,14 +153,37 @@ export async function POST(request: Request) {
     }
     
     // 设置 user_id（RLS 策略要求）
+    // 重要：即使使用服务角色密钥，也尝试设置一个有效的 user_id，以确保 RLS 策略通过
     if (currentUserId) {
       repairData.user_id = currentUserId
+      console.log("[创建报修API] 设置 user_id:", currentUserId)
     } else if (useServiceRole) {
-      // 如果使用服务角色密钥且没有用户ID，尝试使用 restaurant_id 作为临时 user_id
-      // 或者不设置 user_id（如果 RLS 策略允许 NULL）
-      // 注意：这需要 RLS 策略允许 user_id 为 NULL 的插入，或者使用服务角色密钥时绕过 RLS
+      // 如果使用服务角色密钥但没有用户ID，尝试从 restaurant_id 关联的用户获取
+      // 或者使用一个默认的系统用户ID（如果存在）
+      // 如果都不行，服务角色密钥应该能够绕过 RLS，但为了安全，我们仍然尝试设置一个值
+      // 注意：这里我们需要确保即使使用服务角色密钥，也设置一个合理的 user_id
       // 暂时不设置 user_id，让服务角色密钥绕过 RLS
       console.log("[创建报修API] 使用服务角色密钥，user_id 为 NULL（绕过 RLS）")
+      // 但是，如果 RLS 策略仍然检查 user_id，我们需要设置一个值
+      // 尝试从 restaurant_id 获取关联的用户ID
+      try {
+        const { data: restaurantInfo } = await supabaseClient
+          .from("restaurants")
+          .select("user_id, owner_id")
+          .eq("id", restaurant_id)
+          .single()
+        
+        if (restaurantInfo && (restaurantInfo.user_id || restaurantInfo.owner_id)) {
+          repairData.user_id = restaurantInfo.user_id || restaurantInfo.owner_id
+          console.log("[创建报修API] 从餐厅信息获取 user_id:", repairData.user_id)
+        }
+      } catch (err) {
+        console.warn("[创建报修API] 无法从餐厅信息获取 user_id:", err)
+      }
+    } else {
+      // 如果没有用户ID且没有服务角色密钥，这不应该发生（应该在前面返回错误）
+      // 但为了安全，我们仍然记录警告
+      console.error("[创建报修API] 警告：没有用户ID且没有服务角色密钥，但代码继续执行")
     }
 
     // 如果有设备ID，在描述中包含设备信息（因为device_id字段可能不存在）
@@ -173,6 +196,14 @@ export async function POST(request: Request) {
     }
 
     // 尝试插入基础数据（不包含可能不存在的字段）
+    // 重要：在插入前，确保 repairData 包含所有必需字段
+    console.log("[创建报修API] 准备插入数据:", {
+      restaurant_id: repairData.restaurant_id,
+      user_id: repairData.user_id || "NULL",
+      service_type: repairData.service_type,
+      useServiceRole: useServiceRole,
+    })
+    
     let { data: newRepair, error: createError } = await supabaseClient
       .from("orders")
       .insert(repairData)
@@ -188,7 +219,27 @@ export async function POST(request: Request) {
         details: createError.details,
         hint: createError.hint,
         repairData: repairData,
+        currentUserId: currentUserId,
+        useServiceRole: useServiceRole,
       })
+      
+      // 如果是 RLS 策略错误，提供更详细的提示
+      if (createError.message && createError.message.includes("row-level security")) {
+        return NextResponse.json(
+          {
+            error: "创建报修工单失败",
+            details: "数据库权限错误：无法创建订单。请确保已登录或联系管理员检查权限配置。",
+            code: createError.code,
+            hint: "RLS 策略要求 user_id 字段必须匹配当前认证用户。如果使用服务角色密钥，请确保 RLS 策略允许服务角色插入数据。",
+            debug: {
+              hasUserId: !!repairData.user_id,
+              userId: repairData.user_id || null,
+              useServiceRole: useServiceRole,
+            },
+          },
+          { status: 500 }
+        )
+      }
       
       return NextResponse.json(
         {

@@ -1179,13 +1179,35 @@ function IoTDashboard() {
       let userId: string | null = null
       try {
         if (supabase) {
-          const { data: { user }, error: userError } = await supabase.auth.getUser()
-          if (!userError && user) {
-            userId = user.id
+          // 先尝试从 session 获取
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+          if (!sessionError && session?.user) {
+            userId = session.user.id
+            console.log("[报修提交] 从 session 获取用户ID:", userId)
+          } else {
+            // 如果 session 没有，尝试 getUser
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            if (!userError && user) {
+              userId = user.id
+              console.log("[报修提交] 从 getUser 获取用户ID:", userId)
+            } else {
+              console.warn("[报修提交] 无法获取用户ID:", userError || sessionError)
+            }
           }
+        } else {
+          console.warn("[报修提交] Supabase 客户端未初始化")
         }
       } catch (userErr) {
-        console.warn("[报修提交] 无法获取用户ID:", userErr)
+        console.error("[报修提交] 获取用户ID时出错:", userErr)
+      }
+      
+      // 如果仍然没有用户ID，尝试从 localStorage 获取（如果有存储）
+      if (!userId && typeof window !== "undefined") {
+        const storedUserId = localStorage.getItem("userId") || localStorage.getItem("user_id")
+        if (storedUserId) {
+          userId = storedUserId
+          console.log("[报修提交] 从 localStorage 获取用户ID:", userId)
+        }
       }
 
       const response = await fetch("/api/repair/create", {
@@ -1209,8 +1231,22 @@ function IoTDashboard() {
         const errorMsg = data.error || "提交报修失败"
         const details = data.details ? `\n详情: ${data.details}` : ''
         const hint = data.hint ? `\n提示: ${data.hint}` : ''
-        console.error("[报修提交] 失败:", { error: errorMsg, details, hint, fullData: data })
-        throw new Error(`${errorMsg}${details}${hint}`)
+        const debug = data.debug ? `\n调试信息: ${JSON.stringify(data.debug)}` : ''
+        console.error("[报修提交] 失败:", { 
+          error: errorMsg, 
+          details, 
+          hint, 
+          debug,
+          fullData: data,
+          userId: userId,
+        })
+        
+        // 如果是权限错误，提示用户登录
+        if (data.code === "42501" || (data.details && data.details.includes("row-level security"))) {
+          throw new Error(`${errorMsg}\n${details}\n${hint}\n\n提示：请确保已登录后再提交报修。`)
+        }
+        
+        throw new Error(`${errorMsg}${details}${hint}${debug}`)
       }
 
       alert("报修工单提交成功！我们会尽快安排维修人员联系您。")
