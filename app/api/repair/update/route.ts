@@ -81,15 +81,25 @@ export async function POST(request: Request) {
       )
     }
 
-    // 查询报修工单是否存在
+    // 查询报修工单是否存在（放宽 service_type 匹配，允许所有类型的工单）
     const { data: repair, error: repairError } = await supabase
       .from("orders")
       .select("id, status, service_type")
       .eq("id", repairId)
-      .eq("service_type", "维修服务") // 使用精确匹配
       .single()
 
-    if (repairError || !repair) {
+    if (repairError) {
+      console.error("[更新报修API] 查询工单失败:", repairError)
+      return NextResponse.json(
+        { 
+          error: "查询报修工单失败",
+          details: repairError.message 
+        },
+        { status: 500 }
+      )
+    }
+
+    if (!repair) {
       return NextResponse.json(
         { error: "报修工单不存在" },
         { status: 404 }
@@ -112,26 +122,36 @@ export async function POST(request: Request) {
       updateData.notes = notes
     }
 
-    // 如果提供了分配的工人ID，更新 assigned_to 和 worker_id
+    // 如果提供了分配的工人ID，更新 assigned_to（不再更新 worker_id，避免字段不存在错误）
     if (assigned_to !== undefined && assigned_to !== null) {
       updateData.assigned_to = assigned_to || null
-      updateData.worker_id = assigned_to || null // 兼容旧字段
     }
+
+    console.log("[更新报修API] 准备更新工单:", { repairId, updateData })
 
     // 更新报修工单
     const { data: updatedRepair, error: updateError } = await supabase
       .from("orders")
       .update(updateData)
       .eq("id", repairId)
-      .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at")
+      .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to")
       .single()
 
     if (updateError) {
-      console.error("[更新报修API] 更新失败:", updateError)
+      console.error("[更新报修API] 更新失败:", {
+        error: updateError,
+        message: updateError.message,
+        code: updateError.code,
+        details: updateError.details,
+        hint: updateError.hint,
+        updateData,
+        repairId
+      })
       return NextResponse.json(
         {
           error: "更新报修工单失败",
-          details: updateError.message,
+          details: updateError.message || "数据库更新操作失败",
+          code: updateError.code,
         },
         { status: 500 }
       )
