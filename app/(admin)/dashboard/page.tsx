@@ -1067,29 +1067,30 @@ export default function AdminDashboard() {
   // 当切换到报修管理或状态筛选改变时加载数据
   useEffect(() => {
     if (activeMenu === "repairs") {
-      loadRepairs().then(() => {
-        // 检查URL参数，如果有repairId，自动打开详情弹窗
-        const repairId = searchParams.get("id") || searchParams.get("repairId")
-        if (repairId) {
-          // 等待一下确保repairs状态已更新
-          setTimeout(() => {
-            const repair = repairs.find((r: any) => r.id === repairId)
-            if (repair) {
-              setSelectedRepair(repair)
-              setRepairUpdateStatus(repair.status)
-              setRepairUpdateAmount(repair.amount?.toString() || "")
-              setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
-              setIsRepairDetailDialogOpen(true)
-              // 清除URL参数
-              if (typeof window !== 'undefined') {
-                window.history.replaceState({}, '', window.location.pathname)
-              }
-            }
-          }, 300)
-        }
-      })
+      loadRepairs()
     }
-  }, [activeMenu, repairStatusFilter, repairServiceTypeFilter, loadRepairs, searchParams, repairs])
+  }, [activeMenu, repairStatusFilter, repairServiceTypeFilter, loadRepairs])
+
+  // 单独处理URL参数，避免与repairs状态形成循环依赖
+  useEffect(() => {
+    if (activeMenu === "repairs" && repairs.length > 0) {
+      const repairId = searchParams.get("id") || searchParams.get("repairId")
+      if (repairId) {
+        const repair = repairs.find((r: any) => r.id === repairId)
+        if (repair) {
+          setSelectedRepair(repair)
+          setRepairUpdateStatus(repair.status)
+          setRepairUpdateAmount(repair.amount?.toString() || "")
+          setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+          setIsRepairDetailDialogOpen(true)
+          // 清除URL参数
+          if (typeof window !== 'undefined') {
+            window.history.replaceState({}, '', window.location.pathname)
+          }
+        }
+      }
+    }
+  }, [activeMenu, searchParams, repairs])
 
   // 当切换到订单管理或筛选条件改变时加载数据
   useEffect(() => {
@@ -1106,6 +1107,9 @@ export default function AdminDashboard() {
   // 3. 可以优化 payload 处理，只更新变化的订单而不是重新加载整个列表
   useEffect(() => {
     if (!supabase || activeMenu !== "repairs") return
+
+    let debounceTimer: NodeJS.Timeout | null = null
+    let isSubscribed = true
 
     // 订阅 orders 表的变化（只监听维修服务）
     // 注意：Supabase Realtime 的 filter 使用精确匹配，不支持 ilike
@@ -1127,18 +1131,26 @@ export default function AdminDashboard() {
           // 使用防抖机制，避免频繁刷新
           // 后期扩展：可以在这里添加更细粒度的更新逻辑
           // 例如：payload.eventType === 'INSERT' 时只添加新订单，UPDATE 时只更新对应订单
-          if (typeof window !== 'undefined') {
-            const debounceKey = 'repair-realtime-debounce'
-            clearTimeout((window as any)[debounceKey])
-            ;(window as any)[debounceKey] = setTimeout(() => {
-              loadRepairs()
-            }, 1000) // 1秒防抖
+          if (!isSubscribed) return
+          
+          if (debounceTimer) {
+            clearTimeout(debounceTimer)
           }
+          
+          debounceTimer = setTimeout(() => {
+            if (isSubscribed && activeMenu === "repairs") {
+              loadRepairs()
+            }
+          }, 2000) // 增加到2秒防抖，减少刷新频率
         }
       )
       .subscribe()
 
     return () => {
+      isSubscribed = false
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+      }
       // 清理订阅
       supabase.removeChannel(channel)
     }
