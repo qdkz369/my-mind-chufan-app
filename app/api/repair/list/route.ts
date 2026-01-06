@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
 
     // 构建查询 - 使用 ilike 匹配包含"维修"的订单
+    // 先尝试包含 restaurants 关联查询
     let query = supabase
       .from("orders")
       .select(
@@ -60,9 +61,66 @@ export async function GET(request: Request) {
       query = query.eq("restaurant_id", restaurantId)
     }
 
-    const { data: repairs, error } = await query.order("created_at", { ascending: false })
+    let { data: repairs, error } = await query.order("created_at", { ascending: false })
 
-    if (error) {
+    // 如果关联查询失败（可能是 restaurants 表不存在或外键关系问题），尝试基础查询
+    if (error && (error.message?.includes("restaurants") || error.code === "PGRST116" || error.code === "42P01")) {
+      console.warn("[报修列表API] 关联查询失败，尝试基础查询:", error.message)
+      
+      // 重新构建基础查询（不包含 restaurants 关联）
+      let baseQuery = supabase
+        .from("orders")
+        .select(
+          "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id"
+        )
+        .ilike("service_type", "%维修%")
+      
+      // 应用相同的筛选条件
+      if (status) {
+        baseQuery = baseQuery.eq("status", status)
+      }
+      if (restaurantId) {
+        baseQuery = baseQuery.eq("restaurant_id", restaurantId)
+      }
+      const workerId = request.headers.get("x-worker-id")
+      if (workerId && status && status !== "pending") {
+        baseQuery = baseQuery.or(`assigned_to.eq.${workerId},worker_id.eq.${workerId}`)
+      }
+      
+      const baseResult = await baseQuery.order("created_at", { ascending: false })
+      
+      if (baseResult.error) {
+        console.error("[报修列表API] 基础查询也失败:", baseResult.error)
+        return NextResponse.json(
+          {
+            error: "查询失败",
+            details: baseResult.error.message,
+          },
+          { status: 500 }
+        )
+      }
+      
+      // 如果基础查询成功，手动获取餐厅信息
+      repairs = baseResult.data
+      if (repairs && repairs.length > 0) {
+        const restaurantIds = [...new Set(repairs.map((r: any) => r.restaurant_id).filter(Boolean))]
+        if (restaurantIds.length > 0) {
+          const { data: restaurantsData } = await supabase
+            .from("restaurants")
+            .select("id, name, address, contact_phone, contact_name")
+            .in("id", restaurantIds)
+          
+          // 将餐厅信息附加到每个订单
+          if (restaurantsData) {
+            const restaurantMap = new Map(restaurantsData.map((r: any) => [r.id, r]))
+            repairs = repairs.map((repair: any) => ({
+              ...repair,
+              restaurants: restaurantMap.get(repair.restaurant_id) || null,
+            }))
+          }
+        }
+      }
+    } else if (error) {
       console.error("[报修列表API] 查询失败:", error)
       console.error("[报修列表API] 错误详情:", {
         message: error.message,
