@@ -134,104 +134,50 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
     setError("")
 
     try {
-      // 动态导入 Supabase 客户端
-      const { supabase } = await import("@/lib/supabase")
+      // 强制适配接口返回：调用 /api/repair/list 接口
+      const url = `/api/repair/list${statusFilter && statusFilter !== "all" ? `?status=${statusFilter}` : ''}`
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
       
-      if (!supabase) {
-        throw new Error("数据库连接失败")
-      }
-
-      // 构建查询 - 直接使用 Supabase 查询 orders 表
-      // 策略：先查询所有维修订单，然后在客户端过滤（更可靠）
-      // 注意：只查询数据库中实际存在的字段，避免查询失败
-      let query = supabase
-        .from("orders")
-        .select(
-          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url"
-        )
-        .order("created_at", { ascending: false })
-        .limit(500) // 限制查询最近500条订单
-      
-      // 执行查询
-      const { data: allOrders, error: queryError } = await query
-
-      // 添加详细的错误捕获和提示
-      if (queryError) {
-        const errorMessage = `数据库错误详情: ${queryError.message || "未知错误"} 错误代码: ${queryError.code || "N/A"}`
-        console.error("[工人端] 查询订单失败:", queryError)
-        alert(errorMessage)
-        setError(errorMessage)
-        setIsLoading(false)
-        return
-      }
-
-      // 验证数据是否获取成功
-      console.log("[工人端] 原始订单数据:", allOrders)
-      console.log("[工人端] 订单数量:", allOrders?.length || 0)
-
-      // 在客户端过滤维修订单（重要：只要 audio_url 不为空，就必须显示，不管 service_type 是什么）
-      console.log("[工人端] 开始过滤维修订单，原始订单数量:", (allOrders || []).length)
-      let repairOrders = (allOrders || []).filter((order: any) => {
-        // 重要：只要 audio_url 不为空，就必须显示在维修列表里
-        const hasAudio = order.audio_url && order.audio_url.trim() !== ""
-        if (hasAudio) {
-          console.log("[工人端] 匹配到语音报修单:", order.id, "audio_url: 有")
-          return true
-        }
-        
-        // 如果没有音频，则按 service_type 判断
-        const serviceType = order.service_type || ""
-        const normalizedType = serviceType.toLowerCase()
-        const isRepairByType = 
-          serviceType === "维修服务" ||
-          serviceType.includes("维修") ||
-          normalizedType.includes("repair")
-        
-        if (isRepairByType) {
-          console.log("[工人端] 匹配到维修订单:", order.id, "service_type:", serviceType)
-        }
-        
-        return isRepairByType
-      })
-      console.log("[工人端] 过滤后的维修订单数量:", repairOrders.length)
-
-      // 根据状态筛选
-      if (statusFilter && statusFilter !== "all") {
-        repairOrders = repairOrders.filter((order: any) => order.status === statusFilter)
-      }
-
-      // 如果提供了workerId，根据状态筛选：
-      // - pending 状态：显示所有 pending 且 assigned_to 为 NULL 的工单（所有工人都能看到并接单）+ 已分配给该工人的工单
-      // - all 状态：显示所有 pending 且 assigned_to 为 NULL 的工单 + 分配给该工人的其他状态工单
-      // - 其他状态: 只显示分配给该工人的工单
+      // 如果提供了workerId，添加到请求头
       if (workerId) {
-        if (statusFilter && statusFilter !== "all" && statusFilter !== "pending") {
-          // 其他状态：只显示分配给该工人的工单（统一使用 assigned_to）
-          repairOrders = repairOrders.filter((order: any) => 
-            order.assigned_to === workerId
-          )
-        } else if (statusFilter === "pending" || statusFilter === "all") {
-          // pending 或 all 状态：显示所有 pending 且 assigned_to 为 NULL 的工单 + 分配给该工人的工单
-          repairOrders = repairOrders.filter((order: any) => {
-            // pending 状态且未分配的工单，所有工人都能看到
-            if (order.status === "pending" && (!order.assigned_to || order.assigned_to === null)) {
-              return true
-            }
-            // 已分配给该工人的工单（统一使用 assigned_to）
-            return order.assigned_to === workerId
-          })
-        }
+        headers["x-worker-id"] = workerId
       }
-
-      // 暂时移除 restaurants 关联查询，直接使用原始数据
-      // 如果后续需要显示餐厅名称，可以单独查询 restaurants 表
-      setRepairs(repairOrders)
-      setIsLoading(false)
-      return
+      
+      const response = await fetch(url, { headers })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      
+      // 前端强制调试：打印接口返回结果
+      console.log("接口返回结果:", result)
+      
+      if (result.success) {
+        // 暴力显示逻辑：移除所有多余的过滤逻辑，直接使用接口返回的数据
+        const repairs = result.data || []
+        
+        // 前端强制调试：如果接口返回成功但列表依然是空的，显示alert
+        if (repairs.length === 0) {
+          alert(`匹配到的维修单数量: ${repairs.length}\n总订单数: ${result.debug?.totalOrders || 0}\n过滤后维修单: ${result.debug?.filteredRepairs || 0}\n语音工单: ${result.debug?.audioOrders || 0}`)
+        } else {
+          console.log(`匹配到的维修单数量: ${repairs.length}`)
+          console.log(`语音工单数量: ${result.debug?.audioOrders || 0}`)
+        }
+        
+        // 直接使用接口返回的数据，不进行任何额外过滤
+        setRepairs(repairs)
+      } else {
+        throw new Error(result.error || "获取维修列表失败")
+      }
 
     } catch (err: any) {
       console.error("[工人端] 加载维修工单失败:", err)
       setError(err.message || "加载维修工单失败")
+      alert(`加载维修工单失败: ${err.message || "未知错误"}`)
     } finally {
       setIsLoading(false)
     }
@@ -436,6 +382,13 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
 
   return (
     <>
+      {/* 添加状态调试：在页面顶部临时加一行文字显示工单总数 */}
+      <Card className="bg-blue-500/10 border-blue-500/30 p-3 mb-4">
+        <p className="text-sm text-blue-400 font-semibold">
+          当前加载到的工单总数：{repairs.length}
+        </p>
+      </Card>
+
       {error && (
         <Card className="bg-red-500/10 border-red-500/30 p-4 mb-4">
           <div className="flex items-center gap-3">
@@ -476,20 +429,23 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
                   </div>
 
                   <div className="mb-2">
-                    {/* 强制显示音频播放器：只要有 audio_url 就显示 */}
-                    {repair.audio_url && (
+                    {/* 渲染语音播放器：检查 audio_url 字段，如果有值，必须显示 HTML5 音频播放器 */}
+                    {repair.audio_url && repair.audio_url.trim() !== "" && (
                       <div className="mt-2 mb-2">
                         <audio 
                           controls 
                           src={repair.audio_url}
-                          className="w-full h-10"
+                          className="w-full mt-2"
                         >
                           您的浏览器不支持音频播放
                         </audio>
                       </div>
                     )}
+                    {/* 处理空描述：如果 description 字段为空，页面上请统一显示 '[语音报修内容]' */}
                     <p className="text-sm text-slate-300 line-clamp-2">
-                      {repair.description || (repair.audio_url ? "[语音报修单，请播放上方音频]" : "无描述")}
+                      {repair.description && repair.description.trim() !== "" 
+                        ? repair.description 
+                        : "[语音报修内容]"}
                     </p>
                   </div>
 

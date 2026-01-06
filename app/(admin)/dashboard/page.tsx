@@ -3184,9 +3184,8 @@ export default function AdminDashboard() {
     const completedRepairs = repairs.filter((r) => r.status === "completed")
     const cancelledRepairs = repairs.filter((r) => r.status === "cancelled")
 
-    const filteredRepairs = repairStatusFilter === "all" 
-      ? repairs 
-      : repairs.filter((r) => r.status === repairStatusFilter)
+    // 暴力显示逻辑：移除所有多余的过滤逻辑，直接使用 repairs（接口已经根据状态筛选过了）
+    const filteredRepairs = repairs
 
     const getStatusColor = (status: string) => {
       switch (status) {
@@ -3318,19 +3317,27 @@ export default function AdminDashboard() {
             <CardDescription className="text-slate-400">点击工单查看详情和更新状态</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* 添加状态调试：在页面顶部临时加一行文字显示工单总数 */}
+            <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <p className="text-sm text-blue-400 font-semibold">
+                当前加载到的工单总数：{repairs.length}
+              </p>
+            </div>
+
             {isLoadingRepairs ? (
               <div className="text-center py-8">
                 <div className="inline-block h-6 w-6 border-3 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
                 <p className="text-slate-400 mt-2 text-sm">加载中...</p>
               </div>
-            ) : filteredRepairs.length === 0 ? (
+            ) : repairs.length === 0 ? (
               <div className="text-center py-8">
                 <Wrench className="h-8 w-8 text-slate-600 mx-auto mb-2" />
                 <p className="text-slate-400 text-sm">暂无报修单（已连接数据库，但未匹配到维修类型数据）</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredRepairs.map((repair) => {
+                {/* 暴力显示逻辑：移除所有多余的过滤逻辑，只要接口返回了数据，就必须全部列出来 */}
+                {repairs.map((repair) => {
                   const restaurant = repair.restaurants
                   return (
                     <div
@@ -3364,20 +3371,23 @@ export default function AdminDashboard() {
                               </Badge>
                             )}
                           </div>
-                          {/* 强制显示音频播放器：只要有 audio_url 就显示 */}
-                          {repair.audio_url && (
+                          {/* 渲染语音播放器：检查 audio_url 字段，如果有值，必须显示 HTML5 音频播放器 */}
+                          {repair.audio_url && repair.audio_url.trim() !== "" && (
                             <div className="ml-6 mt-2 mb-2">
                               <audio 
                                 controls 
                                 src={repair.audio_url}
-                                className="w-full h-10"
+                                className="w-full mt-2"
                               >
                                 您的浏览器不支持音频播放
                               </audio>
                             </div>
                           )}
+                          {/* 处理空描述：如果 description 字段为空，页面上请统一显示 '[语音报修内容]' */}
                           <div className="text-sm text-slate-300 ml-6 mb-1">
-                            {repair.description || (repair.audio_url ? "[语音报修单，请播放上方音频]" : "无描述")}
+                            {repair.description && repair.description.trim() !== "" 
+                              ? repair.description 
+                              : "[语音报修内容]"}
                           </div>
                           {restaurant?.contact_phone && (
                             <div className="text-xs text-slate-500 ml-6 flex items-center gap-1">
