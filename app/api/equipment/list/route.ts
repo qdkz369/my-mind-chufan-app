@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
 
 /**
  * GET: 获取设备列表
@@ -10,19 +10,31 @@ import { supabase } from "@/lib/supabase"
  */
 export async function GET(request: Request) {
   try {
-    if (!supabase) {
+    // 使用 service role key 绕过 RLS，允许公开查询设备列表
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gjlhcpfvjgqabqanvgmu.supabase.co"
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    if (!serviceRoleKey) {
+      console.error("[设备列表API] SUPABASE_SERVICE_ROLE_KEY 未配置")
       return NextResponse.json(
-        { error: "数据库连接失败" },
+        { error: "服务器配置错误", details: "SUPABASE_SERVICE_ROLE_KEY 未配置" },
         { status: 500 }
       )
     }
+
+    const supabaseClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
 
     const { searchParams } = new URL(request.url)
     const categoryId = searchParams.get("category_id")
     const status = searchParams.get("status")
     const search = searchParams.get("search")
 
-    let query = supabase
+    let query = supabaseClient
       .from("equipment")
       .select(`
         *,
