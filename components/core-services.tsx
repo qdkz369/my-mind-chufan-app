@@ -18,6 +18,7 @@ const services = [
       { label: "今日配送", value: "28单" },
       { label: "准时率", value: "99.2%" },
     ],
+    href: "/payment?service=燃料配送",
   },
   {
     icon: Wrench,
@@ -31,6 +32,7 @@ const services = [
       { label: "可租设备", value: "156台" },
       { label: "满意度", value: "98%" },
     ],
+    href: "/equipment-rental",
   },
 ]
 
@@ -74,10 +76,12 @@ export function CoreServices() {
               ))}
             </div>
 
-            <Button className={`w-full bg-gradient-to-r ${service.color} hover:opacity-90 text-white`}>
-              立即下单
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+            <Link href={service.href || "/services"}>
+              <Button className={`w-full bg-gradient-to-r ${service.color} hover:opacity-90 text-white`}>
+                立即下单
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
           </Card>
         ))}
       </div>

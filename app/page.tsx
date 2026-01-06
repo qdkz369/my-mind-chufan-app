@@ -1822,7 +1822,7 @@ const services = [
       { label: "可租设备", value: "156台" },
       { label: "满意度", value: "98%" },
     ],
-    paymentLink: "/services",
+    paymentLink: "/equipment-rental",
   },
 ]
 
