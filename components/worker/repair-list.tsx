@@ -447,6 +447,12 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
                         ? repair.description 
                         : "[语音报修内容]"}
                     </p>
+                    {/* 设备信息显示：如果 device_id 为空，显示 [非设备报修：环境/通用维修] */}
+                    <p className="text-xs text-slate-500 mt-1">
+                      {(repair as any).device_id && (repair as any).device_id.trim() !== ""
+                        ? `设备ID: ${(repair as any).device_id}`
+                        : "[非设备报修：环境/通用维修]"}
+                    </p>
                   </div>
 
                   {repair.restaurants && (
@@ -592,6 +598,18 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
                     {selectedRepair.description && selectedRepair.description.trim() !== "" 
                       ? selectedRepair.description 
                       : "[语音报修内容]"}
+                  </p>
+                </div>
+              </div>
+
+              {/* 设备信息 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">设备信息</Label>
+                <div className="bg-slate-800/50 p-3 rounded-lg">
+                  <p className="text-white">
+                    {(selectedRepair as any).device_id && (selectedRepair as any).device_id.trim() !== ""
+                      ? `设备ID: ${(selectedRepair as any).device_id}`
+                      : "[非设备报修：环境/通用维修]"}
                   </p>
                 </div>
               </div>

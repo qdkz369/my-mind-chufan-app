@@ -3363,6 +3363,12 @@ export default function AdminDashboard() {
                               ? repair.description 
                               : "[语音报修内容]"}
                           </div>
+                          {/* 设备信息显示：如果 device_id 为空，显示 [非设备报修：环境/通用维修] */}
+                          <div className="text-xs text-slate-500 ml-6 mt-1">
+                            {(repair as any).device_id && (repair as any).device_id.trim() !== ""
+                              ? `设备ID: ${(repair as any).device_id}`
+                              : "[非设备报修：环境/通用维修]"}
+                          </div>
                           {restaurant?.contact_phone && (
                             <div className="text-xs text-slate-500 ml-6 flex items-center gap-1">
                               <Phone className="h-3 w-3" />
@@ -3422,20 +3428,32 @@ export default function AdminDashboard() {
                   <Label className="text-slate-300">餐厅信息</Label>
                   <div className="bg-slate-800/50 p-3 rounded-lg">
                     <p className="text-white font-medium">
-                      {selectedRepair.restaurants?.name || "未知餐厅"}
+                      {restaurants.find((r) => r.id === selectedRepair.restaurant_id)?.name || "未知餐厅"}
                     </p>
-                    {selectedRepair.restaurants?.address && (
+                    {restaurants.find((r) => r.id === selectedRepair.restaurant_id)?.address && (
                       <p className="text-sm text-slate-400 mt-1">
                         <MapPin className="h-3 w-3 inline mr-1" />
-                        {selectedRepair.restaurants.address}
+                        {restaurants.find((r) => r.id === selectedRepair.restaurant_id)?.address}
                       </p>
                     )}
-                    {selectedRepair.restaurants?.contact_phone && (
+                    {restaurants.find((r) => r.id === selectedRepair.restaurant_id)?.contact_phone && (
                       <p className="text-sm text-slate-400 mt-1">
                         <Phone className="h-3 w-3 inline mr-1" />
-                        {selectedRepair.restaurants.contact_phone}
+                        {restaurants.find((r) => r.id === selectedRepair.restaurant_id)?.contact_phone}
                       </p>
                     )}
+                  </div>
+                </div>
+
+                {/* 设备信息 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">设备信息</Label>
+                  <div className="bg-slate-800/50 p-3 rounded-lg">
+                    <p className="text-white">
+                      {(selectedRepair as any).device_id && (selectedRepair as any).device_id.trim() !== ""
+                        ? `设备ID: ${(selectedRepair as any).device_id}`
+                        : "[非设备报修：环境/通用维修]"}
+                    </p>
                   </div>
                 </div>
 

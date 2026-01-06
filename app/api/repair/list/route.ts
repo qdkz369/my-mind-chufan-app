@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from("orders")
       .select(
-        "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url"
+        "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url, device_id"
       )
       .order("created_at", { ascending: false })
       .limit(500) // 限制查询最近500条订单
@@ -161,13 +161,14 @@ export async function GET(request: Request) {
       console.log("[报修列表API] 工人筛选后数量:", repairs.length, "(筛选前:", beforeFilterCount, ")")
     }
 
-    // 确保每个订单都有 description 和 audio_url 字段（即使为空），强化容错
+    // 确保每个订单都有 description、audio_url 和 device_id 字段（即使为空），强化容错
     repairs = repairs.map((repair: any) => {
       try {
         return {
           ...repair,
           description: repair?.description || null, // 确保 description 字段存在
           audio_url: repair?.audio_url || null, // 确保 audio_url 字段存在（语音展示必需）
+          device_id: repair?.device_id || null, // 确保 device_id 字段存在（允许为 NULL）
         }
       } catch {
         // 如果映射出错，返回原始对象
@@ -175,6 +176,7 @@ export async function GET(request: Request) {
           ...repair,
           description: null,
           audio_url: null,
+          device_id: null,
         }
       }
     })
