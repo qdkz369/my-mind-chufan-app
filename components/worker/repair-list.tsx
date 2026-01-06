@@ -20,6 +20,8 @@ import {
   Mic,
   Play,
   Pause,
+  Droplet,
+  HardHat,
 } from "lucide-react"
 import {
   Dialog,
@@ -51,9 +53,10 @@ interface Repair {
 interface RepairListProps {
   workerId?: string | null // 工人ID（可选，用于筛选已接单的工单）
   statusFilter?: "pending" | "processing" | "completed" | "all" // 状态筛选
+  serviceTypeFilter?: "all" | "repair" | "cleaning" | "renovation" // 服务类型筛选
 }
 
-export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListProps) {
+export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFilter = "all" }: RepairListProps) {
   const [repairs, setRepairs] = useState<Repair[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
@@ -62,12 +65,13 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
   const [isUpdating, setIsUpdating] = useState(false)
   const [repairAmount, setRepairAmount] = useState("")
   const [isCompleting, setIsCompleting] = useState(false)
+  const [localServiceTypeFilter, setLocalServiceTypeFilter] = useState<"all" | "repair" | "cleaning" | "renovation">(serviceTypeFilter || "all")
 
   // 加载维修工单列表
   useEffect(() => {
     loadRepairs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, workerId])
+  }, [statusFilter, workerId, localServiceTypeFilter])
 
   // 实时推送：监听维修工单变化
   useEffect(() => {
@@ -134,8 +138,16 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
     setError("")
 
     try {
-      // 强制适配接口返回：调用 /api/repair/list 接口
-      const url = `/api/repair/list${statusFilter && statusFilter !== "all" ? `?status=${statusFilter}` : ''}`
+      // 构建查询参数
+      const params = new URLSearchParams()
+      if (statusFilter && statusFilter !== "all") {
+        params.append("status", statusFilter)
+      }
+      if (localServiceTypeFilter && localServiceTypeFilter !== "all") {
+        params.append("service_type", localServiceTypeFilter)
+      }
+      
+      const url = `/api/repair/list${params.toString() ? `?${params.toString()}` : ''}`
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       }
@@ -349,6 +361,49 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
     }
   }
 
+  // 获取服务类型信息（图标、颜色、标签）
+  const getServiceTypeInfo = (serviceType: string) => {
+    const normalizedType = (serviceType || "").toLowerCase()
+    
+    // 维修服务
+    if (serviceType === "维修服务" || serviceType.includes("维修") || normalizedType.includes("repair")) {
+      return {
+        icon: Wrench,
+        label: "维修服务",
+        color: "bg-green-500/20 text-green-400 border-green-500/30",
+        iconColor: "text-green-400",
+      }
+    }
+    
+    // 清洁服务
+    if (serviceType === "清洁服务" || serviceType.includes("清洁") || serviceType.includes("清洗") || normalizedType.includes("clean")) {
+      return {
+        icon: Droplet,
+        label: "清洁服务",
+        color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+        iconColor: "text-cyan-400",
+      }
+    }
+    
+    // 工程改造
+    if (serviceType === "工程改造" || serviceType.includes("改造") || serviceType.includes("工程") || normalizedType.includes("renovation") || normalizedType.includes("construction")) {
+      return {
+        icon: HardHat,
+        label: "工程改造",
+        color: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+        iconColor: "text-purple-400",
+      }
+    }
+    
+    // 默认
+    return {
+      icon: Wrench,
+      label: serviceType || "未知服务",
+      color: "bg-slate-500/20 text-slate-400 border-slate-500/30",
+      iconColor: "text-slate-400",
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -382,6 +437,36 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
 
   return (
     <>
+      {/* 服务类型筛选器 */}
+      <Card className="bg-slate-900/50 border-slate-800/50 p-4 mb-4">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: "all", label: "全部", icon: null },
+            { value: "repair", label: "维修服务", icon: Wrench },
+            { value: "cleaning", label: "清洁服务", icon: Droplet },
+            { value: "renovation", label: "工程改造", icon: HardHat },
+          ].map((type) => {
+            const IconComponent = type.icon
+            return (
+              <Button
+                key={type.value}
+                variant={localServiceTypeFilter === type.value ? "default" : "outline"}
+                size="sm"
+                onClick={() => setLocalServiceTypeFilter(type.value as "all" | "repair" | "cleaning" | "renovation")}
+                className={
+                  localServiceTypeFilter === type.value
+                    ? "bg-yellow-600 hover:bg-yellow-700"
+                    : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                }
+              >
+                {IconComponent && <IconComponent className="h-3 w-3 mr-1" />}
+                {type.label}
+              </Button>
+            )
+          })}
+        </div>
+      </Card>
+
       {/* 添加状态调试：在页面顶部临时加一行文字显示工单总数 */}
       <Card className="bg-blue-500/10 border-blue-500/30 p-3 mb-4">
         <p className="text-sm text-blue-400 font-semibold">
@@ -412,12 +497,23 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Wrench className="h-4 w-4 text-yellow-400" />
                     <span className="text-sm font-medium text-white">工单号: {repair.id.slice(0, 8)}</span>
                     {repair.audio_url && (
                       <Mic className="h-4 w-4 text-yellow-400" title="语音报修单" />
                     )}
+                    {/* 服务类型标签 */}
+                    {(() => {
+                      const serviceInfo = getServiceTypeInfo(repair.service_type || "")
+                      const ServiceIcon = serviceInfo.icon
+                      return (
+                        <Badge className={`text-xs ${serviceInfo.color} flex items-center gap-1`}>
+                          <ServiceIcon className={`h-3 w-3 ${serviceInfo.iconColor}`} />
+                          {serviceInfo.label}
+                        </Badge>
+                      )
+                    })()}
                     <Badge className={`text-xs ${getStatusColor(repair.status)}`}>
                       {getStatusLabel(repair.status)}
                     </Badge>
@@ -542,8 +638,12 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
         <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-              <Wrench className="h-5 w-5 text-yellow-400" />
-              维修工单详情
+              {(() => {
+                const serviceInfo = getServiceTypeInfo(selectedRepair?.service_type || "")
+                const ServiceIcon = serviceInfo.icon
+                return <ServiceIcon className={`h-5 w-5 ${serviceInfo.iconColor}`} />
+              })()}
+              服务工单详情
               {selectedRepair?.audio_url && (
                 <Mic className="h-5 w-5 text-yellow-400" title="语音报修单" />
               )}
@@ -555,6 +655,23 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
 
           {selectedRepair && (
             <div className="space-y-4">
+              {/* 服务类型 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">服务类型</Label>
+                <div className="bg-slate-800/50 p-3 rounded-lg">
+                  {(() => {
+                    const serviceInfo = getServiceTypeInfo(selectedRepair.service_type || "")
+                    const ServiceIcon = serviceInfo.icon
+                    return (
+                      <Badge className={`${serviceInfo.color} flex items-center gap-2 w-fit`}>
+                        <ServiceIcon className={`h-4 w-4 ${serviceInfo.iconColor}`} />
+                        <span>{serviceInfo.label}</span>
+                      </Badge>
+                    )
+                  })()}
+                </div>
+              </div>
+
               {/* 基本信息 */}
               <div className="space-y-2">
                 <Label className="text-slate-300">餐厅信息</Label>

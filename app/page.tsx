@@ -661,6 +661,7 @@ function IoTDashboard() {
   const [isRepairDialogOpen, setIsRepairDialogOpen] = useState(false)
   const [repairDescription, setRepairDescription] = useState("")
   const [repairDeviceId, setRepairDeviceId] = useState<string>("")
+  const [repairServiceType, setRepairServiceType] = useState<"维修服务" | "清洁服务" | "工程改造">("维修服务")
   const [repairUrgency, setRepairUrgency] = useState<"low" | "medium" | "high">("medium")
   const [isSubmittingRepair, setIsSubmittingRepair] = useState(false)
   const [repairHistory, setRepairHistory] = useState<Array<{
@@ -1218,6 +1219,7 @@ function IoTDashboard() {
         body: JSON.stringify({
           restaurant_id: restaurantId,
           device_id: repairDeviceId || undefined,
+          service_type: repairServiceType, // 传递服务类型
           description: descriptionText,
           urgency: repairUrgency,
           audio_url: audioUrlToSubmit || undefined,
@@ -1433,6 +1435,33 @@ function IoTDashboard() {
 
             {/* 提交报修标签页 */}
             <TabsContent value="submit" className="flex-1 overflow-y-auto space-y-4 py-4 mt-4">
+              {/* 服务类型选择 */}
+              <div className="space-y-2">
+                <Label htmlFor="serviceType" className="text-slate-300">服务类型 <span className="text-red-400">*</span></Label>
+                <Select 
+                  value={repairServiceType} 
+                  onValueChange={(value: "维修服务" | "清洁服务" | "工程改造") => setRepairServiceType(value)}
+                >
+                  <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    <SelectItem value="维修服务" className="text-white hover:bg-slate-700 flex items-center gap-2">
+                      <Wrench className="h-4 w-4 text-green-400" />
+                      维修服务
+                    </SelectItem>
+                    <SelectItem value="清洁服务" className="text-white hover:bg-slate-700 flex items-center gap-2">
+                      <Droplet className="h-4 w-4 text-cyan-400" />
+                      清洁服务
+                    </SelectItem>
+                    <SelectItem value="工程改造" className="text-white hover:bg-slate-700 flex items-center gap-2">
+                      <HardHat className="h-4 w-4 text-purple-400" />
+                      工程改造
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* 设备选择 */}
               {devices.length > 0 && (
                 <div className="space-y-2">

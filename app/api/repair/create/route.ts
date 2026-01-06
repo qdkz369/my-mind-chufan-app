@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     const {
       restaurant_id,
       device_id, // 可选：设备ID
+      service_type, // 服务类型：维修服务、清洁服务、工程改造
       description, // 问题描述
       urgency, // 紧急程度：low, medium, high
       contact_phone, // 联系电话
@@ -145,7 +146,7 @@ export async function POST(request: Request) {
     // 构建基础报修数据（只包含肯定存在的字段）
     const repairData: any = {
       restaurant_id: restaurant_id,
-      service_type: "维修服务", // 统一使用"维修服务"作为service_type
+      service_type: service_type || "维修服务", // 使用前端传递的服务类型，默认为"维修服务"
       status: "pending", // 待处理
       amount: 0, // 报修时金额为0，维修完成后才确定
       description: finalDescription, // 问题描述
