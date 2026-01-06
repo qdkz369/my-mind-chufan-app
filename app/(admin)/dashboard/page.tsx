@@ -51,6 +51,7 @@ import {
   TrendingUp,
   Loader2,
   HardHat,
+  Mic,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -898,7 +899,7 @@ export default function AdminDashboard() {
       const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
         async () => await supabase
           .from("orders")
-          .select("id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id")
+          .select("id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url")
           .order("created_at", { ascending: false })
           .limit(500) // 限制查询最近500条订单
       )
@@ -916,24 +917,22 @@ export default function AdminDashboard() {
       console.log("[Admin Dashboard] 原始订单数据:", allOrders)
       console.log("[Admin Dashboard] 订单数量:", allOrders?.length || 0)
 
-      // 在客户端过滤维修订单（使用模糊匹配逻辑）
+      // 在客户端过滤维修订单（放宽筛选条件：audio_url 不为空或 service_type 包含维修）
       console.log("[Admin Dashboard] 开始过滤维修订单，原始订单数量:", (allOrders || []).length)
       const repairOrders = (allOrders || []).filter((order: any) => {
-        const serviceType = order.service_type
-        if (!serviceType) {
-          console.log("[Admin Dashboard] 订单缺少 service_type:", order.id)
-          return false
-        }
-        
-        // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
+        // 放宽筛选条件：audio_url 不为空，或者 service_type 包含"维修"
+        const hasAudio = order.audio_url && order.audio_url.trim() !== ""
+        const serviceType = order.service_type || ""
         const normalizedType = serviceType.toLowerCase()
-        const isRepair = 
+        const isRepairByType = 
           serviceType === "维修服务" ||
           serviceType.includes("维修") ||
           normalizedType.includes("repair")
         
+        const isRepair = hasAudio || isRepairByType
+        
         if (isRepair) {
-          console.log("[Admin Dashboard] 匹配到维修订单:", order.id, "service_type:", serviceType)
+          console.log("[Admin Dashboard] 匹配到维修订单:", order.id, "service_type:", serviceType, "audio_url:", hasAudio ? "有" : "无")
         }
         
         return isRepair
@@ -3362,8 +3361,22 @@ export default function AdminDashboard() {
                             )}
                           </div>
                           <div className="text-sm text-slate-300 ml-6 mb-1">
-                            {repair.description || "无描述"}
+                            {repair.description || (repair.audio_url ? "语音报修单（请点击播放音频）" : "无描述")}
                           </div>
+                          {/* 音频播放器 */}
+                          {repair.audio_url && (
+                            <div className="ml-6 mt-2 flex items-center gap-2">
+                              <Mic className="h-4 w-4 text-purple-400" />
+                              <audio 
+                                controls 
+                                className="h-8 flex-1 max-w-xs"
+                                src={repair.audio_url}
+                                preload="metadata"
+                              >
+                                您的浏览器不支持音频播放
+                              </audio>
+                            </div>
+                          )}
                           {restaurant?.contact_phone && (
                             <div className="text-xs text-slate-500 ml-6 flex items-center gap-1">
                               <Phone className="h-3 w-3" />
@@ -3407,6 +3420,9 @@ export default function AdminDashboard() {
               <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
                 <Wrench className="h-5 w-5 text-purple-400" />
                 报修工单详情
+                {selectedRepair?.audio_url && (
+                  <Mic className="h-5 w-5 text-purple-400" title="语音报修单" />
+                )}
               </DialogTitle>
               <DialogDescription className="text-slate-400">
                 查看报修详情并更新状态
@@ -3441,7 +3457,23 @@ export default function AdminDashboard() {
                 <div className="space-y-2">
                   <Label className="text-slate-300">问题描述</Label>
                   <div className="bg-slate-800/50 p-3 rounded-lg">
-                    <p className="text-white">{selectedRepair.description || "无描述"}</p>
+                    <p className="text-white">
+                      {selectedRepair.description || (selectedRepair.audio_url ? "语音报修单（请点击播放音频）" : "无描述")}
+                    </p>
+                    {/* 音频播放器 */}
+                    {selectedRepair.audio_url && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <Mic className="h-4 w-4 text-purple-400" />
+                        <audio 
+                          controls 
+                          className="h-8 flex-1"
+                          src={selectedRepair.audio_url}
+                          preload="metadata"
+                        >
+                          您的浏览器不支持音频播放
+                        </audio>
+                      </div>
+                    )}
                   </div>
                 </div>
 

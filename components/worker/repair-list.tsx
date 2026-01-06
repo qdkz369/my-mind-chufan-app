@@ -17,6 +17,9 @@ import {
   Building2,
   Phone,
   DollarSign,
+  Mic,
+  Play,
+  Pause,
 } from "lucide-react"
 import {
   Dialog,
@@ -143,7 +146,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       let query = supabase
         .from("orders")
         .select(
-          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id"
+          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url"
         )
         .order("created_at", { ascending: false })
         .limit(500) // 限制查询最近500条订单
@@ -165,24 +168,22 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       console.log("[工人端] 原始订单数据:", allOrders)
       console.log("[工人端] 订单数量:", allOrders?.length || 0)
 
-      // 在客户端过滤维修订单（使用模糊匹配逻辑）
+      // 在客户端过滤维修订单（放宽筛选条件：audio_url 不为空或 service_type 包含维修）
       console.log("[工人端] 开始过滤维修订单，原始订单数量:", (allOrders || []).length)
       let repairOrders = (allOrders || []).filter((order: any) => {
-        const serviceType = order.service_type
-        if (!serviceType) {
-          console.log("[工人端] 订单缺少 service_type:", order.id)
-          return false
-        }
-        
-        // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
+        // 放宽筛选条件：audio_url 不为空，或者 service_type 包含"维修"
+        const hasAudio = order.audio_url && order.audio_url.trim() !== ""
+        const serviceType = order.service_type || ""
         const normalizedType = serviceType.toLowerCase()
-        const isRepair = 
+        const isRepairByType = 
           serviceType === "维修服务" ||
           serviceType.includes("维修") ||
           normalizedType.includes("repair")
         
+        const isRepair = hasAudio || isRepairByType
+        
         if (isRepair) {
-          console.log("[工人端] 匹配到维修订单:", order.id, "service_type:", serviceType)
+          console.log("[工人端] 匹配到维修订单:", order.id, "service_type:", serviceType, "audio_url:", hasAudio ? "有" : "无")
         }
         
         return isRepair
@@ -456,6 +457,9 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
                   <div className="flex items-center gap-2 mb-2">
                     <Wrench className="h-4 w-4 text-yellow-400" />
                     <span className="text-sm font-medium text-white">工单号: {repair.id.slice(0, 8)}</span>
+                    {repair.audio_url && (
+                      <Mic className="h-4 w-4 text-yellow-400" title="语音报修单" />
+                    )}
                     <Badge className={`text-xs ${getStatusColor(repair.status)}`}>
                       {getStatusLabel(repair.status)}
                     </Badge>
@@ -466,7 +470,25 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
                     )}
                   </div>
 
-                  <p className="text-sm text-slate-300 mb-2 line-clamp-2">{repair.description || "无描述"}</p>
+                  <div className="mb-2">
+                    <p className="text-sm text-slate-300 line-clamp-2">
+                      {repair.description || (repair.audio_url ? "语音报修单（请点击播放音频）" : "无描述")}
+                    </p>
+                    {/* 音频播放器 */}
+                    {repair.audio_url && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Mic className="h-4 w-4 text-yellow-400" />
+                        <audio 
+                          controls 
+                          className="h-8 flex-1 max-w-xs"
+                          src={repair.audio_url}
+                          preload="metadata"
+                        >
+                          您的浏览器不支持音频播放
+                        </audio>
+                      </div>
+                    )}
+                  </div>
 
                   {repair.restaurants && (
                     <div className="space-y-1 mt-2">
@@ -557,6 +579,9 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
             <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
               <Wrench className="h-5 w-5 text-yellow-400" />
               维修工单详情
+              {selectedRepair?.audio_url && (
+                <Mic className="h-5 w-5 text-yellow-400" title="语音报修单" />
+              )}
             </DialogTitle>
             <DialogDescription className="text-slate-400">
               {selectedRepair?.status === "processing" ? "填写维修金额并完成工单" : "查看工单详情"}
@@ -591,7 +616,23 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
               <div className="space-y-2">
                 <Label className="text-slate-300">问题描述</Label>
                 <div className="bg-slate-800/50 p-3 rounded-lg">
-                  <p className="text-white">{selectedRepair.description || "无描述"}</p>
+                  <p className="text-white">
+                    {selectedRepair.description || (selectedRepair.audio_url ? "语音报修单（请点击播放音频）" : "无描述")}
+                  </p>
+                  {/* 音频播放器 */}
+                  {selectedRepair.audio_url && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <Mic className="h-4 w-4 text-yellow-400" />
+                      <audio 
+                        controls 
+                        className="h-8 flex-1"
+                        src={selectedRepair.audio_url}
+                        preload="metadata"
+                      >
+                        您的浏览器不支持音频播放
+                      </audio>
+                    </div>
+                  )}
                 </div>
               </div>
 
