@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -2467,9 +2467,494 @@ function ComingSoon({ title, description, onBack }: { title: string; description
   )
 }
 
+// 设备交付助手组件
+function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null; onBack: () => void }) {
+  const [step, setStep] = useState<"list" | "scan" | "photo" | "signature">("list")
+  const [pendingRentals, setPendingRentals] = useState<any[]>([])
+  const [isLoadingRentals, setIsLoadingRentals] = useState(false)
+  const [selectedRental, setSelectedRental] = useState<any | null>(null)
+  const [deviceSn, setDeviceSn] = useState("")
+  const [showQRScanner, setShowQRScanner] = useState(false)
+  const [deliveryPhotoUrl, setDeliveryPhotoUrl] = useState<string | null>(null)
+  const [signatureData, setSignatureData] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState("")
+
+  // 加载待交付的租赁单
+  const loadPendingRentals = async () => {
+    if (!supabase) return
+    setIsLoadingRentals(true)
+    try {
+      const { data, error } = await supabase
+        .from("rentals")
+        .select("*")
+        .eq("status", "pending_delivery")
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("[设备交付] 加载失败:", error)
+        setPendingRentals([])
+      } else {
+        setPendingRentals(data || [])
+      }
+    } catch (err) {
+      console.error("[设备交付] 加载失败:", err)
+      setPendingRentals([])
+    } finally {
+      setIsLoadingRentals(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPendingRentals()
+  }, [])
+
+  // 扫码成功回调
+  const handleQRScanSuccess = (decodedText: string) => {
+    setDeviceSn(decodedText.trim())
+    setShowQRScanner(false)
+  }
+
+  // 验证设备序列号
+  const handleVerifyDevice = () => {
+    if (!deviceSn.trim()) {
+      setError("请输入或扫描设备序列号")
+      return
+    }
+
+    // 查找匹配的租赁单
+    const rental = pendingRentals.find((r) => r.device_sn === deviceSn.trim())
+    if (!rental) {
+      setError("未找到匹配的租赁单，请检查设备序列号")
+      return
+    }
+
+    setSelectedRental(rental)
+    setStep("photo")
+    setError("")
+  }
+
+  // 提交交付
+  const handleSubmitDelivery = async () => {
+    if (!deliveryPhotoUrl) {
+      setError("请上传设备安放照片")
+      return
+    }
+
+    if (!signatureData) {
+      setError("请客户完成电子签名")
+      return
+    }
+
+    if (!supabase || !selectedRental) return
+
+    setIsSubmitting(true)
+    setError("")
+
+    try {
+      // 更新租赁单状态为 active（租赁中）
+      const { error: updateError } = await supabase
+        .from("rentals")
+        .update({
+          status: "active",
+          notes: selectedRental.notes
+            ? `${selectedRental.notes}\n[交付完成] 交付照片: ${deliveryPhotoUrl}, 签名: 已确认, 交付时间: ${new Date().toLocaleString("zh-CN")}`
+            : `[交付完成] 交付照片: ${deliveryPhotoUrl}, 签名: 已确认, 交付时间: ${new Date().toLocaleString("zh-CN")}`,
+        })
+        .eq("id", selectedRental.id)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      alert("设备交付成功！")
+      // 重置状态
+      setStep("list")
+      setSelectedRental(null)
+      setDeviceSn("")
+      setDeliveryPhotoUrl(null)
+      setSignatureData(null)
+      loadPendingRentals()
+    } catch (err: any) {
+      console.error("[设备交付] 提交失败:", err)
+      setError(`提交失败: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // 电子签名组件
+  const SignaturePad = () => {
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const [isDrawing, setIsDrawing] = useState(false)
+
+    useEffect(() => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+
+      ctx.strokeStyle = "#ffffff"
+      ctx.lineWidth = 2
+      ctx.lineCap = "round"
+      ctx.lineJoin = "round"
+    }, [])
+
+    const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+
+      setIsDrawing(true)
+      const rect = canvas.getBoundingClientRect()
+      const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
+      const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+    }
+
+    const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+      if (!isDrawing) return
+
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+
+      const rect = canvas.getBoundingClientRect()
+      const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
+      const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+
+      ctx.lineTo(x, y)
+      ctx.stroke()
+    }
+
+    const stopDrawing = () => {
+      setIsDrawing(false)
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const dataURL = canvas.toDataURL()
+      setSignatureData(dataURL)
+    }
+
+    const clearSignature = () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      setSignatureData(null)
+    }
+
+    return (
+      <div className="space-y-3">
+        <Label className="text-slate-300">客户电子签名 *</Label>
+        <Card className="bg-slate-800/50 border-slate-700 p-4">
+          <canvas
+            ref={canvasRef}
+            width={400}
+            height={200}
+            className="w-full border border-slate-600 rounded-lg bg-white cursor-crosshair touch-none"
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseLeave={stopDrawing}
+            onTouchStart={startDrawing}
+            onTouchMove={draw}
+            onTouchEnd={stopDrawing}
+          />
+          <div className="flex items-center gap-2 mt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={clearSignature}
+              className="border-slate-600 text-slate-300"
+            >
+              <Trash2 className="h-3 w-3 mr-1" />
+              清除
+            </Button>
+            {signatureData && (
+              <div className="flex items-center gap-2 text-xs text-green-400">
+                <CheckCircle2 className="h-3 w-3" />
+                <span>签名已完成</span>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  if (step === "list") {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <h2 className="text-xl font-bold text-white mb-4">待交付租赁单</h2>
+
+          {isLoadingRentals ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-400 mr-2" />
+              <span className="text-slate-400">加载中...</span>
+            </div>
+          ) : pendingRentals.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+              <p className="text-slate-400">暂无待交付的租赁单</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingRentals.map((rental) => (
+                <Card
+                  key={rental.id}
+                  className="bg-slate-800/50 border-slate-700 p-4 hover:border-cyan-500/50 transition-all cursor-pointer"
+                  onClick={() => {
+                    setSelectedRental(rental)
+                    setDeviceSn(rental.device_sn)
+                    setStep("scan")
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-white mb-1">{rental.device_name}</h3>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-slate-400">承租人：</span>
+                          <span className="text-white ml-2">{rental.customer_name}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">联系电话：</span>
+                          <span className="text-white ml-2">{rental.customer_phone}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">设备序列号：</span>
+                          <span className="text-white ml-2">{rental.device_sn}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">月租金：</span>
+                          <span className="text-blue-400 font-bold ml-2">
+                            ¥{parseFloat(rental.rent_amount || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedRental(rental)
+                        setDeviceSn(rental.device_sn)
+                        setStep("scan")
+                      }}
+                      className="bg-cyan-600 hover:bg-cyan-700 text-white"
+                    >
+                      开始交付
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-6">
+            <Button variant="outline" onClick={onBack} className="border-slate-600 text-slate-300">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              返回
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  if (step === "scan") {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Button variant="ghost" size="icon" onClick={() => setStep("list")} className="text-white">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-xl font-bold text-white">扫码/录入设备序列号</h2>
+          </div>
+
+          {selectedRental && (
+            <div className="bg-slate-800/50 p-4 rounded-lg mb-6">
+              <h3 className="text-lg font-semibold text-white mb-2">{selectedRental.device_name}</h3>
+              <p className="text-sm text-slate-400">承租人：{selectedRental.customer_name}</p>
+              <p className="text-sm text-slate-400">联系电话：{selectedRental.customer_phone}</p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-slate-300 mb-2 block">设备序列号 *</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={deviceSn}
+                  onChange={(e) => setDeviceSn(e.target.value)}
+                  placeholder="请输入或扫描设备序列号"
+                  className="bg-slate-800/50 border-slate-700 text-white"
+                />
+                <Button
+                  onClick={() => setShowQRScanner(true)}
+                  variant="outline"
+                  className="border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10"
+                >
+                  <QrCode className="h-4 w-4 mr-2" />
+                  扫码
+                </Button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-400" />
+                <p className="text-sm text-red-400">{error}</p>
+              </div>
+            )}
+
+            <Button
+              onClick={handleVerifyDevice}
+              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+              disabled={!deviceSn.trim()}
+            >
+              验证并继续
+            </Button>
+          </div>
+
+          {showQRScanner && (
+            <div className="mt-6">
+              <QRScanner
+                onScanSuccess={handleQRScanSuccess}
+                onClose={() => setShowQRScanner(false)}
+              />
+            </div>
+          )}
+        </Card>
+      </div>
+    )
+  }
+
+  if (step === "photo") {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Button variant="ghost" size="icon" onClick={() => setStep("scan")} className="text-white">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-xl font-bold text-white">拍照存证</h2>
+          </div>
+
+          {selectedRental && (
+            <div className="bg-slate-800/50 p-4 rounded-lg mb-6">
+              <h3 className="text-lg font-semibold text-white mb-2">{selectedRental.device_name}</h3>
+              <p className="text-sm text-slate-400">设备序列号：{selectedRental.device_sn}</p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <ImageUploader
+              onUploadSuccess={(imageUrl) => {
+                setDeliveryPhotoUrl(imageUrl)
+                console.log("[设备交付] 照片上传成功:", imageUrl)
+              }}
+              onRemove={() => {
+                setDeliveryPhotoUrl(null)
+              }}
+              currentImageUrl={deliveryPhotoUrl}
+              label="设备安放照片 *"
+            />
+
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-400" />
+                <p className="text-sm text-red-400">{error}</p>
+              </div>
+            )}
+
+            <Button
+              onClick={() => {
+                if (!deliveryPhotoUrl) {
+                  setError("请上传设备安放照片")
+                  return
+                }
+                setStep("signature")
+                setError("")
+              }}
+              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+              disabled={!deliveryPhotoUrl}
+            >
+              下一步：电子签名
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  if (step === "signature") {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Button variant="ghost" size="icon" onClick={() => setStep("photo")} className="text-white">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-xl font-bold text-white">电子签名确认</h2>
+          </div>
+
+          {selectedRental && (
+            <div className="bg-slate-800/50 p-4 rounded-lg mb-6">
+              <h3 className="text-lg font-semibold text-white mb-2">{selectedRental.device_name}</h3>
+              <p className="text-sm text-slate-400">承租人：{selectedRental.customer_name}</p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <SignaturePad />
+
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-400" />
+                <p className="text-sm text-red-400">{error}</p>
+              </div>
+            )}
+
+            <Button
+              onClick={handleSubmitDelivery}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+              disabled={!signatureData || isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  提交中...
+                </>
+              ) : (
+                "完成交付"
+              )}
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  return null
+}
+
 // 主组件
 export default function WorkerPage() {
-  const [currentView, setCurrentView] = useState<"home" | "install" | "delivery" | "orders" | "repair">("home")
+  const [currentView, setCurrentView] = useState<"home" | "install" | "delivery" | "orders" | "repair" | "rental_delivery">("home")
   const [workerId, setWorkerId] = useState<string | null>(null)
   const [productType, setProductType] = useState<string | null>(null) // 当前配送员的产品类型
   const [repairStatusFilter, setRepairStatusFilter] = useState<"all" | "pending" | "processing" | "completed">("all") // 维修工单状态筛选
@@ -2738,6 +3223,7 @@ export default function WorkerPage() {
                   {currentView === "delivery" && "燃料配送"}
                   {currentView === "orders" && "待接单订单"}
                   {currentView === "repair" && "故障维修"}
+                  {currentView === "rental_delivery" && "设备交付助手"}
                 </h1>
                 <p className="text-xs text-blue-400 truncate">
                   {currentView === "home" && "多功能工作平台"}
@@ -2745,6 +3231,7 @@ export default function WorkerPage() {
                   {currentView === "delivery" && "燃料补给登记"}
                   {currentView === "orders" && "查看和接单"}
                   {currentView === "repair" && "设备故障处理"}
+                  {currentView === "rental_delivery" && "设备交付、拍照存证、电子签名"}
                 </p>
               </div>
             </div>
@@ -3025,6 +3512,23 @@ export default function WorkerPage() {
                   </Card>
                 )}
 
+                {/* 设备交付助手 - 所有工人都可以使用 */}
+                <Card
+                  className="bg-slate-900/40 backdrop-blur-md border border-cyan-500/30 shadow-lg shadow-cyan-500/20 p-6 hover:scale-[1.02] hover:shadow-cyan-500/30 transition-all cursor-pointer"
+                  onClick={() => setCurrentView("rental_delivery")}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/30 flex-shrink-0">
+                      <Package className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-white mb-1">设备交付助手</h3>
+                      <p className="text-sm text-slate-400">设备交付、拍照存证、电子签名</p>
+                    </div>
+                    <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180" />
+                  </div>
+                </Card>
+
                 {/* 如果没有任何权限，显示提示 */}
                 {(!workerInfo || !workerInfo.worker_types || workerInfo.worker_types.length === 0) && (
                   <Card className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 p-6">
@@ -3158,6 +3662,8 @@ export default function WorkerPage() {
               <p className="text-slate-400">您没有维修权限，请联系管理员</p>
               <Button onClick={() => setCurrentView("home")} className="mt-4">返回首页</Button>
             </div>
+          ) : currentView === "rental_delivery" ? (
+            <RentalDeliveryAssistant workerId={workerId} onBack={() => setCurrentView("home")} />
           ) : null}
         </div>
       </main>

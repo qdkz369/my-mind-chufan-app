@@ -53,6 +53,11 @@ import {
   HardHat,
   Mic,
   Droplet,
+  MessageSquare,
+  XCircle,
+  Calendar,
+  CreditCard,
+  AlertTriangle,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -164,6 +169,7 @@ const menuItems = [
   { icon: Package, label: "订单管理", key: "orders" },
   { icon: Wrench, label: "报修管理", key: "repairs" },
   { icon: Package, label: "设备租赁管理", key: "equipmentRental" },
+  { icon: DollarSign, label: "租赁工作台", key: "rentals" },
   { icon: Wrench, label: "设备监控", key: "devices" },
   { icon: Truck, label: "工人管理", key: "workers" },
   { icon: DollarSign, label: "燃料实时价格监控", key: "fuelPricing" },
@@ -276,6 +282,25 @@ export default function AdminDashboard() {
   const [rentalOrderStatusFilter, setRentalOrderStatusFilter] = useState<string>("all")
   const [selectedRentalOrder, setSelectedRentalOrder] = useState<any | null>(null)
   const [isRentalOrderDetailDialogOpen, setIsRentalOrderDetailDialogOpen] = useState(false)
+  
+  // 租赁工作台相关状态（使用 rentals 表）
+  const [rentals, setRentals] = useState<any[]>([])
+  const [isLoadingRentals, setIsLoadingRentals] = useState(false)
+  const [selectedRental, setSelectedRental] = useState<any | null>(null)
+  const [isRentalDetailDialogOpen, setIsRentalDetailDialogOpen] = useState(false)
+  const [isAddRentalDialogOpen, setIsAddRentalDialogOpen] = useState(false)
+  const [newRental, setNewRental] = useState({
+    customer_name: "",
+    customer_phone: "",
+    device_name: "",
+    device_sn: "",
+    rent_amount: "",
+    deposit: "",
+    start_date: "",
+    end_date: "",
+    status: "pending_delivery",
+    notes: "",
+  })
   
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
@@ -1132,6 +1157,37 @@ export default function AdminDashboard() {
       loadRentalOrders()
     }
   }, [activeMenu, rentalOrderStatusFilter, loadRentalOrders])
+
+  // 加载租赁工作台数据（使用 rentals 表，直接连接 Supabase）
+  const loadRentals = useCallback(async () => {
+    if (!supabase) return
+    setIsLoadingRentals(true)
+    try {
+      const { data, error } = await supabase
+        .from("rentals")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("[租赁工作台] 加载失败:", error)
+        setRentals([])
+      } else {
+        setRentals(data || [])
+      }
+    } catch (err) {
+      console.error("[租赁工作台] 加载失败:", err)
+      setRentals([])
+    } finally {
+      setIsLoadingRentals(false)
+    }
+  }, [supabase])
+
+  // 当切换到租赁工作台时加载数据
+  useEffect(() => {
+    if (activeMenu === "rentals") {
+      loadRentals()
+    }
+  }, [activeMenu, loadRentals])
 
   // 实时推送：监听维修工单变化（使用 Supabase Realtime，符合官方最佳实践）
   // 此接口保留用于后期扩展实时派单功能
@@ -4212,6 +4268,585 @@ export default function AdminDashboard() {
     )
   }
 
+  // 渲染租赁工作台
+  const renderRentals = () => {
+    // 计算统计数据
+    const currentMonth = new Date().getMonth()
+    const currentYear = new Date().getFullYear()
+    const monthlyPendingAmount = rentals
+      .filter((r) => {
+        if (r.status !== "active") return false
+        const rentalDate = new Date(r.start_date)
+        return rentalDate.getMonth() === currentMonth && rentalDate.getFullYear() === currentYear
+      })
+      .reduce((sum, r) => sum + (parseFloat(r.rent_amount) || 0), 0)
+    
+    const activeRentals = rentals.filter((r) => r.status === "active")
+    const totalDevices = activeRentals.length
+
+    // 计算剩余天数
+    const calculateRemainingDays = (endDate: string | null) => {
+      if (!endDate) return null
+      const end = new Date(endDate)
+      const now = new Date()
+      const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      return diff
+    }
+
+    // 获取状态颜色
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "pending_delivery":
+          return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+        case "active":
+          return "bg-green-500/20 text-green-400 border-green-500/30"
+        case "expired":
+          return "bg-red-500/20 text-red-400 border-red-500/30"
+        case "returned":
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+        default:
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+      }
+    }
+
+    const getStatusLabel = (status: string) => {
+      switch (status) {
+        case "pending_delivery":
+          return "待交付"
+        case "active":
+          return "租赁中"
+        case "expired":
+          return "已到期"
+        case "returned":
+          return "已收回"
+        default:
+          return status
+      }
+    }
+
+    // 发送催缴短信
+    const handleSendReminder = async (rental: any) => {
+      try {
+        // TODO: 实现发送短信功能
+        alert(`发送催缴短信给 ${rental.customer_name} (${rental.customer_phone})`)
+      } catch (err) {
+        console.error("[催缴短信] 发送失败:", err)
+        alert("发送失败，请稍后重试")
+      }
+    }
+
+    // 一键发送催缴短信（批量）
+    const handleBatchSendReminder = async () => {
+      const expiredRentals = rentals.filter((r) => {
+        if (r.status !== "active") return false
+        const days = calculateRemainingDays(r.end_date)
+        return days !== null && days <= 7 && days > 0
+      })
+      
+      if (expiredRentals.length === 0) {
+        alert("没有需要催缴的租赁单")
+        return
+      }
+
+      if (confirm(`确定要向 ${expiredRentals.length} 个客户发送催缴短信吗？`)) {
+        // TODO: 实现批量发送短信功能
+        alert(`已向 ${expiredRentals.length} 个客户发送催缴短信`)
+      }
+    }
+
+    // 终止合同
+    const handleTerminateContract = async (rental: any) => {
+      if (!confirm(`确定要终止与 ${rental.customer_name} 的租赁合同吗？`)) return
+
+      try {
+        if (!supabase) return
+        
+        const { error } = await supabase
+          .from("rentals")
+          .update({ status: "returned" })
+          .eq("id", rental.id)
+
+        if (error) {
+          throw error
+        }
+
+        alert("合同已终止")
+        loadRentals()
+      } catch (err: any) {
+        console.error("[终止合同] 失败:", err)
+        alert(`终止合同失败: ${err.message}`)
+      }
+    }
+
+    // 创建新租赁
+    const handleCreateRental = async () => {
+      try {
+        if (!supabase) return
+
+        if (!newRental.customer_name || !newRental.customer_phone || !newRental.device_name || !newRental.device_sn || !newRental.start_date) {
+          alert("请填写必填字段")
+          return
+        }
+
+        const { error } = await supabase
+          .from("rentals")
+          .insert({
+            customer_name: newRental.customer_name,
+            customer_phone: newRental.customer_phone,
+            device_name: newRental.device_name,
+            device_sn: newRental.device_sn,
+            rent_amount: parseFloat(newRental.rent_amount) || 0,
+            deposit: parseFloat(newRental.deposit) || 0,
+            start_date: newRental.start_date,
+            end_date: newRental.end_date || null,
+            status: newRental.status,
+            notes: newRental.notes || null,
+          })
+
+        if (error) {
+          throw error
+        }
+
+        alert("租赁单创建成功")
+        setIsAddRentalDialogOpen(false)
+        setNewRental({
+          customer_name: "",
+          customer_phone: "",
+          device_name: "",
+          device_sn: "",
+          rent_amount: "",
+          deposit: "",
+          start_date: "",
+          end_date: "",
+          status: "pending_delivery",
+          notes: "",
+        })
+        loadRentals()
+      } catch (err: any) {
+        console.error("[创建租赁] 失败:", err)
+        alert(`创建失败: ${err.message}`)
+      }
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">租赁工作台</h1>
+            <p className="text-slate-400">管理设备租赁合同和收款</p>
+          </div>
+          <Button
+            onClick={() => setIsAddRentalDialogOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            新增租赁
+          </Button>
+        </div>
+
+        {/* 统计卡片 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400 flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                本月待收款
+              </CardDescription>
+              <CardTitle className="text-3xl text-blue-400">
+                ¥{monthlyPendingAmount.toFixed(2)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400 flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                在租设备总数
+              </CardDescription>
+              <CardTitle className="text-3xl text-green-400">{totalDevices}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* 操作栏 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleBatchSendReminder}
+                variant="outline"
+                className="border-orange-500/50 text-orange-400 hover:bg-orange-500/10"
+              >
+                <MessageSquare className="h-4 w-4 mr-2" />
+                一键发送催缴短信
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 租赁列表 */}
+        {isLoadingRentals ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-400 mr-2" />
+            <span className="text-slate-400">加载中...</span>
+          </div>
+        ) : rentals.length === 0 ? (
+          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+            <CardContent className="p-8 text-center">
+              <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+              <p className="text-slate-400">暂无租赁记录</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {rentals.map((rental) => {
+              const remainingDays = calculateRemainingDays(rental.end_date)
+              const isUrgent = remainingDays !== null && remainingDays <= 7 && remainingDays > 0
+
+              return (
+                <Card
+                  key={rental.id}
+                  className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all"
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <h3 className="text-lg font-bold text-white">{rental.device_name}</h3>
+                          <Badge className={getStatusColor(rental.status)}>
+                            {getStatusLabel(rental.status)}
+                          </Badge>
+                          {isUrgent && (
+                            <Badge className="bg-red-500/20 text-red-400 border-red-500/30">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              即将到期
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                          <div>
+                            <span className="text-slate-400">承租人：</span>
+                            <span className="text-white ml-2">{rental.customer_name}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">联系电话：</span>
+                            <span className="text-white ml-2">{rental.customer_phone}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">设备序列号：</span>
+                            <span className="text-white ml-2">{rental.device_sn}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">月租金：</span>
+                            <span className="text-blue-400 font-bold ml-2">
+                              ¥{parseFloat(rental.rent_amount || 0).toFixed(2)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">押金：</span>
+                            <span className="text-white ml-2">
+                              ¥{parseFloat(rental.deposit || 0).toFixed(2)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">开始日期：</span>
+                            <span className="text-white ml-2">{rental.start_date}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">结束日期：</span>
+                            <span className="text-white ml-2">{rental.end_date || "未设置"}</span>
+                          </div>
+                          {remainingDays !== null && (
+                            <div>
+                              <span className="text-slate-400">剩余天数：</span>
+                              <span className={`ml-2 font-bold ${isUrgent ? "text-red-400" : "text-white"}`}>
+                                {remainingDays} 天
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 剩余天数进度条 */}
+                        {rental.status === "active" && rental.end_date && remainingDays !== null && (
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-slate-400">租期剩余</span>
+                              <span className={`text-sm font-medium ${isUrgent ? "text-red-400" : "text-slate-300"}`}>
+                                {remainingDays} 天
+                              </span>
+                            </div>
+                            <Progress
+                              value={Math.max(0, Math.min(100, (remainingDays / 30) * 100))}
+                              className={`h-2 ${isUrgent ? "bg-red-500/20" : ""}`}
+                            />
+                          </div>
+                        )}
+
+                        {/* 操作按钮 */}
+                        <div className="flex items-center gap-2 mt-4">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleSendReminder(rental)
+                            }}
+                            className="border-orange-500/50 text-orange-400 hover:bg-orange-500/10"
+                          >
+                            <MessageSquare className="h-3 w-3 mr-1" />
+                            催缴
+                          </Button>
+                          {rental.status === "active" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleTerminateContract(rental)
+                              }}
+                              className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                            >
+                              <XCircle className="h-3 w-3 mr-1" />
+                              终止合同
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedRental(rental)
+                              setIsRentalDetailDialogOpen(true)
+                            }}
+                            className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            查看详情
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 新增租赁对话框 */}
+        <Dialog open={isAddRentalDialogOpen} onOpenChange={setIsAddRentalDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">新增租赁</DialogTitle>
+              <DialogDescription className="text-slate-400">创建新的设备租赁合同</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-slate-300">承租人姓名 *</Label>
+                  <Input
+                    value={newRental.customer_name}
+                    onChange={(e) => setNewRental({ ...newRental, customer_name: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                    placeholder="请输入承租人姓名"
+                  />
+                </div>
+                <div>
+                  <Label className="text-slate-300">联系电话 *</Label>
+                  <Input
+                    value={newRental.customer_phone}
+                    onChange={(e) => setNewRental({ ...newRental, customer_phone: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                    placeholder="请输入联系电话"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-slate-300">设备名称 *</Label>
+                  <Input
+                    value={newRental.device_name}
+                    onChange={(e) => setNewRental({ ...newRental, device_name: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                    placeholder="请输入设备名称"
+                  />
+                </div>
+                <div>
+                  <Label className="text-slate-300">设备序列号 *</Label>
+                  <Input
+                    value={newRental.device_sn}
+                    onChange={(e) => setNewRental({ ...newRental, device_sn: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                    placeholder="请输入设备序列号"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-slate-300">月租金（元）</Label>
+                  <Input
+                    type="number"
+                    value={newRental.rent_amount}
+                    onChange={(e) => setNewRental({ ...newRental, rent_amount: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <Label className="text-slate-300">押金（元）</Label>
+                  <Input
+                    type="number"
+                    value={newRental.deposit}
+                    onChange={(e) => setNewRental({ ...newRental, deposit: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-slate-300">开始日期 *</Label>
+                  <Input
+                    type="date"
+                    value={newRental.start_date}
+                    onChange={(e) => setNewRental({ ...newRental, start_date: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-slate-300">结束日期</Label>
+                  <Input
+                    type="date"
+                    value={newRental.end_date}
+                    onChange={(e) => setNewRental({ ...newRental, end_date: e.target.value })}
+                    className="bg-slate-800 border-slate-700 text-white mt-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-slate-300">状态</Label>
+                <Select
+                  value={newRental.status}
+                  onValueChange={(value) => setNewRental({ ...newRental, status: value })}
+                >
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending_delivery">待交付</SelectItem>
+                    <SelectItem value="active">租赁中</SelectItem>
+                    <SelectItem value="expired">已到期</SelectItem>
+                    <SelectItem value="returned">已收回</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-slate-300">备注</Label>
+                <Textarea
+                  value={newRental.notes}
+                  onChange={(e) => setNewRental({ ...newRental, notes: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white mt-1"
+                  placeholder="请输入备注信息"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsAddRentalDialogOpen(false)}
+                  className="border-slate-600 text-slate-300"
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleCreateRental}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  创建
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 租赁详情对话框 */}
+        <Dialog open={isRentalDetailDialogOpen} onOpenChange={setIsRentalDetailDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">租赁详情</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                设备序列号：{selectedRental?.device_sn}
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedRental && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-400">承租人：</span>
+                    <span className="text-white ml-2">{selectedRental.customer_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">联系电话：</span>
+                    <span className="text-white ml-2">{selectedRental.customer_phone}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">设备名称：</span>
+                    <span className="text-white ml-2">{selectedRental.device_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">设备序列号：</span>
+                    <span className="text-white ml-2">{selectedRental.device_sn}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">月租金：</span>
+                    <span className="text-blue-400 font-bold ml-2">
+                      ¥{parseFloat(selectedRental.rent_amount || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">押金：</span>
+                    <span className="text-white ml-2">
+                      ¥{parseFloat(selectedRental.deposit || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">开始日期：</span>
+                    <span className="text-white ml-2">{selectedRental.start_date}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">结束日期：</span>
+                    <span className="text-white ml-2">{selectedRental.end_date || "未设置"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">状态：</span>
+                    <Badge className={getStatusColor(selectedRental.status)}>
+                      {getStatusLabel(selectedRental.status)}
+                    </Badge>
+                  </div>
+                  {selectedRental.notes && (
+                    <div className="col-span-2">
+                      <span className="text-slate-400">备注：</span>
+                      <span className="text-white ml-2">{selectedRental.notes}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
+
   // 渲染设备监控
   const renderDevices = () => {
     return (
@@ -5619,6 +6254,7 @@ export default function AdminDashboard() {
           {activeMenu === "orders" && renderOrders()}
           {activeMenu === "repairs" && renderRepairs()}
           {activeMenu === "equipmentRental" && renderEquipmentRental()}
+          {activeMenu === "rentals" && renderRentals()}
           {activeMenu === "devices" && renderDevices()}
           {activeMenu === "workers" && renderWorkers()}
           {activeMenu === "api" && renderApiConfig()}
