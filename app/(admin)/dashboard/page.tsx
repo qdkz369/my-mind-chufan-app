@@ -1598,38 +1598,39 @@ export default function AdminDashboard() {
         if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('service_points') || error.message?.includes('not found')) {
           // 表不存在，直接使用模拟数据，静默处理，不输出任何日志
           setServicePoints([
-          {
-            id: "sp_001",
-            name: "五华区服务点",
-            township: "五华区",
-            latitude: 25.0389,
-            longitude: 102.7183,
-            service_radius: 15,
-            legal_entity: "昆明市五华区燃料服务有限公司",
-            status: "active",
-            created_at: new Date().toISOString(),
-            workers: [],
-          },
-          {
-            id: "sp_002",
-            name: "盘龙区服务点",
-            township: "盘龙区",
-            latitude: 25.0853,
-            longitude: 102.7353,
-            service_radius: 12,
-            legal_entity: "昆明市盘龙区能源服务有限公司",
-            status: "active",
-            created_at: new Date().toISOString(),
-            workers: [],
-          },
-        ])
-        return
+            {
+              id: "sp_001",
+              name: "五华区服务点",
+              township: "五华区",
+              latitude: 25.0389,
+              longitude: 102.7183,
+              service_radius: 15,
+              legal_entity: "昆明市五华区燃料服务有限公司",
+              status: "active",
+              created_at: new Date().toISOString(),
+              workers: [],
+            },
+            {
+              id: "sp_002",
+              name: "盘龙区服务点",
+              township: "盘龙区",
+              latitude: 25.0853,
+              longitude: 102.7353,
+              service_radius: 12,
+              legal_entity: "昆明市盘龙区能源服务有限公司",
+              status: "active",
+              created_at: new Date().toISOString(),
+              workers: [],
+            },
+          ])
+          return
+        }
       }
 
       if (data) {
         setServicePoints(data)
       }
-    } catch (error) {
+    } catch (error: any) {
       // 静默处理所有错误，使用模拟数据，不输出错误日志避免控制台刷屏
       setServicePoints([
         {
@@ -1646,7 +1647,7 @@ export default function AdminDashboard() {
         },
       ])
     }
-  }, [])
+  }, [supabase])
 
   // 实时订阅
   useEffect(() => {
