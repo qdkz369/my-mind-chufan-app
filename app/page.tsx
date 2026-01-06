@@ -33,6 +33,9 @@ import {
   AlertCircle,
   Mic,
   MicOff,
+  Play,
+  Pause,
+  Trash2,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -669,8 +672,17 @@ function IoTDashboard() {
   }>>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [repairTab, setRepairTab] = useState<"submit" | "history">("submit")
+  // 语音录制相关状态
   const [isRecording, setIsRecording] = useState(false)
-  const recognitionRef = useRef<any>(null)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [audioUploadUrl, setAudioUploadUrl] = useState<string | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     // 获取 restaurantId
@@ -817,88 +829,146 @@ function IoTDashboard() {
     }
   }, [])
 
-  // 初始化语音识别
+  // 清理资源
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      // 检查浏览器是否支持语音识别
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      if (SpeechRecognition) {
-        const recognitionInstance = new SpeechRecognition()
-        recognitionInstance.lang = "zh-CN" // 设置为中文
-        recognitionInstance.continuous = true // 持续识别
-        recognitionInstance.interimResults = true // 返回临时结果
-
-        recognitionInstance.onresult = (event: any) => {
-          let finalTranscript = ""
-          
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript + " "
-            }
-          }
-          
-          // 只追加最终结果，避免重复添加
-          if (finalTranscript) {
-            setRepairDescription((prev) => prev + finalTranscript)
-          }
-        }
-
-        recognitionInstance.onerror = (event: any) => {
-          console.error("[语音识别] 错误:", event.error)
-          if (event.error === "no-speech") {
-            // 没有检测到语音，可以忽略
-            return
-          }
-          setIsRecording(false)
-          if (event.error !== "aborted") {
-            alert(`语音识别错误: ${event.error}`)
-          }
-        }
-
-        recognitionInstance.onend = () => {
-          setIsRecording(false)
-        }
-
-        recognitionRef.current = recognitionInstance
-      }
-    }
-
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop()
-        } catch (error) {
-          // 忽略停止时的错误
+      // 清理录音资源
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+      }
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current)
+      }
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl)
+      }
+    }
+  }, [audioUrl])
+
+  // 开始录音
+  const startRecording = async () => {
+    try {
+      // 请求麦克风权限
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+
+      // 创建 MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+      })
+      mediaRecorderRef.current = mediaRecorder
+
+      const chunks: Blob[] = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data)
         }
       }
-    }
-  }, [])
 
-  // 开始/停止语音录入
-  const toggleRecording = () => {
-    if (!recognitionRef.current) {
-      alert("您的浏览器不支持语音识别功能，请使用Chrome或Edge浏览器")
-      return
-    }
-
-    if (isRecording) {
-      try {
-        recognitionRef.current.stop()
-        setIsRecording(false)
-      } catch (error) {
-        console.error("[语音识别] 停止失败:", error)
-        setIsRecording(false)
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: mediaRecorder.mimeType })
+        setAudioBlob(blob)
+        const url = URL.createObjectURL(blob)
+        setAudioUrl(url)
+        
+        // 停止所有音频轨道
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+        }
       }
+
+      // 开始录音
+      mediaRecorder.start()
+      setIsRecording(true)
+      setRecordingDuration(0)
+
+      // 开始计时
+      durationIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1)
+      }, 1000)
+
+    } catch (error) {
+      console.error("[语音录制] 启动失败:", error)
+      alert("无法启动录音，请检查麦克风权限")
+      setIsRecording(false)
+    }
+  }
+
+  // 停止录音
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+      setIsRecording(false)
+      
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current)
+        durationIntervalRef.current = null
+      }
+    }
+  }
+
+  // 删除录音
+  const deleteRecording = () => {
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl)
+    }
+    setAudioBlob(null)
+    setAudioUrl(null)
+    setRecordingDuration(0)
+    setAudioUploadUrl(null)
+    setIsPlaying(false)
+  }
+
+  // 播放/暂停录音
+  const togglePlayback = () => {
+    if (!audioRef.current || !audioUrl) return
+
+    if (isPlaying) {
+      audioRef.current.pause()
+      setIsPlaying(false)
     } else {
-      try {
-        recognitionRef.current.start()
-        setIsRecording(true)
-      } catch (error) {
-        console.error("[语音识别] 启动失败:", error)
-        alert("无法启动语音识别，请检查麦克风权限")
-        setIsRecording(false)
-      }
+      audioRef.current.play()
+      setIsPlaying(true)
     }
+  }
+
+  // 上传音频文件
+  const uploadAudio = async (): Promise<string | null> => {
+    if (!audioBlob) return null
+
+    try {
+      const formData = new FormData()
+      const fileName = `repair_audio_${Date.now()}.${audioBlob.type.includes('webm') ? 'webm' : 'mp4'}`
+      formData.append('file', audioBlob, fileName)
+      formData.append('folder', 'repair-audio')
+
+      const response = await fetch('/api/storage/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || '上传失败')
+      }
+
+      const data = await response.json()
+      setAudioUploadUrl(data.data.url)
+      return data.data.url
+    } catch (error) {
+      console.error('[语音上传] 失败:', error)
+      alert('音频上传失败，请重试')
+      return null
+    }
+  }
+
+  // 格式化时长（秒转分:秒）
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   // 加载历史维修记录
@@ -944,13 +1014,24 @@ function IoTDashboard() {
       return
     }
 
-    if (!repairDescription.trim()) {
-      alert("请填写问题描述")
+    // 如果没有文字描述也没有语音，提示用户
+    if (!repairDescription.trim() && !audioBlob) {
+      alert("请填写问题描述或录制语音")
       return
     }
 
     setIsSubmittingRepair(true)
     try {
+      // 如果有录音但未上传，先上传音频
+      let audioUrlToSubmit = audioUploadUrl
+      if (audioBlob && !audioUploadUrl) {
+        audioUrlToSubmit = await uploadAudio()
+        if (!audioUrlToSubmit) {
+          setIsSubmittingRepair(false)
+          return
+        }
+      }
+
       const response = await fetch("/api/repair/create", {
         method: "POST",
         headers: {
@@ -959,8 +1040,9 @@ function IoTDashboard() {
         body: JSON.stringify({
           restaurant_id: restaurantId,
           device_id: repairDeviceId || undefined,
-          description: repairDescription.trim(),
+          description: repairDescription.trim() || (audioUrlToSubmit ? "[语音消息]" : ""),
           urgency: repairUrgency,
+          audio_url: audioUrlToSubmit || undefined,
         }),
       })
 
@@ -971,9 +1053,13 @@ function IoTDashboard() {
       }
 
       alert("报修工单提交成功！我们会尽快安排维修人员联系您。")
+      
+      // 重置表单
       setRepairDescription("")
       setRepairDeviceId("")
       setRepairUrgency("medium")
+      deleteRecording() // 清理录音
+      
       // 切换到历史记录标签页（会自动触发加载）
       setRepairTab("history")
     } catch (error) {
@@ -1120,6 +1206,11 @@ function IoTDashboard() {
         setIsRepairDialogOpen(open)
         if (!open) {
           setRepairTab("submit") // 关闭时重置到提交标签页
+          // 清理录音状态
+          if (isRecording) {
+            stopRecording()
+          }
+          deleteRecording()
         }
       }}>
         <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-md max-h-[90vh] overflow-hidden flex flex-col">
@@ -1172,47 +1263,108 @@ function IoTDashboard() {
               )}
 
               {/* 问题描述 */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="description" className="text-slate-300">
-                    问题描述 <span className="text-red-400">*</span>
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleRecording}
-                    className={`h-7 px-2 text-xs ${isRecording ? 'text-red-400 hover:text-red-300' : 'text-slate-400 hover:text-white'}`}
-                    disabled={!recognitionRef.current}
-                  >
-                    {isRecording ? (
-                      <>
-                        <div className="h-3 w-3 rounded-full bg-red-400 animate-pulse mr-1.5" />
-                        <MicOff className="h-3.5 w-3.5 mr-1" />
-                        停止录音
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="h-3.5 w-3.5 mr-1" />
-                        语音录入
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <div className="relative">
-                  <Textarea
-                    id="description"
-                    placeholder="请详细描述设备故障或需要维修的问题...（或点击右上角语音录入）"
-                    value={repairDescription}
-                    onChange={(e) => setRepairDescription(e.target.value)}
-                    className="min-h-[100px] bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 pr-10"
-                    rows={4}
-                  />
-                  {isRecording && (
-                    <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 bg-red-500/20 border border-red-500/30 rounded text-xs text-red-400">
-                      <div className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
-                      正在录音...
+              <div className="space-y-3">
+                <Label htmlFor="description" className="text-slate-300">
+                  问题描述 <span className="text-red-400">*</span>
+                  <span className="text-xs text-slate-500 ml-2">（文字或语音，至少填写一项）</span>
+                </Label>
+                
+                {/* 文字输入框 */}
+                <Textarea
+                  id="description"
+                  placeholder="请详细描述设备故障或需要维修的问题..."
+                  value={repairDescription}
+                  onChange={(e) => setRepairDescription(e.target.value)}
+                  className="min-h-[80px] bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                  rows={3}
+                />
+
+                {/* 语音录制区域 */}
+                <div className="space-y-2">
+                  {!audioUrl ? (
+                    /* 未录制状态 - 显示录音按钮 */
+                    <div className="flex items-center justify-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onMouseDown={startRecording}
+                        onMouseUp={stopRecording}
+                        onTouchStart={startRecording}
+                        onTouchEnd={stopRecording}
+                        className={`w-full h-16 border-2 ${
+                          isRecording 
+                            ? 'border-red-500 bg-red-500/10 text-red-400' 
+                            : 'border-slate-600 bg-slate-800/50 text-slate-300 hover:border-purple-500 hover:bg-purple-500/10'
+                        } transition-all`}
+                      >
+                        {isRecording ? (
+                          <div className="flex items-center gap-3">
+                            <div className="h-4 w-4 rounded-full bg-red-400 animate-pulse" />
+                            <span className="text-lg font-medium">录音中... {formatDuration(recordingDuration)}</span>
+                            <MicOff className="h-5 w-5" />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <Mic className="h-5 w-5" />
+                            <span className="text-lg font-medium">按住说话</span>
+                          </div>
+                        )}
+                      </Button>
                     </div>
+                  ) : (
+                    /* 已录制状态 - 显示播放控制 */
+                    <div className="flex items-center gap-3 p-3 bg-slate-800/50 border border-slate-700 rounded-lg">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={togglePlayback}
+                        className="h-10 w-10 p-0 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-full"
+                      >
+                        {isPlaying ? (
+                          <Pause className="h-5 w-5 text-purple-400" />
+                        ) : (
+                          <Play className="h-5 w-5 text-purple-400" />
+                        )}
+                      </Button>
+                      
+                      <div className="flex-1 flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full bg-purple-500 transition-all ${
+                              isPlaying ? 'animate-pulse' : ''
+                            }`}
+                            style={{ width: isPlaying ? '100%' : '0%' }}
+                          />
+                        </div>
+                        <span className="text-sm text-slate-400 min-w-[40px] text-right">
+                          {formatDuration(recordingDuration)}
+                        </span>
+                      </div>
+                      
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={deleteRecording}
+                        className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* 隐藏的audio元素用于播放 */}
+                  {audioUrl && (
+                    <audio
+                      ref={audioRef}
+                      src={audioUrl}
+                      onEnded={() => setIsPlaying(false)}
+                      onPause={() => setIsPlaying(false)}
+                      onPlay={() => setIsPlaying(true)}
+                      className="hidden"
+                    />
                   )}
                 </div>
               </div>

@@ -18,6 +18,7 @@ export async function POST(request: Request) {
       description, // 问题描述
       urgency, // 紧急程度：low, medium, high
       contact_phone, // 联系电话
+      audio_url, // 音频文件URL（可选）
     } = body
 
     // 验证必要参数
@@ -28,9 +29,10 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!description || description.trim() === "") {
+    // 至少需要文字描述或音频URL
+    if ((!description || description.trim() === "") && !audio_url) {
       return NextResponse.json(
-        { error: "请填写问题描述" },
+        { error: "请填写问题描述或录制语音" },
         { status: 400 }
       )
     }
@@ -90,10 +92,15 @@ export async function POST(request: Request) {
       service_type: "维修服务", // 统一使用"维修服务"作为service_type
       status: "pending", // 待处理
       amount: 0, // 报修时金额为0，维修完成后才确定
-      description: description.trim(), // 问题描述
+      description: description?.trim() || (audio_url ? "[语音消息]" : ""), // 问题描述
       customer_confirmed: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+    }
+
+    // 如果有音频URL，存储到audio_url字段（如果orders表有该字段）
+    if (audio_url) {
+      repairData.audio_url = audio_url
     }
 
     // 如果有设备ID，存储到备注或其他字段（如果orders表有device_id字段则使用，否则存储到description）

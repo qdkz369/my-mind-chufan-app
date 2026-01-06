@@ -25,10 +25,13 @@ export async function POST(request: Request) {
       )
     }
 
-    // 验证文件类型
-    if (!file.type.startsWith("image/")) {
+    // 验证文件类型（支持图片和音频）
+    const isImage = file.type.startsWith("image/")
+    const isAudio = file.type.startsWith("audio/")
+    
+    if (!isImage && !isAudio) {
       return NextResponse.json(
-        { error: "只支持图片文件" },
+        { error: "只支持图片或音频文件" },
         { status: 400 }
       )
     }
