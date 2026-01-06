@@ -464,7 +464,6 @@ export default function AdminDashboard() {
             // 移除调试日志，避免控制台刷屏
             // 再次检查 PlaceSearch 是否可用
             if (!AMap.PlaceSearch || typeof AMap.PlaceSearch !== 'function') {
-              console.warn('[地理编码] PlaceSearch 插件不可用，跳过关键地名搜索')
               // 静默处理，避免控制台刷屏
               resolve(null)
               return
@@ -504,7 +503,6 @@ export default function AdminDashboard() {
   // 批量更新餐厅的经纬度（对于有地址但没有经纬度的餐厅）
   const updateRestaurantCoordinates = useCallback(async (restaurants: Restaurant[]) => {
     if (!supabase) {
-      console.warn("[更新坐标] Supabase未配置")
       return
     }
 
@@ -890,10 +888,8 @@ export default function AdminDashboard() {
 
     try {
       setIsLoadingRepairs(true)
-      console.log("[Admin Dashboard] 开始加载维修工单...")
       
-      // 策略1: 先查询所有订单，然后在客户端过滤（最可靠的方式）
-      console.log("[Admin Dashboard] 策略1: 查询所有订单并在客户端过滤...")
+      // 策略: 先查询所有订单，然后在客户端过滤（最可靠的方式）
       const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
         async () => await supabase
           .from("orders")
@@ -907,8 +903,6 @@ export default function AdminDashboard() {
         setRepairs([])
         return
       }
-
-      console.log(`[Admin Dashboard] 查询到 ${allOrders?.length || 0} 条订单`)
 
       // 在客户端过滤维修订单
       const repairOrders = (allOrders || []).filter((order: any) => {
@@ -924,20 +918,16 @@ export default function AdminDashboard() {
         
         return isRepair
       })
-
-      console.log(`[Admin Dashboard] 过滤后找到 ${repairOrders.length} 条维修订单`)
       
       // 如果找到了维修订单，应用状态筛选
       let filteredRepairs = repairOrders
       if (repairStatusFilter && repairStatusFilter !== "all") {
         filteredRepairs = repairOrders.filter((r: any) => r.status === repairStatusFilter)
-        console.log(`[Admin Dashboard] 应用状态筛选 "${repairStatusFilter}" 后，剩余 ${filteredRepairs.length} 条订单`)
       }
 
       // 获取餐厅信息
       if (filteredRepairs.length > 0) {
         const restaurantIds = [...new Set(filteredRepairs.map((r: any) => r.restaurant_id).filter(Boolean))]
-        console.log(`[Admin Dashboard] 需要获取 ${restaurantIds.length} 个餐厅的信息`)
         
         if (restaurantIds.length > 0) {
           const { data: restaurantsData, error: restaurantsError } = await retryOnNetworkError(
@@ -948,7 +938,7 @@ export default function AdminDashboard() {
           )
           
           if (restaurantsError) {
-            console.warn("[Admin Dashboard] 获取餐厅信息失败:", restaurantsError)
+            console.error("[Admin Dashboard] 获取餐厅信息失败:", restaurantsError)
           }
           
           // 将餐厅信息附加到每个订单
@@ -962,24 +952,12 @@ export default function AdminDashboard() {
             }
           })
           
-          console.log(`[Admin Dashboard] ✅ 最终加载 ${processedRepairs.length} 条维修工单`)
           setRepairs(processedRepairs)
           return
         }
       }
 
-      // 如果没有找到维修订单，输出调试信息
-      if (repairOrders.length === 0) {
-        console.warn("[Admin Dashboard] ⚠️ 未找到维修工单")
-        if (allOrders && allOrders.length > 0) {
-          console.warn("[Admin Dashboard] 最近10条订单的 service_type 值:")
-          allOrders.slice(0, 10).forEach((o: any) => {
-            console.warn(`  - ID: ${o.id?.slice(0, 8)}..., service_type: "${o.service_type}", status: ${o.status}`)
-          })
-        } else {
-          console.warn("[Admin Dashboard] 数据库中没有任何订单")
-        }
-      }
+      // 如果没有找到维修订单，静默处理（不输出日志避免刷屏）
 
       setRepairs([])
 
@@ -1105,9 +1083,16 @@ export default function AdminDashboard() {
         },
         (payload) => {
           // 实时更新：当 orders 表发生变化时，自动刷新报修列表
+          // 使用防抖机制，避免频繁刷新
           // 后期扩展：可以在这里添加更细粒度的更新逻辑
           // 例如：payload.eventType === 'INSERT' 时只添加新订单，UPDATE 时只更新对应订单
-          loadRepairs()
+          if (typeof window !== 'undefined') {
+            const debounceKey = 'repair-realtime-debounce'
+            clearTimeout((window as any)[debounceKey])
+            ;(window as any)[debounceKey] = setTimeout(() => {
+              loadRepairs()
+            }, 1000) // 1秒防抖
+          }
         }
       )
       .subscribe()
