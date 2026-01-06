@@ -52,6 +52,7 @@ import {
   Loader2,
   HardHat,
   Mic,
+  Droplet,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -194,6 +195,7 @@ export default function AdminDashboard() {
   const [repairs, setRepairs] = useState<any[]>([])
   const [isLoadingRepairs, setIsLoadingRepairs] = useState(false)
   const [repairStatusFilter, setRepairStatusFilter] = useState<string>("all")
+  const [repairServiceTypeFilter, setRepairServiceTypeFilter] = useState<string>("all") // 服务类型筛选：all, repair, cleaning, renovation
   const [selectedRepair, setSelectedRepair] = useState<any | null>(null)
   const [isRepairDetailDialogOpen, setIsRepairDetailDialogOpen] = useState(false)
   const [isUpdatingRepair, setIsUpdatingRepair] = useState(false)
@@ -887,8 +889,16 @@ export default function AdminDashboard() {
     try {
       setIsLoadingRepairs(true)
       
-      // 强制适配接口返回：调用 /api/repair/list 接口
-      const url = `/api/repair/list${repairStatusFilter && repairStatusFilter !== "all" ? `?status=${repairStatusFilter}` : ''}`
+      // 构建查询参数
+      const params = new URLSearchParams()
+      if (repairStatusFilter && repairStatusFilter !== "all") {
+        params.append("status", repairStatusFilter)
+      }
+      if (repairServiceTypeFilter && repairServiceTypeFilter !== "all") {
+        params.append("service_type", repairServiceTypeFilter)
+      }
+      
+      const url = `/api/repair/list${params.toString() ? `?${params.toString()}` : ''}`
       console.log("[Admin Dashboard] 调用接口:", url)
       
       const response = await fetch(url)
@@ -936,7 +946,7 @@ export default function AdminDashboard() {
     } finally {
       setIsLoadingRepairs(false)
     }
-  }, [repairStatusFilter])
+  }, [repairStatusFilter, repairServiceTypeFilter])
 
   // 更新报修状态 - 直接使用 Supabase 更新（符合官方最佳实践）
   const updateRepairStatus = useCallback(async (repairId: string, status: string, amount?: number, assignedTo?: string) => {
@@ -1079,7 +1089,7 @@ export default function AdminDashboard() {
         }
       })
     }
-  }, [activeMenu, repairStatusFilter, loadRepairs, searchParams, repairs])
+  }, [activeMenu, repairStatusFilter, repairServiceTypeFilter, loadRepairs, searchParams, repairs])
 
   // 当切换到订单管理或筛选条件改变时加载数据
   useEffect(() => {
@@ -3216,6 +3226,49 @@ export default function AdminDashboard() {
       }
     }
 
+    // 获取服务类型信息（图标、颜色、标签）
+    const getServiceTypeInfo = (serviceType: string) => {
+      const normalizedType = (serviceType || "").toLowerCase()
+      
+      // 维修服务
+      if (serviceType === "维修服务" || serviceType.includes("维修") || normalizedType.includes("repair")) {
+        return {
+          icon: Wrench,
+          label: "维修服务",
+          color: "bg-green-500/20 text-green-400 border-green-500/30",
+          iconColor: "text-green-400",
+        }
+      }
+      
+      // 清洁服务
+      if (serviceType === "清洁服务" || serviceType.includes("清洁") || serviceType.includes("清洗") || normalizedType.includes("clean")) {
+        return {
+          icon: Droplet,
+          label: "清洁服务",
+          color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+          iconColor: "text-cyan-400",
+        }
+      }
+      
+      // 工程改造
+      if (serviceType === "工程改造" || serviceType.includes("改造") || serviceType.includes("工程") || normalizedType.includes("renovation") || normalizedType.includes("construction")) {
+        return {
+          icon: HardHat,
+          label: "工程改造",
+          color: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+          iconColor: "text-purple-400",
+        }
+      }
+      
+      // 默认
+      return {
+        icon: Wrench,
+        label: serviceType || "未知服务",
+        color: "bg-slate-500/20 text-slate-400 border-slate-500/30",
+        iconColor: "text-slate-400",
+      }
+    }
+
     return (
       <div className="space-y-6">
         <div>
@@ -3257,31 +3310,69 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* 状态筛选 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-white">状态筛选</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {["all", "pending", "processing", "completed", "cancelled"].map((status) => (
-                <Button
-                  key={status}
-                  variant={repairStatusFilter === status ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setRepairStatusFilter(status)}
-                  className={
-                    repairStatusFilter === status
-                      ? "bg-purple-600 hover:bg-purple-700"
-                      : "border-slate-700 text-slate-400 hover:bg-slate-800"
-                  }
-                >
-                  {status === "all" ? "全部" : getStatusLabel(status)}
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        {/* 筛选器 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 状态筛选 */}
+          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-white">状态筛选</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {["all", "pending", "processing", "completed", "cancelled"].map((status) => (
+                  <Button
+                    key={status}
+                    variant={repairStatusFilter === status ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setRepairStatusFilter(status)}
+                    className={
+                      repairStatusFilter === status
+                        ? "bg-purple-600 hover:bg-purple-700"
+                        : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                    }
+                  >
+                    {status === "all" ? "全部" : getStatusLabel(status)}
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 服务类型筛选 */}
+          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-white">服务类型筛选</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "all", label: "全部", icon: null },
+                  { value: "repair", label: "维修服务", icon: Wrench },
+                  { value: "cleaning", label: "清洁服务", icon: Droplet },
+                  { value: "renovation", label: "工程改造", icon: HardHat },
+                ].map((type) => {
+                  const IconComponent = type.icon
+                  return (
+                    <Button
+                      key={type.value}
+                      variant={repairServiceTypeFilter === type.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setRepairServiceTypeFilter(type.value)}
+                      className={
+                        repairServiceTypeFilter === type.value
+                          ? "bg-purple-600 hover:bg-purple-700"
+                          : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                      }
+                    >
+                      {IconComponent && <IconComponent className="h-3 w-3 mr-1" />}
+                      {type.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* 报修列表 */}
         <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
@@ -3331,7 +3422,7 @@ export default function AdminDashboard() {
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <Building2 className="h-4 w-4 text-purple-400" />
                             <span className="font-semibold text-white">
                               {restaurant?.name || "未知餐厅"}
@@ -3339,6 +3430,17 @@ export default function AdminDashboard() {
                             <Badge variant="outline" className="text-xs border-slate-600 text-slate-400">
                               {repair.id.slice(0, 8)}
                             </Badge>
+                            {/* 服务类型标签 */}
+                            {(() => {
+                              const serviceInfo = getServiceTypeInfo(repair.service_type || "")
+                              const ServiceIcon = serviceInfo.icon
+                              return (
+                                <Badge className={`text-xs ${serviceInfo.color} flex items-center gap-1`}>
+                                  <ServiceIcon className={`h-3 w-3 ${serviceInfo.iconColor}`} />
+                                  {serviceInfo.label}
+                                </Badge>
+                              )
+                            })()}
                             {repair.urgency && (
                               <Badge className={`text-xs ${getUrgencyColor(repair.urgency)} border-current/30`}>
                                 紧急: {getUrgencyLabel(repair.urgency)}
@@ -3410,20 +3512,40 @@ export default function AdminDashboard() {
           <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-                <Wrench className="h-5 w-5 text-purple-400" />
-                报修工单详情
+                {(() => {
+                  const serviceInfo = getServiceTypeInfo(selectedRepair?.service_type || "")
+                  const ServiceIcon = serviceInfo.icon
+                  return <ServiceIcon className={`h-5 w-5 ${serviceInfo.iconColor}`} />
+                })()}
+                服务工单详情
                 {selectedRepair?.audio_url && (
-                  <Mic className="h-5 w-5 text-purple-400" title="语音报修单" />
+                  <Mic className="h-5 w-5 text-purple-400" />
                 )}
               </DialogTitle>
               <DialogDescription className="text-slate-400">
-                查看报修详情并更新状态
+                查看服务详情并更新状态
               </DialogDescription>
             </DialogHeader>
 
             {selectedRepair && (
               <div className="space-y-4">
                 {/* 基本信息 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">服务类型</Label>
+                  <div className="bg-slate-800/50 p-3 rounded-lg">
+                    {(() => {
+                      const serviceInfo = getServiceTypeInfo(selectedRepair.service_type || "")
+                      const ServiceIcon = serviceInfo.icon
+                      return (
+                        <Badge className={`${serviceInfo.color} flex items-center gap-2 w-fit`}>
+                          <ServiceIcon className={`h-4 w-4 ${serviceInfo.iconColor}`} />
+                          <span>{serviceInfo.label}</span>
+                        </Badge>
+                      )
+                    })()}
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label className="text-slate-300">餐厅信息</Label>
                   <div className="bg-slate-800/50 p-3 rounded-lg">
