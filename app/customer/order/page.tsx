@@ -131,7 +131,7 @@ export default function CustomerOrderPage() {
           restaurant_id: restaurantId,
           product_type: selectedProductType,
           service_type: `${product?.name || "燃料配送"} - ${quantity}${product?.unit || "kg"}`,
-          status: OrderStatus.ACTIVE, // 创建后为待下单状态
+          status: "pending", // 创建后为待处理状态，与管理端保持一致
           amount: totalAmount,
         }),
       })

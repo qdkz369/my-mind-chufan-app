@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     const orderData: any = {
       restaurant_id: restaurant_id,
       service_type: service_type || "燃料配送",
-      status: status || OrderStatus.ACTIVE, // 默认状态为 active（已激活/待下单）
+      status: status || "pending", // 默认状态为 pending（待处理），与管理端保持一致
       amount: amount || 0,
       customer_confirmed: false, // 默认未确认
       created_at: new Date().toISOString(),
@@ -69,14 +69,14 @@ export async function POST(request: Request) {
     if (deliveryWorkerId) {
       orderData.assigned_to = deliveryWorkerId
       orderData.worker_id = deliveryWorkerId // 兼容旧字段
-      // 如果有配送员，状态设为 processing（待派单）
+      // 如果有配送员，状态设为 processing（处理中）
       if (!status) {
-        orderData.status = OrderStatus.PROCESSING
+        orderData.status = "processing"
       }
     } else {
-      // 如果没有配送员，状态设为 active（待下单）
+      // 如果没有配送员，状态设为 pending（待处理）
       if (!status) {
-        orderData.status = OrderStatus.ACTIVE
+        orderData.status = "pending"
       }
     }
 
