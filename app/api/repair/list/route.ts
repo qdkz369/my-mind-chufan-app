@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
     const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
 
-    // 构建查询 - 先尝试精确匹配"维修服务"，如果结果为空，再尝试模糊匹配
+    // 构建查询 - 使用 ilike 匹配包含"维修"的订单
     let query = supabase
       .from("orders")
       .select(
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       .ilike("service_type", "%维修%") // 使用 ilike 匹配包含"维修"的订单
     
     // 调试：记录查询条件
-    console.log("[报修列表API] 查询条件: service_type包含'维修'", status ? `status=${status}` : "")
+    console.log("[报修列表API] 查询条件: service_type包含'维修'", status ? `status=${status}` : "", restaurantId ? `restaurant_id=${restaurantId}` : "")
 
     // 如果请求头中包含worker_id，验证维修工权限
     const workerId = request.headers.get("x-worker-id")
@@ -82,25 +82,40 @@ export async function GET(request: Request) {
     // 调试：记录查询结果
     console.log("[报修列表API] 查询结果数量:", repairs?.length || 0)
     if (repairs && repairs.length > 0) {
-      console.log("[报修列表API] 第一条记录:", {
+      console.log("[报修列表API] 成功找到维修订单，第一条记录:", {
         id: repairs[0].id,
         service_type: repairs[0].service_type,
         status: repairs[0].status,
         restaurant_id: repairs[0].restaurant_id,
+        restaurant_name: repairs[0].restaurants?.name,
       })
     } else {
       // 如果没有结果，尝试查询所有订单看看 service_type 的实际值
-      console.log("[报修列表API] 未找到维修订单，尝试查询所有订单的 service_type...")
-      const { data: allOrders } = await supabase
+      console.warn("[报修列表API] ⚠️ 未找到维修订单，诊断信息:")
+      console.warn("查询条件: service_type包含'维修'", status ? `, status=${status}` : "", restaurantId ? `, restaurant_id=${restaurantId}` : "")
+      
+      const { data: allOrders, error: allOrdersError } = await supabase
         .from("orders")
         .select("id, service_type, status, created_at")
         .order("created_at", { ascending: false })
-        .limit(10)
+        .limit(20)
       
-      if (allOrders && allOrders.length > 0) {
-        console.log("[报修列表API] 最近10条订单的 service_type:", 
-          allOrders.map((o: any) => ({ id: o.id, service_type: o.service_type, status: o.status }))
+      if (allOrdersError) {
+        console.error("[报修列表API] 查询所有订单失败:", allOrdersError)
+      } else if (allOrders && allOrders.length > 0) {
+        console.warn("[报修列表API] 最近20条订单的 service_type 值:")
+        allOrders.forEach((o: any) => {
+          const isRepair = o.service_type && (o.service_type.includes("维修") || o.service_type === "维修服务")
+          console.warn(`  - ID: ${o.id}, service_type: "${o.service_type}", status: ${o.status}${isRepair ? " ✓ (匹配)" : ""}`)
+        })
+        
+        // 统计包含"维修"的订单数量
+        const repairOrders = allOrders.filter((o: any) => 
+          o.service_type && (o.service_type.includes("维修") || o.service_type === "维修服务")
         )
+        console.warn(`[报修列表API] 在最近20条订单中，包含"维修"的订单数量: ${repairOrders.length}`)
+      } else {
+        console.warn("[报修列表API] 数据库中没有任何订单")
       }
     }
 

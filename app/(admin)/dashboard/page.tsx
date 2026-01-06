@@ -570,6 +570,42 @@ export default function AdminDashboard() {
   }, [supabase, geocodeAddress])
 
   // 加载餐厅数据
+  // 网络重试工具函数（用于 fetch API）
+  const retryFetch = async (
+    url: string,
+    options?: RequestInit,
+    maxRetries: number = 3,
+    delay: number = 1000
+  ): Promise<Response> => {
+    let lastError: any
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(url, options)
+        // 即使响应状态不是 200，只要不是网络错误就返回
+        return response
+      } catch (error: any) {
+        lastError = error
+        const errorMessage = error?.message || String(error)
+        const isNetworkError = 
+          errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('ERR_CONNECTION_CLOSED') ||
+          errorMessage.includes('NetworkError') ||
+          errorMessage.includes('fetch') ||
+          error?.code === 'ECONNRESET' ||
+          error?.code === 'ETIMEDOUT'
+        
+        if (isNetworkError && i < maxRetries - 1) {
+          // 网络错误且还有重试机会，等待后重试
+          await new Promise(resolve => setTimeout(resolve, delay * (i + 1)))
+          continue
+        }
+        // 非网络错误或已达到最大重试次数，抛出异常
+        throw error
+      }
+    }
+    throw lastError
+  }
+
   // 网络重试工具函数（仅针对网络错误，不影响业务逻辑）
   // 这个函数包装 Supabase 查询，在网络错误时自动重试
   const retryOnNetworkError = async <T extends { data: any; error: any }>(
@@ -851,9 +887,9 @@ export default function AdminDashboard() {
       setIsLoadingRepairs(true)
       const statusParam = repairStatusFilter !== "all" ? `?status=${repairStatusFilter}` : ""
       const url = `/api/repair/list${statusParam}`
-      // 移除频繁的调试日志，避免控制台刷屏
       
-      const response = await fetch(url)
+      // 使用网络重试机制
+      const response = await retryFetch(url)
       const result = await response.json()
       
       console.log("[Admin Dashboard] API 响应:", {
@@ -874,14 +910,18 @@ export default function AdminDashboard() {
       }
       
       if (result.success && result.data) {
-        // 移除频繁的调试日志，避免控制台刷屏
         if (result.data.length > 0) {
-          // 移除频繁的调试日志，避免控制台刷屏
+          console.log("[Admin Dashboard] 成功加载报修工单，第一条记录:", {
             id: result.data[0].id,
             service_type: result.data[0].service_type,
             status: result.data[0].status,
             restaurant_name: result.data[0].restaurants?.name,
           })
+        } else {
+          console.warn("[Admin Dashboard] API返回成功但数据为空，可能原因:")
+          console.warn("1. 数据库中确实没有维修工单")
+          console.warn("2. service_type 字段值不匹配（当前查询: 包含'维修'）")
+          console.warn("3. 状态筛选条件不匹配")
         }
         setRepairs(result.data || [])
       } else {
