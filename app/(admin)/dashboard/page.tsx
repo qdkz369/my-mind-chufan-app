@@ -279,6 +279,7 @@ export default function AdminDashboard() {
   // 设备租赁管理相关状态
   const [rentalOrders, setRentalOrders] = useState<any[]>([])
   const [isLoadingRentalOrders, setIsLoadingRentalOrders] = useState(false)
+  const [rentalOrderError, setRentalOrderError] = useState<string | null>(null)
   const [rentalOrderStatusFilter, setRentalOrderStatusFilter] = useState<string>("all")
   const [selectedRentalOrder, setSelectedRentalOrder] = useState<any | null>(null)
   const [isRentalOrderDetailDialogOpen, setIsRentalOrderDetailDialogOpen] = useState(false)
@@ -1128,6 +1129,7 @@ export default function AdminDashboard() {
   // 加载设备租赁订单（管理端）
   const loadRentalOrders = useCallback(async () => {
     setIsLoadingRentalOrders(true)
+    setRentalOrderError(null)
     try {
       const params = new URLSearchParams()
       if (rentalOrderStatusFilter && rentalOrderStatusFilter !== "all") {
@@ -1139,12 +1141,18 @@ export default function AdminDashboard() {
       
       if (result.success) {
         setRentalOrders(result.data || [])
+        setRentalOrderError(null)
       } else {
-        console.error("[设备租赁管理] 加载失败:", result.error)
+        const errorMsg = result.error || "获取租赁订单列表失败"
+        const details = result.details ? `: ${result.details}` : ""
+        console.error("[设备租赁管理] 加载失败:", errorMsg, details)
+        setRentalOrderError(`${errorMsg}${details}`)
         setRentalOrders([])
       }
-    } catch (err) {
+    } catch (err: any) {
+      const errorMsg = err.message || "网络请求失败"
       console.error("[设备租赁管理] 加载失败:", err)
+      setRentalOrderError(errorMsg)
       setRentalOrders([])
     } finally {
       setIsLoadingRentalOrders(false)
@@ -4017,6 +4025,29 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
+        {/* 错误提示 */}
+        {rentalOrderError && (
+          <Card className="bg-gradient-to-br from-red-900/90 to-red-800/90 border-red-700/50 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-red-400 font-medium">加载失败</p>
+                  <p className="text-red-300 text-sm mt-1">{rentalOrderError}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => loadRentalOrders()}
+                  className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                >
+                  重试
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 订单列表 */}
         {isLoadingRentalOrders ? (
           <div className="flex items-center justify-center py-12">
@@ -4027,7 +4058,9 @@ export default function AdminDashboard() {
           <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
             <CardContent className="p-8 text-center">
               <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
-              <p className="text-slate-400">暂无租赁订单</p>
+              <p className="text-slate-400">
+                {rentalOrderError ? "加载失败，请点击上方重试按钮" : "暂无租赁订单"}
+              </p>
             </CardContent>
           </Card>
         ) : (
