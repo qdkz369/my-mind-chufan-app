@@ -193,6 +193,7 @@ export default function AdminDashboard() {
   const [isUpdatingRepair, setIsUpdatingRepair] = useState(false)
   const [repairUpdateAmount, setRepairUpdateAmount] = useState<string>("")
   const [repairUpdateStatus, setRepairUpdateStatus] = useState<string>("")
+  const [repairAssignedWorker, setRepairAssignedWorker] = useState<string>("") // 分配的工人ID
   const [isAddWorkerDialogOpen, setIsAddWorkerDialogOpen] = useState(false)
   const [newWorker, setNewWorker] = useState<{
     name: string
@@ -747,7 +748,7 @@ export default function AdminDashboard() {
   }, [repairStatusFilter])
 
   // 更新报修状态
-  const updateRepairStatus = useCallback(async (repairId: string, status: string, amount?: number) => {
+  const updateRepairStatus = useCallback(async (repairId: string, status: string, amount?: number, assignedTo?: string) => {
     try {
       setIsUpdatingRepair(true)
       const response = await fetch("/api/repair/update", {
@@ -757,6 +758,7 @@ export default function AdminDashboard() {
           repair_id: repairId,
           status: status,
           amount: amount,
+          assigned_to: assignedTo || undefined, // 分配的工人ID
         }),
       })
       const result = await response.json()
@@ -767,6 +769,7 @@ export default function AdminDashboard() {
         setSelectedRepair(null)
         setRepairUpdateAmount("")
         setRepairUpdateStatus("")
+        setRepairAssignedWorker("")
       } else {
         alert(`更新失败: ${result.error}`)
       }
@@ -784,6 +787,38 @@ export default function AdminDashboard() {
       loadRepairs()
     }
   }, [activeMenu, repairStatusFilter, loadRepairs])
+
+  // 实时推送：监听维修工单变化
+  useEffect(() => {
+    if (!supabase || activeMenu !== "repairs") return
+
+    console.log("[Admin Dashboard] 开始监听维修工单实时更新...")
+
+    // 订阅 orders 表的变化（只监听维修服务）
+    const channel = supabase
+      .channel("repairs-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // 监听所有事件（INSERT, UPDATE, DELETE）
+          schema: "public",
+          table: "orders",
+          filter: "service_type=eq.维修服务", // 只监听维修服务
+        },
+        (payload) => {
+          console.log("[Admin Dashboard] 收到维修工单实时更新:", payload)
+          // 重新加载报修列表
+          loadRepairs()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      console.log("[Admin Dashboard] 停止监听维修工单实时更新")
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, activeMenu])
 
   // 加载工人数据
   const loadWorkers = useCallback(async () => {
@@ -2795,6 +2830,7 @@ export default function AdminDashboard() {
                         setSelectedRepair(repair)
                         setRepairUpdateStatus(repair.status)
                         setRepairUpdateAmount(repair.amount?.toString() || "")
+                        setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
                         setIsRepairDetailDialogOpen(true)
                       }}
                     >
@@ -2821,6 +2857,12 @@ export default function AdminDashboard() {
                             <div className="text-xs text-slate-500 ml-6 flex items-center gap-1">
                               <Phone className="h-3 w-3" />
                               {restaurant.contact_phone}
+                            </div>
+                          )}
+                          {(repair.assigned_to || repair.worker_id) && (
+                            <div className="text-xs text-blue-400 ml-6 flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              已分配: {workers.find((w) => w.id === (repair.assigned_to || repair.worker_id))?.name || "未知工人"}
                             </div>
                           )}
                         </div>
@@ -2924,6 +2966,40 @@ export default function AdminDashboard() {
                   </Select>
                 </div>
 
+                {/* 分配工人 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">分配工人</Label>
+                  <Select value={repairAssignedWorker} onValueChange={setRepairAssignedWorker}>
+                    <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                      <SelectValue placeholder="选择工人（可选）" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      <SelectItem value="" className="text-white hover:bg-slate-700">
+                        不分配
+                      </SelectItem>
+                      {workers
+                        .filter((w) => {
+                          // 只显示有维修权限的工人
+                          const workerTypes = Array.isArray(w.worker_type)
+                            ? w.worker_type
+                            : typeof w.worker_type === "string"
+                            ? w.worker_type.includes("repair")
+                              ? ["repair"]
+                              : w.worker_type.startsWith("[")
+                              ? JSON.parse(w.worker_type)
+                              : [w.worker_type]
+                            : []
+                          return workerTypes.includes("repair") || workerTypes.some((t: string) => t.includes("repair"))
+                        })
+                        .map((worker) => (
+                          <SelectItem key={worker.id} value={worker.id} className="text-white hover:bg-slate-700">
+                            {worker.name} ({worker.phone})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* 维修金额 */}
                 {repairUpdateStatus === "completed" && (
                   <div className="space-y-2">
@@ -2976,7 +3052,7 @@ export default function AdminDashboard() {
                     return
                   }
                   const amount = repairUpdateStatus === "completed" ? parseFloat(repairUpdateAmount) : undefined
-                  updateRepairStatus(selectedRepair.id, repairUpdateStatus, amount)
+                  updateRepairStatus(selectedRepair.id, repairUpdateStatus, amount, repairAssignedWorker || undefined)
                 }}
                 disabled={isUpdatingRepair || !repairUpdateStatus}
                 className="bg-purple-600 hover:bg-purple-700 text-white"

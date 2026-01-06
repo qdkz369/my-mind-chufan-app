@@ -16,16 +16,6 @@ export async function GET(request: Request) {
       )
     }
 
-    // 如果请求头中包含worker_id，验证维修工权限
-    const workerId = request.headers.get("x-worker-id")
-    if (workerId) {
-      const authResult = await verifyWorkerPermission(request, "repair")
-      if (authResult instanceof NextResponse) {
-        return authResult // 返回错误响应
-      }
-      console.log("[报修列表API] 权限验证通过，工人:", authResult.worker.name)
-    }
-
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
     const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
@@ -34,9 +24,28 @@ export async function GET(request: Request) {
     let query = supabase
       .from("orders")
       .select(
-        "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, restaurants(id, name, address, contact_phone, contact_name)"
+        "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, restaurants(id, name, address, contact_phone, contact_name)"
       )
       .eq("service_type", "维修服务") // 只查询维修服务订单（使用精确匹配）
+
+    // 如果请求头中包含worker_id，验证维修工权限
+    const workerId = request.headers.get("x-worker-id")
+    if (workerId) {
+      const authResult = await verifyWorkerPermission(request, "repair")
+      if (authResult instanceof NextResponse) {
+        return authResult // 返回错误响应
+      }
+      console.log("[报修列表API] 权限验证通过，工人:", authResult.worker.name)
+      
+      // 如果提供了worker_id，根据状态筛选：
+      // - pending: 显示所有待处理的工单（无论是否分配）
+      // - 其他状态: 只显示分配给该工人的工单
+      if (status && status !== "pending") {
+        // 其他状态：只显示分配给该工人的工单
+        query = query.or(`assigned_to.eq.${workerId},worker_id.eq.${workerId}`)
+      }
+      // pending 状态不添加额外筛选，显示所有待处理的工单
+    }
 
     // 状态筛选
     if (status) {

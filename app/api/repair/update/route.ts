@@ -33,6 +33,7 @@ export async function POST(request: Request) {
       status, // 新状态：pending, processing, completed, cancelled
       amount, // 维修金额（可选，完成时必填）
       notes, // 备注（可选）
+      assigned_to, // 分配的工人ID（可选）
     } = body
 
     if (!repair_id) {
@@ -95,6 +96,12 @@ export async function POST(request: Request) {
     // 如果提供了备注，更新备注（假设orders表有notes字段，如果没有则忽略）
     if (notes) {
       updateData.notes = notes
+    }
+
+    // 如果提供了分配的工人ID，更新 assigned_to 和 worker_id
+    if (assigned_to !== undefined && assigned_to !== null) {
+      updateData.assigned_to = assigned_to || null
+      updateData.worker_id = assigned_to || null // 兼容旧字段
     }
 
     // 更新报修工单

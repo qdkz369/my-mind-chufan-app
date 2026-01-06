@@ -64,6 +64,57 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
     loadRepairs()
   }, [statusFilter])
 
+  // 实时推送：监听维修工单变化
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    let channel: any = null
+
+    const setupRealtime = async () => {
+      try {
+        const { supabase } = await import("@/lib/supabase")
+        if (!supabase) return
+
+        console.log("[工人端] 开始监听维修工单实时更新...")
+
+        // 订阅 orders 表的变化（只监听维修服务）
+        channel = supabase
+          .channel(`repairs-realtime-${workerId || "all"}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*", // 监听所有事件（INSERT, UPDATE, DELETE）
+              schema: "public",
+              table: "orders",
+              filter: "service_type=eq.维修服务", // 只监听维修服务
+            },
+            (payload) => {
+              console.log("[工人端] 收到维修工单实时更新:", payload)
+              // 重新加载维修工单列表
+              loadRepairs()
+            }
+          )
+          .subscribe()
+      } catch (error) {
+        console.error("[工人端] 设置实时推送失败:", error)
+      }
+    }
+
+    setupRealtime()
+
+    return () => {
+      if (channel) {
+        console.log("[工人端] 停止监听维修工单实时更新")
+        import("@/lib/supabase").then(({ supabase }) => {
+          if (supabase) {
+            supabase.removeChannel(channel)
+          }
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workerId])
+
   const loadRepairs = async () => {
     setIsLoading(true)
     setError("")
