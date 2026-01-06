@@ -894,6 +894,7 @@ export default function AdminDashboard() {
       
       // 策略: 先查询所有订单，然后在客户端过滤（最可靠的方式）
       // 注意：只查询数据库中实际存在的字段，避免查询失败
+      // 暂时移除 restaurants 关联查询，先确保能显示 orders 表的原始数据
       const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
         async () => await supabase
           .from("orders")
@@ -942,46 +943,13 @@ export default function AdminDashboard() {
       // 如果找到了维修订单，应用状态筛选
       let filteredRepairs = repairOrders
       if (repairStatusFilter && repairStatusFilter !== "all") {
-        filteredRepairs = repairOrders.filter((r: any) => r.status === repairStatusFilter)
+        // 使用小写状态值进行匹配
+        filteredRepairs = repairOrders.filter((r: any) => r.status === repairStatusFilter.toLowerCase())
       }
 
-      // 获取餐厅信息
-      if (filteredRepairs.length > 0) {
-        const restaurantIds = [...new Set(filteredRepairs.map((r: any) => r.restaurant_id).filter(Boolean))]
-        
-        if (restaurantIds.length > 0) {
-          const { data: restaurantsData, error: restaurantsError } = await retryOnNetworkError(
-            async () => await supabase
-              .from("restaurants")
-              .select("id, name, address, contact_phone, contact_name")
-              .in("id", restaurantIds)
-          )
-          
-          if (restaurantsError) {
-            console.error("[Admin Dashboard] 获取餐厅信息失败:", restaurantsError)
-            const errorMessage = `获取餐厅信息失败: ${restaurantsError.message || "未知错误"} 错误代码: ${restaurantsError.code || "N/A"}`
-            alert(errorMessage)
-          }
-          
-          // 将餐厅信息附加到每个订单
-          const restaurantMap = new Map((restaurantsData || []).map((r: any) => [r.id, r]))
-          const processedRepairs = filteredRepairs.map((repair: any) => {
-            const restaurant = restaurantMap.get(repair.restaurant_id)
-            return {
-              ...repair,
-              restaurants: restaurant || null,
-              restaurant_name: restaurant?.name || undefined,
-            }
-          })
-          
-          setRepairs(processedRepairs)
-          return
-        }
-      }
-
-      // 如果没有找到维修订单，静默处理（不输出日志避免刷屏）
-
-      setRepairs([])
+      // 暂时移除 restaurants 关联查询，直接使用原始数据
+      // 如果后续需要显示餐厅名称，可以单独查询 restaurants 表
+      setRepairs(filteredRepairs)
 
     } catch (error) {
       console.error("[Admin Dashboard] 加载报修时出错:", error)
@@ -3355,7 +3323,7 @@ export default function AdminDashboard() {
             ) : filteredRepairs.length === 0 ? (
               <div className="text-center py-8">
                 <Wrench className="h-8 w-8 text-slate-600 mx-auto mb-2" />
-                <p className="text-slate-400 text-sm">暂无报修工单</p>
+                <p className="text-slate-400 text-sm">暂无报修单（已连接数据库，但未匹配到维修类型数据）</p>
               </div>
             ) : (
               <div className="space-y-3">

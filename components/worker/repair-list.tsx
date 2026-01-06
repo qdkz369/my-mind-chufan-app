@@ -143,7 +143,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       let query = supabase
         .from("orders")
         .select(
-          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id, restaurants(id, name, address, contact_phone, contact_name)"
+          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id"
         )
         .order("created_at", { ascending: false })
         .limit(500) // 限制查询最近500条订单
@@ -195,7 +195,8 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       }
 
       // 如果提供了workerId，根据状态筛选：
-      // - pending 或 all: 显示所有待处理的工单（无论是否分配）+ 分配给该工人的其他状态工单
+      // - pending 状态：显示所有 pending 且 assigned_to 为 NULL 的工单（所有工人都能看到并接单）+ 已分配给该工人的工单
+      // - all 状态：显示所有 pending 且 assigned_to 为 NULL 的工单 + 分配给该工人的其他状态工单
       // - 其他状态: 只显示分配给该工人的工单
       if (workerId) {
         if (statusFilter && statusFilter !== "all" && statusFilter !== "pending") {
@@ -203,45 +204,22 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
           repairOrders = repairOrders.filter((order: any) => 
             order.assigned_to === workerId || order.worker_id === workerId
           )
-        } else if (statusFilter === "all") {
-          // all 状态：显示所有待处理的工单 + 分配给该工人的其他状态工单
-          repairOrders = repairOrders.filter((order: any) => 
-            order.status === "pending" || 
-            order.assigned_to === workerId || 
-            order.worker_id === workerId
-          )
-        }
-        // pending 状态不添加额外筛选，显示所有待处理的工单
-      }
-
-      // 如果关联查询失败（可能是 restaurants 表不存在或外键关系问题），尝试基础查询
-      if (repairOrders.length > 0 && repairOrders.some((r: any) => !r.restaurants)) {
-        // 手动获取餐厅信息
-        const restaurantIds = [...new Set(repairOrders.map((r: any) => r.restaurant_id).filter(Boolean))]
-        if (restaurantIds.length > 0) {
-          const { data: restaurantsData } = await supabase
-            .from("restaurants")
-            .select("id, name, address, contact_phone, contact_name")
-            .in("id", restaurantIds)
-          
-          // 将餐厅信息附加到每个订单
-          if (restaurantsData) {
-            const restaurantMap = new Map(restaurantsData.map((r: any) => [r.id, r]))
-            repairOrders = repairOrders.map((repair: any) => ({
-              ...repair,
-              restaurants: restaurantMap.get(repair.restaurant_id) || repair.restaurants || null,
-            }))
-          }
+        } else if (statusFilter === "pending" || statusFilter === "all") {
+          // pending 或 all 状态：显示所有 pending 且 assigned_to 为 NULL 的工单 + 分配给该工人的工单
+          repairOrders = repairOrders.filter((order: any) => {
+            // pending 状态且未分配的工单，所有工人都能看到
+            if (order.status === "pending" && (!order.assigned_to || order.assigned_to === null)) {
+              return true
+            }
+            // 已分配给该工人的工单
+            return order.assigned_to === workerId || order.worker_id === workerId
+          })
         }
       }
 
-      // 处理数据，确保格式正确
-      const processedRepairs = repairOrders.map((repair: any) => ({
-        ...repair,
-        restaurants: repair.restaurants || null,
-      }))
-
-      setRepairs(processedRepairs)
+      // 暂时移除 restaurants 关联查询，直接使用原始数据
+      // 如果后续需要显示餐厅名称，可以单独查询 restaurants 表
+      setRepairs(repairOrders)
       setIsLoading(false)
       return
 
@@ -275,7 +253,8 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
         body: {
           id: repairId, // 统一使用 id 作为主键标识
           status: "processing",
-          worker_id: workerId || undefined,
+          assigned_to: workerId || undefined, // 将工人ID写入assigned_to字段
+          worker_id: workerId || undefined, // 兼容旧字段
         },
         showToast: true,
         successMessage: "维修工单接收成功",
@@ -443,7 +422,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       <Card className="bg-slate-900/50 border-slate-800/50 p-8">
         <div className="text-center">
           <Wrench className="h-12 w-12 text-slate-500 mx-auto mb-4" />
-          <p className="text-slate-400">暂无维修工单</p>
+          <p className="text-slate-400">暂无报修单（已连接数据库，但未匹配到维修类型数据）</p>
         </div>
       </Card>
     )
@@ -462,7 +441,8 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
 
       <div className="space-y-3">
         {repairs.map((repair) => {
-          const canAccept = repair.status === "pending"
+          // 只有 pending 状态且 assigned_to 为 NULL 的订单才能接单
+          const canAccept = repair.status === "pending" && (!repair.assigned_to || repair.assigned_to === null)
           const canComplete = repair.status === "processing"
 
           return (
