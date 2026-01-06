@@ -46,15 +46,18 @@ export async function POST(request: Request) {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = new Uint8Array(arrayBuffer)
 
-    // 检查 bucket 是否存在，如果不存在则尝试创建（需要管理员权限）
+    // 检查 bucket 是否存在
     const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets()
     
     if (!bucketsError && buckets) {
       const bucketExists = buckets.some((b) => b.name === BUCKET_NAME)
       if (!bucketExists) {
-        console.warn(`[图片上传API] Bucket '${BUCKET_NAME}' 不存在，请手动创建`)
+        console.warn(`[存储上传API] Bucket '${BUCKET_NAME}' 不存在`)
+        console.log(`[存储上传API] 可用的 buckets:`, buckets.map(b => b.name).join(", "))
         // 注意：创建 bucket 需要 Service Role Key，这里只记录警告
       }
+    } else if (bucketsError) {
+      console.error("[存储上传API] 检查 buckets 失败:", bucketsError)
     }
 
     // 上传到Supabase Storage
@@ -66,15 +69,29 @@ export async function POST(request: Request) {
       })
 
     if (error) {
-      console.error("[图片上传API] 上传失败:", error)
+      console.error("[存储上传API] 上传失败:", {
+        error: error,
+        message: error.message,
+        statusCode: error.statusCode,
+        bucket: BUCKET_NAME,
+        folder: folder,
+        fileType: file.type,
+        fileName: fileName,
+      })
       
       // 如果是 bucket 不存在的错误，提供更友好的提示
-      if (error.message?.includes("Bucket not found") || error.message?.includes("不存在")) {
+      if (
+        error.message?.includes("Bucket not found") || 
+        error.message?.includes("不存在") ||
+        error.message?.includes("not found") ||
+        error.statusCode === 404
+      ) {
+        const availableBuckets = buckets?.map(b => b.name).join(", ") || "无"
         return NextResponse.json(
           {
             error: "Storage Bucket 不存在",
-            details: `请在 Supabase Dashboard 中创建 '${BUCKET_NAME}' bucket。详细步骤请查看 docs/storage-setup.md`,
-            hint: `需要创建名为 '${BUCKET_NAME}' 的 Storage Bucket`,
+            details: `请在 Supabase Dashboard 中创建名为 '${BUCKET_NAME}' 的 Storage Bucket。当前可用的 buckets: ${availableBuckets}`,
+            hint: `需要创建名为 '${BUCKET_NAME}' 的 Storage Bucket，并确保其权限设置为公开（public）`,
           },
           { status: 500 }
         )
@@ -83,7 +100,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "上传失败",
-          details: error.message,
+          details: error.message || "未知错误",
+          statusCode: error.statusCode,
         },
         { status: 500 }
       )

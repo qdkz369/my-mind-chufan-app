@@ -1040,11 +1040,22 @@ function IoTDashboard() {
       }
 
       const data = await response.json()
+      
+      if (!response.ok) {
+        const errorMsg = data.error || '上传失败'
+        const details = data.details ? `\n详情: ${data.details}` : ''
+        const hint = data.hint ? `\n提示: ${data.hint}` : ''
+        console.error('[语音上传] 失败:', { error: errorMsg, details, hint, fullData: data })
+        alert(`音频上传失败: ${errorMsg}${details}${hint}`)
+        return null
+      }
+      
       setAudioUploadUrl(data.data.url)
       return data.data.url
     } catch (error) {
       console.error('[语音上传] 失败:', error)
-      alert('音频上传失败，请重试')
+      const errorMessage = error instanceof Error ? error.message : '未知错误'
+      alert(`音频上传失败: ${errorMessage}\n请检查网络连接或稍后重试`)
       return null
     }
   }
@@ -1528,7 +1539,7 @@ function IoTDashboard() {
                 </Button>
                 <Button
                   onClick={handleSubmitRepair}
-                  disabled={isSubmittingRepair || !repairDescription.trim()}
+                  disabled={isSubmittingRepair || (!repairDescription.trim() && !audioBlob)}
                   className="bg-purple-600 hover:bg-purple-700 text-white"
                 >
                   {isSubmittingRepair ? (
