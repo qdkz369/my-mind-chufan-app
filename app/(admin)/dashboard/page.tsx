@@ -1883,11 +1883,19 @@ export default function AdminDashboard() {
       // 为每个餐厅创建标记
       restaurants.forEach(restaurant => {
         // 移除详细的调试日志，避免控制台刷屏
-        // 检查经纬度是否有效
-        const lat = typeof restaurant.latitude === 'number' ? restaurant.latitude : parseFloat(restaurant.latitude as any)
-        const lng = typeof restaurant.longitude === 'number' ? restaurant.longitude : parseFloat(restaurant.longitude as any)
+        // 检查经纬度是否有效（更严格的验证）
+        const lat = typeof restaurant.latitude === 'number' 
+          ? restaurant.latitude 
+          : (restaurant.latitude ? parseFloat(String(restaurant.latitude)) : NaN)
+        const lng = typeof restaurant.longitude === 'number' 
+          ? restaurant.longitude 
+          : (restaurant.longitude ? parseFloat(String(restaurant.longitude)) : NaN)
         
-        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+        // 严格验证：必须是有效数字，且在合理范围内（纬度：-90到90，经度：-180到180）
+        const isValidLat = !isNaN(lat) && isFinite(lat) && lat >= -90 && lat <= 90
+        const isValidLng = !isNaN(lng) && isFinite(lng) && lng >= -180 && lng <= 180
+        
+        if (!isValidLat || !isValidLng) {
           // 如果有地址但没有经纬度，尝试地理编码（异步，不阻塞标记创建）
           if (restaurant.address && restaurant.address.trim() !== '' && restaurant.address !== '地址待完善') {
             // 移除调试日志，避免控制台刷屏
@@ -1938,8 +1946,16 @@ export default function AdminDashboard() {
         const hasActiveOrders = activeOrderRestaurantIds.has(restaurant.id)
         const markerHTML = createMarkerHTML(restaurant, hasActiveOrders)
 
-        // 使用解析后的经纬度
-        const markerPosition = [lng, lat]
+        // 使用解析后的经纬度（再次验证确保有效）
+        // AMap 使用 [经度, 纬度] 格式
+        const markerPosition: [number, number] = [lng, lat]
+        
+        // 最终验证：确保坐标是有效数字
+        if (!isFinite(markerPosition[0]) || !isFinite(markerPosition[1])) {
+          console.warn(`[Map] 跳过无效坐标的餐厅标记: ${restaurant.name}`, { lat, lng })
+          return
+        }
+        
         // 移除调试日志，避免控制台刷屏
         // 创建HTML标记
         const marker = new AMap.Marker({
@@ -2009,6 +2025,14 @@ export default function AdminDashboard() {
               // 打开当前信息窗口
               const position = marker.getPosition()
               if (position) {
+                // 验证位置坐标是否有效
+                const posLng = position.getLng()
+                const posLat = position.getLat()
+                if (!isFinite(posLng) || !isFinite(posLat) || isNaN(posLng) || isNaN(posLat)) {
+                  console.warn(`[Map] 单击时检测到无效坐标，跳过信息窗口:`, { posLng, posLat })
+                  return
+                }
+                
                 infoWindow.open(map, position)
                 setSelectedMarkerRestaurant(restaurant)
                 // 移除调试日志，避免控制台刷屏
@@ -2053,6 +2077,14 @@ export default function AdminDashboard() {
 
           const position = marker.getPosition()
           if (position) {
+            // 验证位置坐标是否有效
+            const posLng = position.getLng()
+            const posLat = position.getLat()
+            if (!isFinite(posLng) || !isFinite(posLat) || isNaN(posLng) || isNaN(posLat)) {
+              console.warn(`[Map] 双击时检测到无效坐标，跳过地图操作:`, { posLng, posLat })
+              return
+            }
+            
             // 移除调试日志，避免控制台刷屏
             // 使用 setZoomAndCenter 实现平滑动画
             // 参数：缩放级别、中心点、是否立即执行（false表示使用动画）
