@@ -884,6 +884,8 @@ function IoTDashboard() {
         
         // 确保 isRecording 状态为 false
         setIsRecording(false)
+        // 确保录音时长重置为 0（双重保险）
+        setRecordingDuration(0)
         
         const blob = new Blob(chunks, { type: mediaRecorder.mimeType })
         setAudioBlob(blob)
@@ -907,9 +909,18 @@ function IoTDashboard() {
       setIsRecording(true)
       setRecordingDuration(0)
 
-      // 开始计时
+      // 开始计时（只在录音状态时更新）
       durationIntervalRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1)
+        // 检查 MediaRecorder 状态，确保仍在录音
+        if (mediaRecorderRef.current?.state === 'recording') {
+          setRecordingDuration(prev => prev + 1)
+        } else {
+          // 如果不在录音状态，清除计时器
+          if (durationIntervalRef.current) {
+            clearInterval(durationIntervalRef.current)
+            durationIntervalRef.current = null
+          }
+        }
       }, 1000)
 
     } catch (error) {
@@ -943,6 +954,8 @@ function IoTDashboard() {
     
     // 立即更新状态，防止 UI 继续显示"录音中..."
     setIsRecording(false)
+    // 立即重置录音时长，防止继续显示读秒
+    setRecordingDuration(0)
     
     if (mediaRecorderRef.current) {
       try {
