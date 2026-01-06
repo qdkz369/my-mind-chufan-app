@@ -272,6 +272,7 @@ export default function AdminDashboard() {
   const heatmapRef = useRef<any>(null)
   const markerClickTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
   const markerDoubleClickFlagsRef = useRef<Map<string, boolean>>(new Map())
+  const updateMarkersTimerRef = useRef<NodeJS.Timeout | null>(null) // 防抖定时器
 
   // 生成地址降级列表（逐步简化地址）
   const generateAddressFallbacks = useCallback((address: string): string[] => {
@@ -356,7 +357,7 @@ export default function AdminDashboard() {
       
       // 检查 Geocoder 是否可用（可能是插件未加载）
       if (!AMap.Geocoder || typeof AMap.Geocoder !== 'function') {
-        console.warn('[地理编码] AMap.Geocoder 插件未加载，尝试动态加载...')
+        // 静默处理，避免控制台刷屏
         // 尝试动态加载 Geocoder 插件
         if (AMap.plugin) {
           AMap.plugin('AMap.Geocoder', () => {
@@ -418,7 +419,7 @@ export default function AdminDashboard() {
       const tryPOISearch = (searchText: string) => {
         // 检查 PlaceSearch 是否可用
         if (!AMap.PlaceSearch || typeof AMap.PlaceSearch !== 'function') {
-          console.warn('[地理编码] AMap.PlaceSearch 插件未加载，尝试动态加载...')
+          // 静默处理，避免控制台刷屏
           if (AMap.plugin) {
             AMap.plugin('AMap.PlaceSearch', () => {
               if (AMap.PlaceSearch) {
@@ -427,13 +428,13 @@ export default function AdminDashboard() {
                 tryPOISearch(searchText)
               } else {
                 console.error('[地理编码] PlaceSearch 插件加载失败')
-                console.warn('[地理编码] 所有尝试都失败:', address)
+                // 静默处理，避免控制台刷屏
                 resolve(null)
               }
             })
           } else {
             console.error('[地理编码] AMap.plugin 不可用，无法加载 PlaceSearch 插件')
-            console.warn('[地理编码] 所有尝试都失败:', address)
+            // 静默处理，避免控制台刷屏
             resolve(null)
           }
           return
@@ -464,7 +465,7 @@ export default function AdminDashboard() {
             // 再次检查 PlaceSearch 是否可用
             if (!AMap.PlaceSearch || typeof AMap.PlaceSearch !== 'function') {
               console.warn('[地理编码] PlaceSearch 插件不可用，跳过关键地名搜索')
-              console.warn('[地理编码] 所有尝试都失败:', address)
+              // 静默处理，避免控制台刷屏
               resolve(null)
               return
             }
@@ -485,11 +486,11 @@ export default function AdminDashboard() {
                   return
                 }
               }
-              console.warn('[地理编码] 所有尝试都失败:', address)
+              // 静默处理，避免控制台刷屏
               resolve(null)
             })
           } else {
-            console.warn('[地理编码] 所有尝试都失败:', address)
+            // 静默处理，避免控制台刷屏
             resolve(null)
           }
         })
@@ -726,17 +727,15 @@ export default function AdminDashboard() {
             } else if (attempts >= maxAttempts) {
               clearInterval(checkAMap)
               // 只在真正超时时输出警告
-              console.warn('[Admin Dashboard] AMap加载超时，地理编码将在地图加载后自动执行')
+              // 静默处理，避免控制台刷屏
             }
           }, 500)
         }
         
         // 如果地图已加载，立即更新标记
         if (mapLoaded && typeof window !== 'undefined' && (window as any).AMap) {
-          // 延迟一下，确保地图完全加载
-          setTimeout(() => {
-            updateMarkers()
-          }, 500)
+          // 延迟一下，确保地图完全加载（使用防抖机制，避免频繁调用）
+          updateMarkers()
         }
       }
     } catch (error) {
@@ -1723,7 +1722,7 @@ export default function AdminDashboard() {
             mapInstanceRef.current.remove(marker)
             marker.setMap(null)
           } catch (e) {
-            console.warn('[Map] 清除标记时出错:', e)
+            // 静默处理错误，避免控制台刷屏
           }
         })
         markersRef.current = []
@@ -1734,7 +1733,7 @@ export default function AdminDashboard() {
             mapInstanceRef.current.remove(infoWindow)
             infoWindow.close()
           } catch (e) {
-            console.warn('[Map] 清除信息窗口时出错:', e)
+            // 静默处理错误，避免控制台刷屏
           }
         })
         infoWindowsRef.current = []
@@ -1745,7 +1744,7 @@ export default function AdminDashboard() {
             mapInstanceRef.current.remove(circle)
             circle.setMap(null)
           } catch (e) {
-            console.warn('[Map] 清除服务点圆圈时出错:', e)
+            // 静默处理错误，避免控制台刷屏
           }
         })
         serviceCirclesRef.current = []
@@ -1765,15 +1764,14 @@ export default function AdminDashboard() {
   // 更新地图标记
   const updateMarkers = useCallback(() => {
     if (!mapInstanceRef.current) {
-      // 移除调试日志，避免控制台刷屏
+      // 静默返回，不输出日志
       return
     }
 
     const map = mapInstanceRef.current
     const AMap = (window as any).AMap
     if (!AMap) {
-      // 移除频繁的警告日志，避免控制台刷屏
-      // AMap未加载时静默返回，不输出警告
+      // 静默返回，不输出日志
       return
     }
 
@@ -1812,7 +1810,7 @@ export default function AdminDashboard() {
             heatmapRef.current.setMap(null)
             heatmapRef.current = null
           } catch (e) {
-            console.warn('[Map] 清除热力图时出错:', e)
+            // 静默处理错误，避免控制台刷屏
           }
         }
 
@@ -1908,11 +1906,8 @@ export default function AdminDashboard() {
                           ? { ...r, latitude: location.latitude, longitude: location.longitude }
                           : r
                       ))
-                      // 触发标记更新
-                      setTimeout(() => {
-                        // 移除调试日志，避免控制台刷屏
-                        updateMarkers()
-                      }, 500)
+                      // 触发标记更新（使用防抖机制，避免频繁调用）
+                      updateMarkers()
                     } else {
                       console.error('[Map] 数据库更新失败:', error)
                     }
@@ -1939,7 +1934,7 @@ export default function AdminDashboard() {
         
         // 最终验证：确保坐标是有效数字
         if (!isFinite(markerPosition[0]) || !isFinite(markerPosition[1])) {
-          console.warn(`[Map] 跳过无效坐标的餐厅标记: ${restaurant.name}`, { lat, lng })
+          // 静默跳过无效坐标，避免控制台刷屏
           return
         }
         
@@ -2016,7 +2011,7 @@ export default function AdminDashboard() {
                 const posLng = position.getLng()
                 const posLat = position.getLat()
                 if (!isFinite(posLng) || !isFinite(posLat) || isNaN(posLng) || isNaN(posLat)) {
-                  console.warn(`[Map] 单击时检测到无效坐标，跳过信息窗口:`, { posLng, posLat })
+                  // 静默跳过无效坐标，避免控制台刷屏
                   return
                 }
                 
@@ -2068,7 +2063,7 @@ export default function AdminDashboard() {
             const posLng = position.getLng()
             const posLat = position.getLat()
             if (!isFinite(posLng) || !isFinite(posLat) || isNaN(posLng) || isNaN(posLat)) {
-              console.warn(`[Map] 双击时检测到无效坐标，跳过地图操作:`, { posLng, posLat })
+              // 静默跳过无效坐标，避免控制台刷屏
               return
             }
             
@@ -2241,11 +2236,18 @@ export default function AdminDashboard() {
     }
   }, [destroyMap])
 
-  // 当餐厅、订单、服务点数据或显示状态更新时，更新标记和范围
+  // 当餐厅、订单、服务点数据或显示状态更新时，更新标记和范围（使用防抖机制）
   useEffect(() => {
     if (mapInstanceRef.current && mapLoaded) {
-      // 移除频繁的调试日志，避免控制台刷屏
-      updateMarkers()
+      // 清除之前的防抖定时器
+      if (updateMarkersTimerRef.current) {
+        clearTimeout(updateMarkersTimerRef.current)
+      }
+      
+      // 使用防抖机制，避免频繁调用（延迟300ms）
+      updateMarkersTimerRef.current = setTimeout(() => {
+        updateMarkers()
+      }, 300)
       
       // 如果餐厅数据更新后，检查是否有需要地理编码的餐厅
       const needsGeocode = restaurants.some(
@@ -2260,6 +2262,13 @@ export default function AdminDashboard() {
         setTimeout(() => {
           updateRestaurantCoordinates(restaurants)
         }, 1000)
+      }
+      
+      // 清理防抖定时器
+      return () => {
+        if (updateMarkersTimerRef.current) {
+          clearTimeout(updateMarkersTimerRef.current)
+        }
       }
     }
   }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap, mapLoaded, updateMarkers, updateRestaurantCoordinates])
