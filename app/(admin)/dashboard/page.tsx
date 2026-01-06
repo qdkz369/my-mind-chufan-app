@@ -3323,15 +3323,19 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* 筛选器 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 状态筛选 */}
-          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-white">状态筛选</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
+        {/* 筛选器 - 优化布局 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-white text-lg">筛选条件</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* 状态筛选 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                状态筛选
+              </label>
+              <div className="flex flex-wrap gap-2.5">
                 {["all", "pending", "processing", "completed", "cancelled"].map((status) => (
                   <Button
                     key={status}
@@ -3340,24 +3344,26 @@ export default function AdminDashboard() {
                     onClick={() => setRepairStatusFilter(status)}
                     className={
                       repairStatusFilter === status
-                        ? "bg-purple-600 hover:bg-purple-700"
-                        : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                        ? "bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-500/30 border-0 px-4 h-9 font-medium transition-all"
+                        : "border-slate-600/50 text-slate-300 hover:bg-slate-800/50 hover:border-slate-500 hover:text-white px-4 h-9 font-medium transition-all"
                     }
                   >
                     {status === "all" ? "全部" : getStatusLabel(status)}
                   </Button>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* 服务类型筛选 */}
-          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-white">服务类型筛选</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
+            {/* 分隔线 */}
+            <div className="border-t border-slate-700/50"></div>
+
+            {/* 服务类型筛选 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                服务类型筛选
+              </label>
+              <div className="flex flex-wrap gap-2.5">
                 {[
                   { value: "all", label: "全部", icon: null },
                   { value: "repair", label: "维修服务", icon: Wrench },
@@ -3373,19 +3379,19 @@ export default function AdminDashboard() {
                       onClick={() => setRepairServiceTypeFilter(type.value)}
                       className={
                         repairServiceTypeFilter === type.value
-                          ? "bg-purple-600 hover:bg-purple-700"
-                          : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                          ? "bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-500/30 border-0 px-4 h-9 font-medium transition-all"
+                          : "border-slate-600/50 text-slate-300 hover:bg-slate-800/50 hover:border-slate-500 hover:text-white px-4 h-9 font-medium transition-all"
                       }
                     >
-                      {IconComponent && <IconComponent className="h-3 w-3 mr-1" />}
+                      {IconComponent && <IconComponent className="h-3.5 w-3.5 mr-1.5" />}
                       {type.label}
                     </Button>
                   )
                 })}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* 报修列表 */}
         <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
