@@ -1361,7 +1361,6 @@ export default function AdminDashboard() {
         .from("service_points")
         .select("id, name, township, latitude, longitude, service_radius, legal_entity, status, created_at")
         .order("created_at", { ascending: false })
-        .limit(1) // 只查询一条，减少不必要的请求
 
       if (error) {
         // 如果表不存在（PGRST205错误或404），直接使用模拟数据，不输出任何警告或错误
