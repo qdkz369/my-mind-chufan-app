@@ -679,10 +679,13 @@ function IoTDashboard() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [audioUploadUrl, setAudioUploadUrl] = useState<string | null>(null)
+  const [playbackProgress, setPlaybackProgress] = useState(0) // 播放进度（0-100）
+  const [playbackTime, setPlaybackTime] = useState(0) // 当前播放时间（秒）
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     // 获取 restaurantId
@@ -835,9 +838,15 @@ function IoTDashboard() {
       // 清理录音资源
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
       }
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current)
+        durationIntervalRef.current = null
+      }
+      if (playbackIntervalRef.current) {
+        clearInterval(playbackIntervalRef.current)
+        playbackIntervalRef.current = null
       }
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl)
@@ -867,6 +876,12 @@ function IoTDashboard() {
       }
 
       mediaRecorder.onstop = () => {
+        // 确保清除计时器
+        if (durationIntervalRef.current) {
+          clearInterval(durationIntervalRef.current)
+          durationIntervalRef.current = null
+        }
+        
         const blob = new Blob(chunks, { type: mediaRecorder.mimeType })
         setAudioBlob(blob)
         const url = URL.createObjectURL(blob)
@@ -877,6 +892,11 @@ function IoTDashboard() {
           streamRef.current.getTracks().forEach(track => track.stop())
           streamRef.current = null
         }
+        
+        // 重置播放相关状态
+        setPlaybackProgress(0)
+        setPlaybackTime(0)
+        setIsPlaying(false)
       }
 
       // 开始录音
@@ -899,38 +919,103 @@ function IoTDashboard() {
   // 停止录音
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop()
-      setIsRecording(false)
-      
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current)
-        durationIntervalRef.current = null
+      try {
+        // 如果 MediaRecorder 状态是 recording，才停止
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop()
+        }
+        setIsRecording(false)
+        
+        // 清除计时器
+        if (durationIntervalRef.current) {
+          clearInterval(durationIntervalRef.current)
+          durationIntervalRef.current = null
+        }
+        
+        // 停止所有音频轨道
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+        }
+      } catch (error) {
+        console.error("[语音录制] 停止失败:", error)
+        setIsRecording(false)
       }
     }
   }
 
   // 删除录音
   const deleteRecording = () => {
+    // 停止播放
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+    
+    // 清除播放进度定时器
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current)
+      playbackIntervalRef.current = null
+    }
+    
+    // 清理 URL
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl)
     }
+    
     setAudioBlob(null)
     setAudioUrl(null)
     setRecordingDuration(0)
     setAudioUploadUrl(null)
     setIsPlaying(false)
+    setPlaybackProgress(0)
+    setPlaybackTime(0)
   }
 
   // 播放/暂停录音
-  const togglePlayback = () => {
-    if (!audioRef.current || !audioUrl) return
+  const togglePlayback = async () => {
+    if (!audioRef.current || !audioUrl) {
+      console.warn("[语音播放] audioRef 或 audioUrl 不存在")
+      return
+    }
 
-    if (isPlaying) {
-      audioRef.current.pause()
+    try {
+      if (isPlaying) {
+        // 暂停播放
+        audioRef.current.pause()
+        setIsPlaying(false)
+        
+        // 清除播放进度定时器
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current)
+          playbackIntervalRef.current = null
+        }
+      } else {
+        // 开始播放
+        await audioRef.current.play()
+        setIsPlaying(true)
+        
+        // 开始更新播放进度
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current)
+        }
+        
+        playbackIntervalRef.current = setInterval(() => {
+          if (audioRef.current) {
+            const current = audioRef.current.currentTime
+            const duration = audioRef.current.duration || recordingDuration
+            
+            setPlaybackTime(current)
+            
+            if (duration > 0) {
+              setPlaybackProgress((current / duration) * 100)
+            }
+          }
+        }, 100) // 每100ms更新一次
+      }
+    } catch (error) {
+      console.error("[语音播放] 播放失败:", error)
       setIsPlaying(false)
-    } else {
-      audioRef.current.play()
-      setIsPlaying(true)
     }
   }
 
@@ -1027,9 +1112,25 @@ function IoTDashboard() {
       if (audioBlob && !audioUploadUrl) {
         audioUrlToSubmit = await uploadAudio()
         if (!audioUrlToSubmit) {
+          // 如果只有语音没有文字描述，且上传失败，提示用户
+          if (!repairDescription.trim()) {
+            alert("语音上传失败，请重试或填写文字描述")
+          } else {
+            alert("语音上传失败，将仅提交文字描述")
+          }
           setIsSubmittingRepair(false)
           return
         }
+      }
+
+      // 确定描述文本：如果有文字描述使用文字，如果只有语音则传null（服务端会处理为"[语音消息]"）
+      const descriptionText = repairDescription.trim() || null
+      
+      // 最终检查：至少需要文字描述或音频URL
+      if (!descriptionText && !audioUrlToSubmit) {
+        alert("请填写问题描述或录制语音")
+        setIsSubmittingRepair(false)
+        return
       }
 
       const response = await fetch("/api/repair/create", {
@@ -1040,7 +1141,7 @@ function IoTDashboard() {
         body: JSON.stringify({
           restaurant_id: restaurantId,
           device_id: repairDeviceId || undefined,
-          description: repairDescription.trim() || (audioUrlToSubmit ? "[语音消息]" : ""),
+          description: descriptionText,
           urgency: repairUrgency,
           audio_url: audioUrlToSubmit || undefined,
         }),
@@ -1320,7 +1421,7 @@ function IoTDashboard() {
                         variant="ghost"
                         size="sm"
                         onClick={togglePlayback}
-                        className="h-10 w-10 p-0 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-full"
+                        className="h-10 w-10 p-0 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-full flex-shrink-0"
                       >
                         {isPlaying ? (
                           <Pause className="h-5 w-5 text-purple-400" />
@@ -1329,17 +1430,18 @@ function IoTDashboard() {
                         )}
                       </Button>
                       
-                      <div className="flex-1 flex items-center gap-2">
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
                         <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
                           <div 
-                            className={`h-full bg-purple-500 transition-all ${
-                              isPlaying ? 'animate-pulse' : ''
-                            }`}
-                            style={{ width: isPlaying ? '100%' : '0%' }}
+                            className="h-full bg-purple-500 transition-all duration-100"
+                            style={{ width: `${playbackProgress}%` }}
                           />
                         </div>
-                        <span className="text-sm text-slate-400 min-w-[40px] text-right">
-                          {formatDuration(recordingDuration)}
+                        <span className="text-sm text-slate-400 min-w-[50px] text-right flex-shrink-0">
+                          {isPlaying 
+                            ? `${formatDuration(Math.floor(playbackTime))} / ${formatDuration(recordingDuration)}`
+                            : `0:00 / ${formatDuration(recordingDuration)}`
+                          }
                         </span>
                       </div>
                       
@@ -1348,7 +1450,7 @@ function IoTDashboard() {
                         variant="ghost"
                         size="sm"
                         onClick={deleteRecording}
-                        className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10 flex-shrink-0"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -1360,9 +1462,34 @@ function IoTDashboard() {
                     <audio
                       ref={audioRef}
                       src={audioUrl}
-                      onEnded={() => setIsPlaying(false)}
-                      onPause={() => setIsPlaying(false)}
-                      onPlay={() => setIsPlaying(true)}
+                      onEnded={() => {
+                        setIsPlaying(false)
+                        setPlaybackProgress(0)
+                        setPlaybackTime(0)
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = 0
+                        }
+                        if (playbackIntervalRef.current) {
+                          clearInterval(playbackIntervalRef.current)
+                          playbackIntervalRef.current = null
+                        }
+                      }}
+                      onPause={() => {
+                        setIsPlaying(false)
+                        if (playbackIntervalRef.current) {
+                          clearInterval(playbackIntervalRef.current)
+                          playbackIntervalRef.current = null
+                        }
+                      }}
+                      onPlay={() => {
+                        setIsPlaying(true)
+                      }}
+                      onLoadedMetadata={() => {
+                        // 当音频元数据加载完成时，更新总时长
+                        if (audioRef.current && audioRef.current.duration) {
+                          setRecordingDuration(Math.floor(audioRef.current.duration))
+                        }
+                      }}
                       className="hidden"
                     />
                   )}

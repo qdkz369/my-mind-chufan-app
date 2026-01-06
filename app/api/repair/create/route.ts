@@ -30,7 +30,10 @@ export async function POST(request: Request) {
     }
 
     // 至少需要文字描述或音频URL
-    if ((!description || description.trim() === "") && !audio_url) {
+    const hasDescription = description && typeof description === 'string' && description.trim() !== ""
+    const hasAudio = audio_url && typeof audio_url === 'string' && audio_url.trim() !== ""
+    
+    if (!hasDescription && !hasAudio) {
       return NextResponse.json(
         { error: "请填写问题描述或录制语音" },
         { status: 400 }
@@ -71,41 +74,37 @@ export async function POST(request: Request) {
     // 生成报修单号
     const repairNumber = `REP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
 
-    // 创建报修工单（使用orders表，service_type为"维修服务"）
-    // 将报修信息整合到service_type中，格式：维修服务 - [设备ID] - [紧急程度] - 问题描述
-    let serviceTypeDescription = "维修服务"
-    if (device_id) {
-      serviceTypeDescription += ` - 设备:${device_id}`
-    }
-    if (urgency) {
-      const urgencyMap: Record<string, string> = {
-        low: "低",
-        medium: "中",
-        high: "高"
-      }
-      serviceTypeDescription += ` - 紧急:${urgencyMap[urgency] || "中"}`
-    }
-    serviceTypeDescription += ` - ${description.trim()}`
+    // 确定最终的描述文本
+    // 如果有文字描述，使用文字描述；如果只有语音，使用"[语音消息]"
+    const finalDescription = hasDescription 
+      ? (typeof description === 'string' ? description.trim() : "") 
+      : (hasAudio ? "[语音消息]" : "")
 
     const repairData: any = {
       restaurant_id: restaurant_id,
       service_type: "维修服务", // 统一使用"维修服务"作为service_type
       status: "pending", // 待处理
       amount: 0, // 报修时金额为0，维修完成后才确定
-      description: description?.trim() || (audio_url ? "[语音消息]" : ""), // 问题描述
+      description: finalDescription, // 问题描述
       customer_confirmed: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
 
     // 如果有音频URL，存储到audio_url字段（如果orders表有该字段）
-    if (audio_url) {
+    if (hasAudio) {
       repairData.audio_url = audio_url
     }
 
     // 如果有设备ID，存储到备注或其他字段（如果orders表有device_id字段则使用，否则存储到description）
     if (device_id) {
-      repairData.description = `[设备: ${device_id}] ${description.trim()}`
+      repairData.device_id = device_id
+      // 如果description已经有内容，在前面加上设备信息
+      if (finalDescription) {
+        repairData.description = `[设备: ${device_id}] ${finalDescription}`
+      } else {
+        repairData.description = `[设备: ${device_id}]`
+      }
     }
 
     // 存储紧急程度（如果orders表有urgency字段则使用，否则存储到备注）
