@@ -917,11 +917,17 @@ export default function AdminDashboard() {
       console.log("[Admin Dashboard] 原始订单数据:", allOrders)
       console.log("[Admin Dashboard] 订单数量:", allOrders?.length || 0)
 
-      // 在客户端过滤维修订单（放宽筛选条件：audio_url 不为空或 service_type 包含维修）
+      // 在客户端过滤维修订单（重要：只要 audio_url 不为空，就必须显示，不管 service_type 是什么）
       console.log("[Admin Dashboard] 开始过滤维修订单，原始订单数量:", (allOrders || []).length)
       const repairOrders = (allOrders || []).filter((order: any) => {
-        // 放宽筛选条件：audio_url 不为空，或者 service_type 包含"维修"
+        // 重要：只要 audio_url 不为空，就必须显示在维修列表里
         const hasAudio = order.audio_url && order.audio_url.trim() !== ""
+        if (hasAudio) {
+          console.log("[Admin Dashboard] 匹配到语音报修单:", order.id, "audio_url: 有")
+          return true
+        }
+        
+        // 如果没有音频，则按 service_type 判断
         const serviceType = order.service_type || ""
         const normalizedType = serviceType.toLowerCase()
         const isRepairByType = 
@@ -929,13 +935,11 @@ export default function AdminDashboard() {
           serviceType.includes("维修") ||
           normalizedType.includes("repair")
         
-        const isRepair = hasAudio || isRepairByType
-        
-        if (isRepair) {
-          console.log("[Admin Dashboard] 匹配到维修订单:", order.id, "service_type:", serviceType, "audio_url:", hasAudio ? "有" : "无")
+        if (isRepairByType) {
+          console.log("[Admin Dashboard] 匹配到维修订单:", order.id, "service_type:", serviceType)
         }
         
-        return isRepair
+        return isRepairByType
       })
       console.log("[Admin Dashboard] 过滤后的维修订单数量:", repairOrders.length)
       
@@ -3360,23 +3364,21 @@ export default function AdminDashboard() {
                               </Badge>
                             )}
                           </div>
-                          <div className="text-sm text-slate-300 ml-6 mb-1">
-                            {repair.description || (repair.audio_url ? "语音报修单（请点击播放音频）" : "无描述")}
-                          </div>
-                          {/* 音频播放器 */}
+                          {/* 强制显示音频播放器：只要有 audio_url 就显示 */}
                           {repair.audio_url && (
-                            <div className="ml-6 mt-2 flex items-center gap-2">
-                              <Mic className="h-4 w-4 text-purple-400" />
+                            <div className="ml-6 mt-2 mb-2">
                               <audio 
                                 controls 
-                                className="h-8 flex-1 max-w-xs"
                                 src={repair.audio_url}
-                                preload="metadata"
+                                className="w-full h-10"
                               >
                                 您的浏览器不支持音频播放
                               </audio>
                             </div>
                           )}
+                          <div className="text-sm text-slate-300 ml-6 mb-1">
+                            {repair.description || (repair.audio_url ? "[语音报修单，请播放上方音频]" : "无描述")}
+                          </div>
                           {restaurant?.contact_phone && (
                             <div className="text-xs text-slate-500 ml-6 flex items-center gap-1">
                               <Phone className="h-3 w-3" />
@@ -3457,23 +3459,21 @@ export default function AdminDashboard() {
                 <div className="space-y-2">
                   <Label className="text-slate-300">问题描述</Label>
                   <div className="bg-slate-800/50 p-3 rounded-lg">
-                    <p className="text-white">
-                      {selectedRepair.description || (selectedRepair.audio_url ? "语音报修单（请点击播放音频）" : "无描述")}
-                    </p>
-                    {/* 音频播放器 */}
+                    {/* 强制显示音频播放器：只要有 audio_url 就显示 */}
                     {selectedRepair.audio_url && (
-                      <div className="mt-3 flex items-center gap-2">
-                        <Mic className="h-4 w-4 text-purple-400" />
+                      <div className="mb-3">
                         <audio 
                           controls 
-                          className="h-8 flex-1"
                           src={selectedRepair.audio_url}
-                          preload="metadata"
+                          className="w-full h-10"
                         >
                           您的浏览器不支持音频播放
                         </audio>
                       </div>
                     )}
+                    <p className="text-white">
+                      {selectedRepair.description || (selectedRepair.audio_url ? "[语音报修单，请播放上方音频]" : "无描述")}
+                    </p>
                   </div>
                 </div>
 
