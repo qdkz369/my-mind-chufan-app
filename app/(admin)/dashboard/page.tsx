@@ -8,6 +8,7 @@ if (typeof window !== 'undefined') {
 }
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import {
   Bell,
@@ -169,6 +170,8 @@ const menuItems = [
 ]
 
 export default function AdminDashboard() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeMenu, setActiveMenu] = useState("dashboard")
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
@@ -1046,9 +1049,29 @@ export default function AdminDashboard() {
   // 当切换到报修管理或状态筛选改变时加载数据
   useEffect(() => {
     if (activeMenu === "repairs") {
-      loadRepairs()
+      loadRepairs().then(() => {
+        // 检查URL参数，如果有repairId，自动打开详情弹窗
+        const repairId = searchParams.get("id") || searchParams.get("repairId")
+        if (repairId) {
+          // 等待一下确保repairs状态已更新
+          setTimeout(() => {
+            const repair = repairs.find((r: any) => r.id === repairId)
+            if (repair) {
+              setSelectedRepair(repair)
+              setRepairUpdateStatus(repair.status)
+              setRepairUpdateAmount(repair.amount?.toString() || "")
+              setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+              setIsRepairDetailDialogOpen(true)
+              // 清除URL参数
+              if (typeof window !== 'undefined') {
+                window.history.replaceState({}, '', window.location.pathname)
+              }
+            }
+          }, 300)
+        }
+      })
     }
-  }, [activeMenu, repairStatusFilter, loadRepairs])
+  }, [activeMenu, repairStatusFilter, loadRepairs, searchParams, repairs])
 
   // 当切换到订单管理或筛选条件改变时加载数据
   useEffect(() => {
@@ -2749,43 +2772,19 @@ export default function AdminDashboard() {
                       }`}
                       onClick={async () => {
                         // 根据订单类型跳转到相应的管理页面
-                        if (order.service_type === "维修服务") {
-                          // 跳转到报修管理
+                        const isRepairOrder = 
+                          order.service_type === "维修服务" ||
+                          order.service_type?.includes("维修") ||
+                          order.service_type?.toLowerCase().includes("repair")
+                        
+                        if (isRepairOrder) {
+                          // 跳转到报修管理，使用URL参数传递ID
                           setActiveMenu("repairs")
-                          // 加载报修列表，然后打开详情
-                          try {
-                            await loadRepairs()
-                            // 使用 setTimeout 确保状态已更新
-                            setTimeout(() => {
-                              // 直接从 repairs 状态中查找对应的报修订单（已改为直接使用 Supabase）
-                              const repair = repairs.find((r: any) => r.id === order.id)
-                              if (repair) {
-                                setSelectedRepair(repair)
-                                setRepairUpdateStatus(repair.status)
-                                setRepairUpdateAmount(repair.amount?.toString() || "")
-                                setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
-                                setIsRepairDetailDialogOpen(true)
-                              } else {
-                                // 如果状态中找不到，重新加载一次
-                                loadRepairs().then(() => {
-                                  setTimeout(() => {
-                                    const repairAfterReload = repairs.find((r: any) => r.id === order.id)
-                                    if (repairAfterReload) {
-                                      setSelectedRepair(repairAfterReload)
-                                      setRepairUpdateStatus(repairAfterReload.status)
-                                      setRepairUpdateAmount(repairAfterReload.amount?.toString() || "")
-                                      setRepairAssignedWorker(repairAfterReload.assigned_to || repairAfterReload.worker_id || "")
-                                      setIsRepairDetailDialogOpen(true)
-                                    } else {
-                                      console.warn("[Admin Dashboard] 未找到对应的报修订单:", order.id)
-                                    }
-                                  }, 300)
-                                })
-                              }
-                            }, 300)
-                          } catch (error) {
-                            console.error("[Admin Dashboard] 加载报修失败:", error)
-                          }
+                          // 使用URL参数，让useEffect自动处理详情弹窗
+                          const newUrl = `${window.location.pathname}?id=${order.id}`
+                          router.push(newUrl, { scroll: false })
+                          // 确保数据已加载
+                          await loadRepairs()
                         } else {
                           // 其他类型的订单，可以跳转到订单管理或显示提示
                           alert(`订单类型: ${order.service_type}\n订单ID: ${order.id}\n状态: ${order.status}`)
@@ -3061,39 +3060,20 @@ export default function AdminDashboard() {
                           ? getOrderStatusStyle(order.status) + " animate-pulse-subtle"
                           : "border-slate-700/50 bg-slate-800/50"
                       }`}
-                      onClick={() => {
+                      onClick={async () => {
                         // 如果是维修订单，跳转到报修管理
-                        if (order.service_type?.includes("维修") || order.service_type === "维修服务") {
+                        const isRepairOrder = 
+                          order.service_type?.includes("维修") || 
+                          order.service_type === "维修服务" ||
+                          order.service_type?.toLowerCase().includes("repair")
+                        
+                        if (isRepairOrder) {
                           setActiveMenu("repairs")
-                          setTimeout(() => {
-                            loadRepairs().then(() => {
-                              // 直接从 repairs 状态中查找对应的报修订单（已改为直接使用 Supabase）
-                              setTimeout(() => {
-                                const repair = repairs.find((r: any) => r.id === order.id)
-                                if (repair) {
-                                  setSelectedRepair(repair)
-                                  setRepairUpdateStatus(repair.status)
-                                  setRepairUpdateAmount(repair.amount?.toString() || "")
-                                  setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
-                                  setIsRepairDetailDialogOpen(true)
-                                } else {
-                                  // 如果状态中找不到，重新加载一次
-                                  loadRepairs().then(() => {
-                                    setTimeout(() => {
-                                      const repairAfterReload = repairs.find((r: any) => r.id === order.id)
-                                      if (repairAfterReload) {
-                                        setSelectedRepair(repairAfterReload)
-                                        setRepairUpdateStatus(repairAfterReload.status)
-                                        setRepairUpdateAmount(repairAfterReload.amount?.toString() || "")
-                                        setRepairAssignedWorker(repairAfterReload.assigned_to || repairAfterReload.worker_id || "")
-                                        setIsRepairDetailDialogOpen(true)
-                                      }
-                                    }, 300)
-                                  })
-                                }
-                              }, 300)
-                            })
-                          }, 300)
+                          // 使用URL参数，让useEffect自动处理详情弹窗
+                          const newUrl = `${window.location.pathname}?id=${order.id}`
+                          router.push(newUrl, { scroll: false })
+                          // 确保数据已加载
+                          await loadRepairs()
                         }
                       }}
                     >
