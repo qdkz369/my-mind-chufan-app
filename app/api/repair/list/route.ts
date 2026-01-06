@@ -20,13 +20,13 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
     const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
 
-    // 构建查询 - 使用 ilike 进行模糊匹配，兼容可能的变体
+    // 构建查询 - 先尝试精确匹配"维修服务"，如果结果为空，再尝试模糊匹配
     let query = supabase
       .from("orders")
       .select(
         "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, restaurants(id, name, address, contact_phone, contact_name)"
       )
-      .or("service_type.ilike.%维修%,service_type.eq.维修服务") // 使用 ilike 匹配包含"维修"的订单，或精确匹配"维修服务"
+      .ilike("service_type", "%维修%") // 使用 ilike 匹配包含"维修"的订单
     
     // 调试：记录查询条件
     console.log("[报修列表API] 查询条件: service_type包含'维修'", status ? `status=${status}` : "")
@@ -64,6 +64,12 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error("[报修列表API] 查询失败:", error)
+      console.error("[报修列表API] 错误详情:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      })
       return NextResponse.json(
         {
           error: "查询失败",
@@ -80,7 +86,22 @@ export async function GET(request: Request) {
         id: repairs[0].id,
         service_type: repairs[0].service_type,
         status: repairs[0].status,
+        restaurant_id: repairs[0].restaurant_id,
       })
+    } else {
+      // 如果没有结果，尝试查询所有订单看看 service_type 的实际值
+      console.log("[报修列表API] 未找到维修订单，尝试查询所有订单的 service_type...")
+      const { data: allOrders } = await supabase
+        .from("orders")
+        .select("id, service_type, status, created_at")
+        .order("created_at", { ascending: false })
+        .limit(10)
+      
+      if (allOrders && allOrders.length > 0) {
+        console.log("[报修列表API] 最近10条订单的 service_type:", 
+          allOrders.map((o: any) => ({ id: o.id, service_type: o.service_type, status: o.status }))
+        )
+      }
     }
 
     return NextResponse.json({

@@ -798,22 +798,53 @@ export default function AdminDashboard() {
     try {
       setIsLoadingRepairs(true)
       const statusParam = repairStatusFilter !== "all" ? `?status=${repairStatusFilter}` : ""
-      const response = await fetch(`/api/repair/list${statusParam}`)
+      const url = `/api/repair/list${statusParam}`
+      console.log("[Admin Dashboard] 开始加载报修数据，URL:", url)
+      
+      const response = await fetch(url)
       const result = await response.json()
       
+      console.log("[Admin Dashboard] API 响应:", {
+        ok: response.ok,
+        status: response.status,
+        success: result.success,
+        dataLength: result.data?.length || 0,
+        error: result.error,
+      })
+      
       if (!response.ok) {
-        throw new Error(result.error || "加载报修失败")
+        console.error("[Admin Dashboard] API 返回错误:", {
+          status: response.status,
+          error: result.error,
+          details: result.details,
+        })
+        throw new Error(result.error || result.details || "加载报修失败")
       }
       
       if (result.success && result.data) {
         console.log("[Admin Dashboard] 加载报修成功，数量:", result.data.length)
+        if (result.data.length > 0) {
+          console.log("[Admin Dashboard] 第一条报修记录:", {
+            id: result.data[0].id,
+            service_type: result.data[0].service_type,
+            status: result.data[0].status,
+            restaurant_name: result.data[0].restaurants?.name,
+          })
+        }
         setRepairs(result.data || [])
       } else {
-        console.error("[Admin Dashboard] 加载报修失败:", result.error || "未知错误")
+        console.warn("[Admin Dashboard] API 返回成功但数据为空:", {
+          success: result.success,
+          data: result.data,
+          error: result.error,
+        })
         setRepairs([]) // 确保设置为空数组而不是undefined
       }
     } catch (error) {
       console.error("[Admin Dashboard] 加载报修时出错:", error)
+      if (error instanceof Error) {
+        console.error("[Admin Dashboard] 错误详情:", error.message, error.stack)
+      }
       setRepairs([]) // 出错时设置为空数组
     } finally {
       setIsLoadingRepairs(false)
