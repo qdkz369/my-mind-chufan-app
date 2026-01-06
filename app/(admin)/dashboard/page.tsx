@@ -347,7 +347,7 @@ export default function AdminDashboard() {
   const geocodeAddress = useCallback(async (address: string): Promise<{ latitude: number; longitude: number } | null> => {
     return new Promise((resolve) => {
       if (typeof window === 'undefined' || !(window as any).AMap) {
-        console.warn('[地理编码] AMap未加载')
+        // 移除频繁的警告日志，避免控制台刷屏
         resolve(null)
         return
       }
@@ -509,7 +509,7 @@ export default function AdminDashboard() {
 
     // 检查AMap是否已加载
     if (typeof window === 'undefined' || !(window as any).AMap) {
-      console.warn("[更新坐标] AMap未加载，等待地图加载完成")
+      // 移除频繁的警告日志，避免控制台刷屏
       return
     }
 
@@ -1356,15 +1356,18 @@ export default function AdminDashboard() {
 
     try {
       // 从service_points表加载，如果表不存在则使用模拟数据
+      // 先尝试查询，如果表不存在（404或PGRST205错误），直接使用模拟数据，避免频繁404错误
       const { data, error } = await supabase
         .from("service_points")
         .select("id, name, township, latitude, longitude, service_radius, legal_entity, status, created_at")
         .order("created_at", { ascending: false })
+        .limit(1) // 只查询一条，减少不必要的请求
 
       if (error) {
-        // 如果表不存在，使用模拟数据
-        console.warn("[Admin Dashboard] 服务点表不存在，使用模拟数据:", error)
-        setServicePoints([
+        // 如果表不存在（PGRST205错误），使用模拟数据，不输出警告避免控制台刷屏
+        if (error.code === 'PGRST205' || error.message?.includes('service_points')) {
+          // 表不存在，直接使用模拟数据，不输出警告
+          setServicePoints([
           {
             id: "sp_001",
             name: "五华区服务点",
@@ -1671,7 +1674,8 @@ export default function AdminDashboard() {
     const map = mapInstanceRef.current
     const AMap = (window as any).AMap
     if (!AMap) {
-      console.warn('[Map] AMap未加载，跳过标记更新')
+      // 移除频繁的警告日志，避免控制台刷屏
+      // AMap未加载时静默返回，不输出警告
       return
     }
 
