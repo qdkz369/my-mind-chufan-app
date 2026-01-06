@@ -899,7 +899,7 @@ export default function AdminDashboard() {
       const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
         async () => await supabase
           .from("orders")
-          .select("id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url")
+          .select("id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url")
           .order("created_at", { ascending: false })
           .limit(500) // 限制查询最近500条订单
       )

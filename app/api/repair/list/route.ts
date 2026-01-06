@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
-import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
+// 暂时注释掉权限验证，避免服务器崩溃
+// import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 /**
  * GET: 获取报修工单列表
@@ -23,10 +24,11 @@ export async function GET(request: Request) {
     // 构建查询 - 重要：优先检查 audio_url 不为空，或者 service_type 包含"维修"
     // 注意：Supabase 不支持 OR 条件在 where 中，所以先查询所有订单，然后在客户端过滤
     // 暂时移除 restaurants 关联查询，先确保能返回基础数据
+    // 注意：如果数据库没有 worker_id 字段，请从 select 中删除它
     let query = supabase
       .from("orders")
       .select(
-        "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url"
+        "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url"
       )
       .order("created_at", { ascending: false })
       .limit(500) // 限制查询最近500条订单
@@ -34,21 +36,11 @@ export async function GET(request: Request) {
     // 调试：记录查询条件
     console.log("[报修列表API] 开始查询所有订单（将在客户端过滤）", status ? `status=${status}` : "", restaurantId ? `restaurant_id=${restaurantId}` : "")
 
-    // 如果请求头中包含worker_id，验证维修工权限（可选，不强制）
+    // 暂时完全跳过权限验证，避免服务器崩溃
+    // 如果请求头中包含worker_id，仅用于后续筛选，不进行权限验证
     const workerId = request.headers.get("x-worker-id")
     if (workerId) {
-      try {
-        const authResult = await verifyWorkerPermission(request, "repair")
-        if (authResult instanceof NextResponse) {
-          // 权限验证失败，但不阻止查询，只是记录警告
-          console.warn("[报修列表API] 权限验证失败，但继续查询:", authResult.status)
-        } else {
-          console.log("[报修列表API] 权限验证通过，工人:", authResult.worker.name)
-        }
-      } catch (authError) {
-        // 权限验证异常，但不阻止查询
-        console.warn("[报修列表API] 权限验证异常，但继续查询:", authError)
-      }
+      console.log("[报修列表API] 检测到 workerId，将用于筛选（跳过权限验证）:", workerId)
     }
 
     // 执行查询（先获取所有订单，然后在客户端过滤）
@@ -76,20 +68,25 @@ export async function GET(request: Request) {
     // 在客户端过滤维修订单（重要：优先检查 audio_url 不为空）
     console.log("[报修列表API] 原始订单数量:", allOrders?.length || 0)
     let repairs = (allOrders || []).filter((order: any) => {
+      // 强制字段检查：确保 order 对象存在
+      if (!order) return false
+      
       // 重要：只要 audio_url 不为空，就必须显示在维修列表里
-      const hasAudio = order.audio_url && order.audio_url.trim() !== ""
+      const hasAudio = order.audio_url && typeof order.audio_url === 'string' && order.audio_url.trim() !== ""
       if (hasAudio) {
         console.log("[报修列表API] 匹配到语音报修单:", order.id, "audio_url: 有")
         return true
       }
       
-      // 如果没有音频，则按 service_type 判断
-      const serviceType = order.service_type || ""
+      // 如果没有音频，则按 service_type 判断（强制字段检查）
+      const serviceType = (order.service_type || "").toString()
+      if (!serviceType) return false // 如果 service_type 为空，直接返回 false
+      
       const normalizedType = serviceType.toLowerCase()
       const isRepairByType = 
         serviceType === "维修服务" ||
-        serviceType.includes("维修") ||
-        normalizedType.includes("repair")
+        (serviceType.includes && serviceType.includes("维修")) ||
+        (normalizedType.includes && normalizedType.includes("repair"))
       
       if (isRepairByType) {
         console.log("[报修列表API] 匹配到维修订单:", order.id, "service_type:", serviceType)

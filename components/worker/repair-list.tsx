@@ -147,7 +147,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       let query = supabase
         .from("orders")
         .select(
-          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url"
+          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url"
         )
         .order("created_at", { ascending: false })
         .limit(500) // 限制查询最近500条订单
@@ -206,9 +206,9 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       // - 其他状态: 只显示分配给该工人的工单
       if (workerId) {
         if (statusFilter && statusFilter !== "all" && statusFilter !== "pending") {
-          // 其他状态：只显示分配给该工人的工单
+          // 其他状态：只显示分配给该工人的工单（统一使用 assigned_to）
           repairOrders = repairOrders.filter((order: any) => 
-            order.assigned_to === workerId || order.worker_id === workerId
+            order.assigned_to === workerId
           )
         } else if (statusFilter === "pending" || statusFilter === "all") {
           // pending 或 all 状态：显示所有 pending 且 assigned_to 为 NULL 的工单 + 分配给该工人的工单
@@ -217,8 +217,8 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
             if (order.status === "pending" && (!order.assigned_to || order.assigned_to === null)) {
               return true
             }
-            // 已分配给该工人的工单
-            return order.assigned_to === workerId || order.worker_id === workerId
+            // 已分配给该工人的工单（统一使用 assigned_to）
+            return order.assigned_to === workerId
           })
         }
       }
