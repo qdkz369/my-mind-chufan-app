@@ -1161,7 +1161,11 @@ function IoTDashboard() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "提交报修失败")
+        const errorMsg = data.error || "提交报修失败"
+        const details = data.details ? `\n详情: ${data.details}` : ''
+        const hint = data.hint ? `\n提示: ${data.hint}` : ''
+        console.error("[报修提交] 失败:", { error: errorMsg, details, hint, fullData: data })
+        throw new Error(`${errorMsg}${details}${hint}`)
       }
 
       alert("报修工单提交成功！我们会尽快安排维修人员联系您。")

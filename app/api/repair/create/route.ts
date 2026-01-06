@@ -80,6 +80,7 @@ export async function POST(request: Request) {
       ? (typeof description === 'string' ? description.trim() : "") 
       : (hasAudio ? "[语音消息]" : "")
 
+    // 构建基础报修数据（只包含肯定存在的字段）
     const repairData: any = {
       restaurant_id: restaurant_id,
       service_type: "维修服务", // 统一使用"维修服务"作为service_type
@@ -87,19 +88,10 @@ export async function POST(request: Request) {
       amount: 0, // 报修时金额为0，维修完成后才确定
       description: finalDescription, // 问题描述
       customer_confirmed: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     }
 
-    // 如果有音频URL，存储到audio_url字段（如果orders表有该字段）
-    if (hasAudio) {
-      repairData.audio_url = audio_url
-    }
-
-    // 如果有设备ID，存储到备注或其他字段（如果orders表有device_id字段则使用，否则存储到description）
+    // 如果有设备ID，在描述中包含设备信息（因为device_id字段可能不存在）
     if (device_id) {
-      repairData.device_id = device_id
-      // 如果description已经有内容，在前面加上设备信息
       if (finalDescription) {
         repairData.description = `[设备: ${device_id}] ${finalDescription}`
       } else {
@@ -107,28 +99,70 @@ export async function POST(request: Request) {
       }
     }
 
-    // 存储紧急程度（如果orders表有urgency字段则使用，否则存储到备注）
-    if (urgency) {
-      // 假设orders表可能有urgency字段，如果没有则忽略
-      repairData.urgency = urgency
-    }
-
-    // 插入到orders表
-    const { data: newRepair, error: createError } = await supabase
+    // 尝试插入基础数据（不包含可能不存在的字段）
+    let { data: newRepair, error: createError } = await supabase
       .from("orders")
       .insert(repairData)
       .select("id, restaurant_id, service_type, status, description, created_at, updated_at, amount")
       .single()
 
+    // 如果基础插入失败，记录详细错误
     if (createError) {
-      console.error("[创建报修API] 创建报修工单失败:", createError)
+      console.error("[创建报修API] 创建报修工单失败:", {
+        error: createError,
+        message: createError.message,
+        code: createError.code,
+        details: createError.details,
+        hint: createError.hint,
+        repairData: repairData,
+      })
+      
       return NextResponse.json(
         {
           error: "创建报修工单失败",
-          details: createError.message,
+          details: createError.message || "未知错误",
+          code: createError.code,
+          hint: createError.hint,
         },
         { status: 500 }
       )
+    }
+
+    // 如果基础插入成功，尝试更新可选字段（audio_url, urgency等）
+    // 这些字段可能不存在，所以使用update而不是在insert中包含
+    if (newRepair && newRepair.id) {
+      const updateData: any = {}
+      
+      // 尝试更新音频URL（如果字段存在）
+      if (hasAudio) {
+        updateData.audio_url = audio_url
+      }
+      
+      // 尝试更新紧急程度（如果字段存在）
+      if (urgency) {
+        updateData.urgency = urgency
+      }
+      
+      // 尝试更新设备ID（如果字段存在）
+      if (device_id) {
+        updateData.device_id = device_id
+      }
+      
+      // 如果有需要更新的字段，尝试更新
+      if (Object.keys(updateData).length > 0) {
+        const { error: updateError } = await supabase
+          .from("orders")
+          .update(updateData)
+          .eq("id", newRepair.id)
+        
+        // 更新失败不影响主流程，只记录警告
+        if (updateError) {
+          console.warn("[创建报修API] 更新可选字段失败（不影响主流程）:", {
+            error: updateError,
+            updateData: updateData,
+          })
+        }
+      }
     }
 
     return NextResponse.json({
