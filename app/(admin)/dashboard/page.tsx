@@ -598,15 +598,8 @@ export default function AdminDashboard() {
           longitude: restaurant.longitude ? (typeof restaurant.longitude === 'string' ? parseFloat(restaurant.longitude) : restaurant.longitude) : null,
         }))
         
-        console.log('[Admin Dashboard] 加载餐厅数据:', processedData.length, '个餐厅')
-        processedData.forEach(r => {
-          console.log('[Admin Dashboard] 餐厅:', r.name, {
-            latitude: r.latitude,
-            longitude: r.longitude,
-            address: r.address,
-            hasValidCoords: !!(r.latitude && r.longitude && !isNaN(r.latitude) && !isNaN(r.longitude))
-          })
-        })
+        // 移除频繁的调试日志，避免控制台刷屏
+        // console.log('[Admin Dashboard] 加载餐厅数据:', processedData.length, '个餐厅')
         
         setRestaurants(processedData)
         
@@ -620,7 +613,7 @@ export default function AdminDashboard() {
         )
         
         if (needsGeocode) {
-          console.log('[Admin Dashboard] 检测到需要地理编码的餐厅，等待AMap加载后自动处理...')
+          // 移除频繁的调试日志，避免控制台刷屏
           // 等待AMap加载完成（最多等待10秒）
           let attempts = 0
           const maxAttempts = 20 // 20次 * 500ms = 10秒
@@ -628,13 +621,14 @@ export default function AdminDashboard() {
             attempts++
             if (typeof window !== 'undefined' && (window as any).AMap) {
               clearInterval(checkAMap)
-              console.log('[Admin Dashboard] AMap已加载，开始自动地理编码...')
+              // 移除频繁的调试日志，避免控制台刷屏
               // 延迟一下，确保AMap插件也加载完成
               setTimeout(() => {
                 updateRestaurantCoordinates(processedData)
               }, 1000)
             } else if (attempts >= maxAttempts) {
               clearInterval(checkAMap)
+              // 只在真正超时时输出警告
               console.warn('[Admin Dashboard] AMap加载超时，地理编码将在地图加载后自动执行')
             }
           }, 500)
@@ -772,7 +766,7 @@ export default function AdminDashboard() {
           worker_id: order.worker_id || order.assigned_to,
         }))
         setOrders(formattedOrders)
-        console.log("[Admin Dashboard] 加载所有订单成功，数量:", formattedOrders.length)
+        // 移除频繁的调试日志，避免控制台刷屏
       }
     } catch (error) {
       console.error("[Admin Dashboard] 加载所有订单时出错:", error)
@@ -788,7 +782,7 @@ export default function AdminDashboard() {
       setIsLoadingRepairs(true)
       const statusParam = repairStatusFilter !== "all" ? `?status=${repairStatusFilter}` : ""
       const url = `/api/repair/list${statusParam}`
-      console.log("[Admin Dashboard] 开始加载报修数据，URL:", url)
+      // 移除频繁的调试日志，避免控制台刷屏
       
       const response = await fetch(url)
       const result = await response.json()
@@ -811,9 +805,9 @@ export default function AdminDashboard() {
       }
       
       if (result.success && result.data) {
-        console.log("[Admin Dashboard] 加载报修成功，数量:", result.data.length)
+        // 移除频繁的调试日志，避免控制台刷屏
         if (result.data.length > 0) {
-          console.log("[Admin Dashboard] 第一条报修记录:", {
+          // 移除频繁的调试日志，避免控制台刷屏
             id: result.data[0].id,
             service_type: result.data[0].service_type,
             status: result.data[0].status,
@@ -892,7 +886,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!supabase || activeMenu !== "repairs") return
 
-    console.log("[Admin Dashboard] 开始监听维修工单实时更新...")
+    // 移除频繁的调试日志，避免控制台刷屏
 
     // 订阅 orders 表的变化（只监听维修服务）
     const channel = supabase
@@ -906,7 +900,7 @@ export default function AdminDashboard() {
           filter: "service_type=eq.维修服务", // 只监听维修服务
         },
         (payload) => {
-          console.log("[Admin Dashboard] 收到维修工单实时更新:", payload)
+          // 移除频繁的调试日志，避免控制台刷屏
           // 重新加载报修列表
           loadRepairs()
         }
@@ -914,7 +908,7 @@ export default function AdminDashboard() {
       .subscribe()
 
     return () => {
-      console.log("[Admin Dashboard] 停止监听维修工单实时更新")
+      // 移除频繁的调试日志，避免控制台刷屏
       supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1441,7 +1435,7 @@ export default function AdminDashboard() {
             table: "orders",
           },
           (payload) => {
-            console.log("[Admin Dashboard] 订单变化:", payload)
+            // 移除频繁的调试日志，避免控制台刷屏
             loadRecentOrders()
             loadRestaurants()
           }
@@ -1454,7 +1448,7 @@ export default function AdminDashboard() {
             table: "restaurants",
           },
           (payload) => {
-            console.log("[Admin Dashboard] 餐厅变化:", payload)
+            // 移除频繁的调试日志，避免控制台刷屏
             loadRestaurants()
           }
         )
@@ -1658,7 +1652,7 @@ export default function AdminDashboard() {
         // 销毁地图实例
         mapInstanceRef.current.destroy()
         mapInstanceRef.current = null
-        console.log('[Map] 地图实例已销毁')
+        // 移除频繁的调试日志，避免控制台刷屏
       } catch (error) {
         console.error('[Map] 销毁地图实例时出错:', error)
       }
@@ -1760,7 +1754,7 @@ export default function AdminDashboard() {
         })
 
         map.add(heatmapRef.current)
-        console.log('[Map] 热力图已创建，餐厅数量:', restaurantsWithLocation.length)
+        // 移除频繁的调试日志，避免控制台刷屏
       }
     } else {
       // 显示标记模式
@@ -1814,13 +1808,14 @@ export default function AdminDashboard() {
                     }
                   })
               } else {
-                console.warn('[Map] 地理编码返回空结果或Supabase未配置')
+                // 移除频繁的调试日志，避免控制台刷屏
               }
             }).catch(err => {
+              // 只保留错误日志
               console.error('[Map] 地理编码失败:', restaurant.name, err)
             })
           } else {
-            console.warn('[Map] 餐厅无有效地址，跳过标记创建:', restaurant.name, '地址:', restaurant.address)
+            // 移除频繁的调试日志，避免控制台刷屏
           }
           return
         }
