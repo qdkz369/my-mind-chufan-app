@@ -219,7 +219,36 @@ export default function AddressesPage() {
         }
       } catch (error: any) {
         console.error('[定位] 浏览器原生定位失败:', error)
-        setLocationError("定位失败，请检查定位权限或稍后重试")
+        
+        // 根据错误代码提供友好的中文提示
+        let errorMessage = "定位失败，请检查定位权限或稍后重试"
+        if (error.code) {
+          switch (error.code) {
+            case error.PERMISSION_DENIED || 1:
+              errorMessage = "定位权限被拒绝，请在浏览器设置中允许位置访问"
+              break
+            case error.POSITION_UNAVAILABLE || 2:
+              errorMessage = "定位服务不可用，请检查设备定位功能是否开启"
+              break
+            case error.TIMEOUT || 3:
+              errorMessage = "定位超时，请检查网络连接或稍后重试"
+              break
+            default:
+              errorMessage = error.message || "定位失败，请检查定位权限或稍后重试"
+          }
+        } else if (error.message) {
+          // 处理错误消息
+          const msg = error.message.toLowerCase()
+          if (msg.includes("permission") || msg.includes("denied")) {
+            errorMessage = "定位权限被拒绝，请在浏览器设置中允许位置访问"
+          } else if (msg.includes("timeout")) {
+            errorMessage = "定位超时，请检查网络连接或稍后重试"
+          } else if (msg.includes("unavailable")) {
+            errorMessage = "定位服务不可用，请检查设备定位功能是否开启"
+          }
+        }
+        
+        setLocationError(errorMessage)
         setIsLocating(false)
         return
       }

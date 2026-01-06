@@ -158,6 +158,9 @@ export function ProfileContent() {
           // 扩展配置：使用GPS定位
           useNative: true, // 优先使用浏览器原生定位
           extensions: 'all', // 返回详细信息，包括精度、地址等
+          // 禁用IP定位回退，只使用GPS定位（提高精度）
+          noIpLocate: false, // 允许IP定位作为最后手段
+          noGeoLocation: false, // 允许地理定位
         })
 
         // 添加定位成功事件监听
@@ -405,11 +408,41 @@ export function ProfileContent() {
         }
       } catch (error: any) {
         console.error('[定位] 浏览器原生定位失败:', error)
+        
+        // 根据错误代码提供友好的中文提示
+        let errorMessage = "定位失败，请检查定位权限或稍后重试"
+        if (error.code) {
+          switch (error.code) {
+            case error.PERMISSION_DENIED || 1:
+              errorMessage = "定位权限被拒绝，请在浏览器设置中允许位置访问"
+              break
+            case error.POSITION_UNAVAILABLE || 2:
+              errorMessage = "定位服务不可用，请检查设备定位功能是否开启"
+              break
+            case error.TIMEOUT || 3:
+              errorMessage = "定位超时，请检查网络连接或稍后重试"
+              break
+            default:
+              errorMessage = error.message || "定位失败，请检查定位权限或稍后重试"
+          }
+        } else if (error.message) {
+          // 处理错误消息
+          const msg = error.message.toLowerCase()
+          if (msg.includes("permission") || msg.includes("denied")) {
+            errorMessage = "定位权限被拒绝，请在浏览器设置中允许位置访问"
+          } else if (msg.includes("timeout")) {
+            errorMessage = "定位超时，请检查网络连接或稍后重试"
+          } else if (msg.includes("unavailable")) {
+            errorMessage = "定位服务不可用，请检查设备定位功能是否开启"
+          }
+        }
+        
         // 浏览器定位失败，降级使用高德定位
         if (amapLoaded && geolocationRef.current) {
-          // 继续使用高德定位
+          // 继续使用高德定位，不设置错误信息，让高德定位尝试
+          console.log('[定位] 浏览器定位失败，降级使用高德地图定位...')
         } else {
-          setLocationError("定位失败，请检查定位权限或稍后重试")
+          setLocationError(errorMessage)
           setIsLocating(false)
           return
         }
@@ -605,7 +638,34 @@ export function ProfileContent() {
         clearTimeout(timeoutId)
         isCompleted = true
         console.error('[定位] 定位失败:', data)
-        const errorMessage = data?.message || data?.info || "定位失败，请检查定位权限或稍后重试"
+        
+        // 将英文错误信息翻译成中文
+        let errorMessage = data?.message || data?.info || data?.message || ""
+        const errorCode = data?.code || ""
+        
+        // 常见错误信息翻译
+        if (errorMessage.includes("Get geolocation timeout") || errorMessage.includes("timeout")) {
+          errorMessage = "定位超时，请检查网络连接或定位权限"
+        } else if (errorMessage.includes("Get ipLocation failed") || errorMessage.includes("ipLocation")) {
+          errorMessage = "IP定位失败，请允许浏览器访问您的位置信息"
+        } else if (errorMessage.includes("permission denied") || errorMessage.includes("权限")) {
+          errorMessage = "定位权限被拒绝，请在浏览器设置中允许位置访问"
+        } else if (errorMessage.includes("not available") || errorMessage.includes("不可用")) {
+          errorMessage = "定位服务不可用，请检查设备定位功能是否开启"
+        } else if (errorMessage.includes("network") || errorMessage.includes("网络")) {
+          errorMessage = "网络错误，请检查网络连接后重试"
+        } else if (!errorMessage || errorMessage.trim() === "") {
+          errorMessage = "定位失败，请检查定位权限或稍后重试"
+        } else if (errorMessage.includes("Get geolocation") || errorMessage.includes("Get ipLocation")) {
+          // 处理高德地图的英文错误信息
+          errorMessage = "定位服务异常，请检查定位权限或网络连接"
+        }
+        
+        // 如果错误信息仍然是英文，使用通用提示
+        if (errorMessage && /^[A-Za-z\s]+$/.test(errorMessage.replace(/[^A-Za-z\s]/g, ''))) {
+          errorMessage = "定位失败，请检查定位权限或网络连接"
+        }
+        
         setLocationError(errorMessage)
         setIsLocating(false)
         if (geolocationRef.current) {
