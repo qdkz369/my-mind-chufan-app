@@ -876,11 +876,14 @@ function IoTDashboard() {
       }
 
       mediaRecorder.onstop = () => {
-        // 确保清除计时器
+        // 确保清除计时器（双重保险）
         if (durationIntervalRef.current) {
           clearInterval(durationIntervalRef.current)
           durationIntervalRef.current = null
         }
+        
+        // 确保 isRecording 状态为 false
+        setIsRecording(false)
         
         const blob = new Blob(chunks, { type: mediaRecorder.mimeType })
         setAudioBlob(blob)
@@ -912,24 +915,40 @@ function IoTDashboard() {
     } catch (error) {
       console.error("[语音录制] 启动失败:", error)
       alert("无法启动录音，请检查麦克风权限")
+      
+      // 清除计时器（如果已创建）
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current)
+        durationIntervalRef.current = null
+      }
+      
+      // 停止所有音频轨道（如果已创建）
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+      
       setIsRecording(false)
+      setRecordingDuration(0)
     }
   }
 
   // 停止录音
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    // 立即停止计时器，防止继续读秒
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current)
+      durationIntervalRef.current = null
+    }
+    
+    // 立即更新状态，防止 UI 继续显示"录音中..."
+    setIsRecording(false)
+    
+    if (mediaRecorderRef.current) {
       try {
         // 如果 MediaRecorder 状态是 recording，才停止
         if (mediaRecorderRef.current.state === 'recording') {
           mediaRecorderRef.current.stop()
-        }
-        setIsRecording(false)
-        
-        // 清除计时器
-        if (durationIntervalRef.current) {
-          clearInterval(durationIntervalRef.current)
-          durationIntervalRef.current = null
         }
         
         // 停止所有音频轨道
@@ -939,7 +958,6 @@ function IoTDashboard() {
         }
       } catch (error) {
         console.error("[语音录制] 停止失败:", error)
-        setIsRecording(false)
       }
     }
   }
