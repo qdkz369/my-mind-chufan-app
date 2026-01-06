@@ -120,30 +120,121 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
     setError("")
 
     try {
-      const params = new URLSearchParams()
-      if (statusFilter !== "all") {
-        params.append("status", statusFilter)
-      }
-
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-      }
+      // 动态导入 Supabase 客户端
+      const { supabase } = await import("@/lib/supabase")
       
-      // 如果提供了workerId，添加到请求头
+      if (!supabase) {
+        throw new Error("数据库连接失败")
+      }
+
+      // 构建查询 - 直接使用 Supabase 查询 orders 表
+      let query = supabase
+        .from("orders")
+        .select(
+          "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url, restaurants(id, name, address, contact_phone, contact_name)"
+        )
+        .ilike("service_type", "%维修%") // 匹配包含"维修"的订单
+      
+      // 如果提供了workerId，根据状态筛选：
+      // - pending: 显示所有待处理的工单（无论是否分配）
+      // - 其他状态: 只显示分配给该工人的工单
       if (workerId) {
-        headers["x-worker-id"] = workerId
+        if (statusFilter && statusFilter !== "all" && statusFilter !== "pending") {
+          // 其他状态：只显示分配给该工人的工单
+          query = query.or(`assigned_to.eq.${workerId},worker_id.eq.${workerId}`)
+        }
+        // pending 状态不添加额外筛选，显示所有待处理的工单
       }
 
-      const response = await fetch(`/api/repair/list?${params.toString()}`, {
-        headers,
-      })
-      const result = await response.json()
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || "加载维修工单失败")
+      // 状态筛选
+      if (statusFilter && statusFilter !== "all") {
+        query = query.eq("status", statusFilter)
       }
 
-      setRepairs(result.data || [])
+      // 执行查询
+      const { data: repairsData, error: queryError } = await query.order("created_at", { ascending: false })
+
+      // 调试：如果查询结果为空，检查数据库中实际的 service_type 值
+      if (!queryError && (!repairsData || repairsData.length === 0)) {
+        const { data: allOrdersSample } = await supabase
+          .from("orders")
+          .select("id, service_type, status, created_at, assigned_to, worker_id")
+          .order("created_at", { ascending: false })
+          .limit(10)
+        
+        if (allOrdersSample && allOrdersSample.length > 0) {
+          console.warn("[工人端] 未找到维修工单，最近10条订单的 service_type 值:")
+          allOrdersSample.forEach((o: any) => {
+            const isRepair = o.service_type && (o.service_type.includes("维修") || o.service_type === "维修服务")
+            const isAssigned = workerId && (o.assigned_to === workerId || o.worker_id === workerId)
+            console.warn(`  - ID: ${o.id}, service_type: "${o.service_type}", status: ${o.status}, assigned_to: ${o.assigned_to}, worker_id: ${o.worker_id}${isRepair ? " ✓ (匹配维修)" : ""}${isAssigned ? " ✓ (分配给当前工人)" : ""}`)
+          })
+        }
+      }
+
+      // 如果关联查询失败（可能是 restaurants 表不存在或外键关系问题），尝试基础查询
+      if (queryError && (queryError.message?.includes("restaurants") || queryError.code === "PGRST116" || queryError.code === "42P01")) {
+        // 重新构建基础查询（不包含 restaurants 关联）
+        let baseQuery = supabase
+          .from("orders")
+          .select(
+            "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url"
+          )
+          .ilike("service_type", "%维修%")
+        
+        if (workerId && statusFilter && statusFilter !== "all" && statusFilter !== "pending") {
+          baseQuery = baseQuery.or(`assigned_to.eq.${workerId},worker_id.eq.${workerId}`)
+        }
+        
+        if (statusFilter && statusFilter !== "all") {
+          baseQuery = baseQuery.eq("status", statusFilter)
+        }
+        
+        const baseResult = await baseQuery.order("created_at", { ascending: false })
+        
+        if (baseResult.error) {
+          console.error("[工人端] 基础查询也失败:", baseResult.error)
+          throw new Error(baseResult.error.message || "加载维修工单失败")
+        }
+        
+        // 如果基础查询成功，手动获取餐厅信息
+        if (baseResult.data && baseResult.data.length > 0) {
+          const restaurantIds = [...new Set(baseResult.data.map((r: any) => r.restaurant_id).filter(Boolean))]
+          if (restaurantIds.length > 0) {
+            const { data: restaurantsData } = await supabase
+              .from("restaurants")
+              .select("id, name, address, contact_phone, contact_name")
+              .in("id", restaurantIds)
+            
+            // 将餐厅信息附加到每个订单
+            if (restaurantsData) {
+              const restaurantMap = new Map(restaurantsData.map((r: any) => [r.id, r]))
+              const processedRepairs = baseResult.data.map((repair: any) => ({
+                ...repair,
+                restaurants: restaurantMap.get(repair.restaurant_id) || null,
+              }))
+              setRepairs(processedRepairs)
+              return
+            }
+          }
+        }
+        
+        setRepairs(baseResult.data || [])
+        return
+      }
+
+      if (queryError) {
+        console.error("[工人端] 加载维修工单失败:", queryError)
+        throw new Error(queryError.message || "加载维修工单失败")
+      }
+
+      // 处理数据，确保格式正确
+      const processedRepairs = (repairsData || []).map((repair: any) => ({
+        ...repair,
+        restaurants: repair.restaurants || null,
+      }))
+
+      setRepairs(processedRepairs)
     } catch (err: any) {
       console.error("[工人端] 加载维修工单失败:", err)
       setError(err.message || "加载维修工单失败")

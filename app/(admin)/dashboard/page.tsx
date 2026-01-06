@@ -909,6 +909,23 @@ export default function AdminDashboard() {
         async () => await query.order("created_at", { ascending: false })
       )
 
+      // 调试：如果查询结果为空，检查数据库中实际的 service_type 值
+      if (!queryError && (!repairsData || repairsData.length === 0)) {
+        const { data: allOrdersSample } = await supabase
+          .from("orders")
+          .select("id, service_type, status, created_at")
+          .order("created_at", { ascending: false })
+          .limit(10)
+        
+        if (allOrdersSample && allOrdersSample.length > 0) {
+          console.warn("[Admin Dashboard] 未找到维修工单，最近10条订单的 service_type 值:")
+          allOrdersSample.forEach((o: any) => {
+            const isRepair = o.service_type && (o.service_type.includes("维修") || o.service_type === "维修服务")
+            console.warn(`  - ID: ${o.id}, service_type: "${o.service_type}", status: ${o.status}${isRepair ? " ✓ (匹配)" : ""}`)
+          })
+        }
+      }
+
       // 如果关联查询失败（可能是 restaurants 表不存在或外键关系问题），尝试基础查询
       if (queryError && (queryError.message?.includes("restaurants") || queryError.code === "PGRST116" || queryError.code === "42P01")) {
         // 重新构建基础查询（不包含 restaurants 关联）
