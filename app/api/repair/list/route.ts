@@ -27,6 +27,9 @@ export async function GET(request: Request) {
         "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, restaurants(id, name, address, contact_phone, contact_name)"
       )
       .eq("service_type", "维修服务") // 只查询维修服务订单（使用精确匹配）
+    
+    // 调试：记录查询条件
+    console.log("[报修列表API] 查询条件: service_type=维修服务", status ? `status=${status}` : "")
 
     // 如果请求头中包含worker_id，验证维修工权限
     const workerId = request.headers.get("x-worker-id")
@@ -68,6 +71,16 @@ export async function GET(request: Request) {
         },
         { status: 500 }
       )
+    }
+
+    // 调试：记录查询结果
+    console.log("[报修列表API] 查询结果数量:", repairs?.length || 0)
+    if (repairs && repairs.length > 0) {
+      console.log("[报修列表API] 第一条记录:", {
+        id: repairs[0].id,
+        service_type: repairs[0].service_type,
+        status: repairs[0].status,
+      })
     }
 
     return NextResponse.json({

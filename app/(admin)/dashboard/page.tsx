@@ -734,6 +734,7 @@ export default function AdminDashboard() {
       }
       
       if (result.success && result.data) {
+        console.log("[Admin Dashboard] 加载报修成功，数量:", result.data.length)
         setRepairs(result.data || [])
       } else {
         console.error("[Admin Dashboard] 加载报修失败:", result.error || "未知错误")
@@ -2433,11 +2434,47 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={order.id}
-                      className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+                      className={`p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer hover:border-blue-500/50 ${
                         isPending 
                           ? getOrderStatusStyle(order.status) + " animate-pulse-subtle"
                           : "border-slate-700/50 bg-slate-800/50"
                       }`}
+                      onClick={async () => {
+                        // 根据订单类型跳转到相应的管理页面
+                        if (order.service_type === "维修服务") {
+                          // 跳转到报修管理
+                          setActiveMenu("repairs")
+                          // 加载报修列表，然后打开详情
+                          try {
+                            await loadRepairs()
+                            // 使用 setTimeout 确保状态已更新
+                            setTimeout(() => {
+                              // 重新获取最新的 repairs 状态
+                              fetch(`/api/repair/list`)
+                                .then((res) => res.json())
+                                .then((result) => {
+                                  if (result.success && result.data) {
+                                    const repair = result.data.find((r: any) => r.id === order.id)
+                                    if (repair) {
+                                      setSelectedRepair(repair)
+                                      setRepairUpdateStatus(repair.status)
+                                      setRepairUpdateAmount(repair.amount?.toString() || "")
+                                      setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+                                      setIsRepairDetailDialogOpen(true)
+                                    } else {
+                                      console.warn("[Admin Dashboard] 未找到对应的报修订单:", order.id)
+                                    }
+                                  }
+                                })
+                            }, 300)
+                          } catch (error) {
+                            console.error("[Admin Dashboard] 加载报修失败:", error)
+                          }
+                        } else {
+                          // 其他类型的订单，可以跳转到订单管理或显示提示
+                          alert(`订单类型: ${order.service_type}\n订单ID: ${order.id}\n状态: ${order.status}`)
+                        }
+                      }}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
