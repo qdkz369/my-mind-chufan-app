@@ -20,16 +20,16 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
     const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
 
-    // 构建查询
+    // 构建查询 - 使用 ilike 进行模糊匹配，兼容可能的变体
     let query = supabase
       .from("orders")
       .select(
         "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, restaurants(id, name, address, contact_phone, contact_name)"
       )
-      .eq("service_type", "维修服务") // 只查询维修服务订单（使用精确匹配）
+      .or("service_type.ilike.%维修%,service_type.eq.维修服务") // 使用 ilike 匹配包含"维修"的订单，或精确匹配"维修服务"
     
     // 调试：记录查询条件
-    console.log("[报修列表API] 查询条件: service_type=维修服务", status ? `status=${status}` : "")
+    console.log("[报修列表API] 查询条件: service_type包含'维修'", status ? `status=${status}` : "")
 
     // 如果请求头中包含worker_id，验证维修工权限
     const workerId = request.headers.get("x-worker-id")

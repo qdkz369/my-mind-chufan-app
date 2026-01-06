@@ -173,6 +173,8 @@ export default function AdminDashboard() {
   const [activeMenu, setActiveMenu] = useState("dashboard")
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [orderServiceTypeFilter, setOrderServiceTypeFilter] = useState<string>("all") // 订单服务类型筛选：all, 维修服务, 燃料配送, 设备租赁
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all") // 订单状态筛选
   const [workers, setWorkers] = useState<Worker[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [apiConfigs, setApiConfigs] = useState<ApiConfig[]>([])
@@ -665,6 +667,7 @@ export default function AdminDashboard() {
   }, [supabase, mapLoaded, updateRestaurantCoordinates])
 
   // 加载订单数据
+  // 加载最近订单（用于工作台显示）
   const loadRecentOrders = useCallback(async () => {
     if (!supabase) return
 
@@ -712,7 +715,6 @@ export default function AdminDashboard() {
           worker_id: order.worker_id,
         }))
         setRecentOrders(formattedOrders)
-        setOrders(formattedOrders)
       }
     } catch (error) {
       console.error("[Admin Dashboard] 加载订单时出错:", error)
@@ -720,6 +722,76 @@ export default function AdminDashboard() {
       setIsLoadingOrders(false)
     }
   }, [])
+
+  // 加载所有订单（用于订单管理页面）
+  const loadAllOrders = useCallback(async () => {
+    if (!supabase) return
+
+    try {
+      setIsLoadingOrders(true)
+      
+      let query = supabase
+        .from("orders")
+        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, worker_id, assigned_to, description")
+        .order("created_at", { ascending: false })
+
+      // 服务类型筛选
+      if (orderServiceTypeFilter !== "all") {
+        query = query.eq("service_type", orderServiceTypeFilter)
+      }
+
+      // 状态筛选
+      if (orderStatusFilter !== "all") {
+        query = query.eq("status", orderStatusFilter)
+      }
+
+      const { data: ordersData, error: ordersError } = await query
+
+      if (ordersError) {
+        console.error("[Admin Dashboard] 加载所有订单失败:", ordersError)
+        setOrders([])
+        return
+      }
+
+      if (ordersData) {
+        const restaurantIds = [...new Set(ordersData.map((o: any) => o.restaurant_id).filter(Boolean))]
+        let restaurantMap: Record<string, string> = {}
+        
+        if (restaurantIds.length > 0) {
+          const { data: restaurantsData } = await supabase
+            .from("restaurants")
+            .select("id, name")
+            .in("id", restaurantIds)
+          
+          if (restaurantsData) {
+            restaurantMap = restaurantsData.reduce((acc: Record<string, string>, r: any) => {
+              acc[r.id] = r.name
+              return acc
+            }, {})
+          }
+        }
+
+        const formattedOrders: Order[] = ordersData.map((order: any) => ({
+          id: order.id,
+          restaurant_id: order.restaurant_id,
+          restaurant_name: restaurantMap[order.restaurant_id] || "未知餐厅",
+          service_type: order.service_type || "燃料配送",
+          status: order.status || "pending",
+          amount: order.amount || 0,
+          created_at: order.created_at,
+          updated_at: order.updated_at,
+          worker_id: order.worker_id || order.assigned_to,
+        }))
+        setOrders(formattedOrders)
+        console.log("[Admin Dashboard] 加载所有订单成功，数量:", formattedOrders.length)
+      }
+    } catch (error) {
+      console.error("[Admin Dashboard] 加载所有订单时出错:", error)
+      setOrders([])
+    } finally {
+      setIsLoadingOrders(false)
+    }
+  }, [orderServiceTypeFilter, orderStatusFilter])
 
   // 加载报修数据
   const loadRepairs = useCallback(async () => {
@@ -788,6 +860,13 @@ export default function AdminDashboard() {
       loadRepairs()
     }
   }, [activeMenu, repairStatusFilter, loadRepairs])
+
+  // 当切换到订单管理或筛选条件改变时加载数据
+  useEffect(() => {
+    if (activeMenu === "orders") {
+      loadAllOrders()
+    }
+  }, [activeMenu, orderServiceTypeFilter, orderStatusFilter, loadAllOrders])
 
   // 实时推送：监听维修工单变化
   useEffect(() => {
@@ -2580,15 +2659,46 @@ export default function AdminDashboard() {
 
   // 渲染订单管理
   const renderOrders = () => {
+    // 按服务类型分类
+    const repairOrders = orders.filter((o) => o.service_type?.includes("维修") || o.service_type === "维修服务")
+    const deliveryOrders = orders.filter((o) => o.service_type?.includes("配送") || o.service_type === "燃料配送")
+    const otherOrders = orders.filter((o) => {
+      const serviceType = o.service_type || ""
+      return !serviceType.includes("维修") && !serviceType.includes("配送") && serviceType !== "维修服务" && serviceType !== "燃料配送"
+    })
+
+    // 按状态分类
     const pendingOrders = orders.filter((o) => o.status === "pending" || o.status === "待处理")
-    const deliveringOrders = orders.filter((o) => o.status === "delivering" || o.status === "配送中" || o.status === "进行中")
+    const deliveringOrders = orders.filter((o) => o.status === "delivering" || o.status === "配送中" || o.status === "进行中" || o.status === "processing")
     const completedOrders = orders.filter((o) => o.status === "completed" || o.status === "已完成")
+
+    // 根据筛选条件显示订单
+    const displayOrders = orderServiceTypeFilter === "all" 
+      ? orders 
+      : orderServiceTypeFilter === "维修服务"
+        ? repairOrders
+        : orderServiceTypeFilter === "燃料配送"
+          ? deliveryOrders
+          : otherOrders
+
+    // 获取服务类型标签和颜色
+    const getServiceTypeBadge = (serviceType: string) => {
+      if (serviceType?.includes("维修") || serviceType === "维修服务") {
+        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">维修服务</Badge>
+      } else if (serviceType?.includes("配送") || serviceType === "燃料配送") {
+        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">燃料配送</Badge>
+      } else if (serviceType?.includes("租赁") || serviceType?.includes("设备")) {
+        return <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs">{serviceType}</Badge>
+      } else {
+        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30 text-xs">{serviceType || "其他"}</Badge>
+      }
+    }
 
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">订单管理</h1>
-          <p className="text-slate-400">管理所有订单和配送状态</p>
+          <p className="text-slate-400">按业务类型管理所有订单</p>
         </div>
 
         {/* 订单统计 */}
@@ -2607,7 +2717,7 @@ export default function AdminDashboard() {
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
-              <CardDescription className="text-slate-400">配送中</CardDescription>
+              <CardDescription className="text-slate-400">进行中</CardDescription>
               <CardTitle className="text-3xl text-blue-400">{deliveringOrders.length}</CardTitle>
             </CardHeader>
           </Card>
@@ -2619,11 +2729,77 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
+        {/* 业务类型统计 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="bg-gradient-to-br from-red-900/30 to-red-950/50 border-red-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-red-300">维修服务订单</CardDescription>
+              <CardTitle className="text-2xl text-red-400">{repairOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-blue-900/30 to-blue-950/50 border-blue-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-blue-300">燃料配送订单</CardDescription>
+              <CardTitle className="text-2xl text-blue-400">{deliveryOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-purple-900/30 to-purple-950/50 border-purple-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-purple-300">其他订单</CardDescription>
+              <CardTitle className="text-2xl text-purple-400">{otherOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* 筛选器 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white">筛选条件</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-400">服务类型:</label>
+                <Select value={orderServiceTypeFilter} onValueChange={setOrderServiceTypeFilter}>
+                  <SelectTrigger className="w-[180px] bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="选择服务类型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部订单</SelectItem>
+                    <SelectItem value="维修服务">维修服务</SelectItem>
+                    <SelectItem value="燃料配送">燃料配送</SelectItem>
+                    <SelectItem value="其他">其他订单</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-400">订单状态:</label>
+                <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
+                  <SelectTrigger className="w-[180px] bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="选择状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部状态</SelectItem>
+                    <SelectItem value="pending">待处理</SelectItem>
+                    <SelectItem value="delivering">进行中</SelectItem>
+                    <SelectItem value="processing">处理中</SelectItem>
+                    <SelectItem value="completed">已完成</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* 订单列表 */}
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-white">所有订单</CardTitle>
-            <CardDescription className="text-slate-400">实时订单列表</CardDescription>
+            <CardTitle className="text-white">
+              {orderServiceTypeFilter === "all" ? "所有订单" : orderServiceTypeFilter === "维修服务" ? "维修服务订单" : orderServiceTypeFilter === "燃料配送" ? "燃料配送订单" : "其他订单"}
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              共 {displayOrders.length} 条订单
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingOrders ? (
@@ -2631,23 +2807,47 @@ export default function AdminDashboard() {
                 <div className="inline-block h-6 w-6 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                 <p className="text-slate-400 mt-2 text-sm">加载中...</p>
               </div>
-            ) : orders.length === 0 ? (
+            ) : displayOrders.length === 0 ? (
               <div className="text-center py-8">
                 <Package className="h-8 w-8 text-slate-600 mx-auto mb-2" />
                 <p className="text-slate-400 text-sm">暂无订单</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {orders.map((order) => {
+                {displayOrders.map((order) => {
                   const isPending = order.status === "pending" || order.status === "待处理"
                   return (
                     <div
                       key={order.id}
-                      className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+                      className={`p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer hover:border-blue-500/50 ${
                         isPending 
                           ? getOrderStatusStyle(order.status) + " animate-pulse-subtle"
                           : "border-slate-700/50 bg-slate-800/50"
                       }`}
+                      onClick={() => {
+                        // 如果是维修订单，跳转到报修管理
+                        if (order.service_type?.includes("维修") || order.service_type === "维修服务") {
+                          setActiveMenu("repairs")
+                          setTimeout(() => {
+                            loadRepairs().then(() => {
+                              fetch(`/api/repair/list`)
+                                .then((res) => res.json())
+                                .then((result) => {
+                                  if (result.success && result.data) {
+                                    const repair = result.data.find((r: any) => r.id === order.id)
+                                    if (repair) {
+                                      setSelectedRepair(repair)
+                                      setRepairUpdateStatus(repair.status)
+                                      setRepairUpdateAmount(repair.amount?.toString() || "")
+                                      setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+                                      setIsRepairDetailDialogOpen(true)
+                                    }
+                                  }
+                                })
+                            })
+                          }, 300)
+                        }
+                      }}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
@@ -2657,19 +2857,19 @@ export default function AdminDashboard() {
                             <Badge variant="outline" className="text-xs border-slate-600 text-slate-400">
                               {order.id.slice(0, 8)}
                             </Badge>
+                            {getServiceTypeBadge(order.service_type || "")}
                           </div>
-                          <div className="text-sm text-slate-400 ml-6">{order.service_type}</div>
                         </div>
                         <Badge
                           className={
                             isPending
-                              ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                              : order.status === "delivering" || order.status === "配送中"
-                                ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                              ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                              : order.status === "delivering" || order.status === "配送中" || order.status === "processing" || order.status === "进行中"
+                                ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
                                 : "bg-green-500/20 text-green-400 border-green-500/30"
                           }
                         >
-                          {isPending ? "待处理" : order.status === "delivering" || order.status === "配送中" ? "配送中" : "已完成"}
+                          {isPending ? "待处理" : order.status === "delivering" || order.status === "配送中" || order.status === "processing" || order.status === "进行中" ? "进行中" : "已完成"}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700/50">
