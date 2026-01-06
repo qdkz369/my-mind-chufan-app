@@ -27,11 +27,14 @@ export async function POST(request: Request) {
     const worker = authResult.worker
     console.log("[派单API] 权限验证通过，配送员:", worker.name)
     
-    const { order_id, worker_id } = body
+    const { id, order_id, worker_id } = body
 
-    if (!order_id || !worker_id) {
+    // 统一使用 id，兼容 order_id
+    const orderId = id || order_id
+
+    if (!orderId || !worker_id) {
       return NextResponse.json(
-        { error: "缺少必要参数: order_id, worker_id" },
+        { error: "缺少必要参数: id, worker_id" },
         { status: 400 }
       )
     }
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .select("id, status, product_type, assigned_to, worker_id")
-      .eq("id", order_id)
+      .eq("id", orderId)
       .single()
 
     if (orderError || !order) {
@@ -67,7 +70,7 @@ export async function POST(request: Request) {
         worker_id: worker_id, // 兼容旧字段
         updated_at: new Date().toISOString(),
       })
-      .eq("id", order_id)
+      .eq("id", orderId)
       .select("id, status, assigned_to, worker_id, updated_at")
       .single()
 

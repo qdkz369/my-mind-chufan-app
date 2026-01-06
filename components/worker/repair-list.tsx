@@ -253,7 +253,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
         method: "POST",
         headers,
         body: {
-          repair_id: repairId,
+          id: repairId, // 统一使用 id 作为主键标识
           status: "processing",
           worker_id: workerId || undefined,
         },
@@ -305,7 +305,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
         method: "POST",
         headers,
         body: {
-          repair_id: selectedRepair.id,
+          id: selectedRepair.id, // 统一使用 id 作为主键标识
           status: "completed",
           amount: parseFloat(repairAmount),
           worker_id: workerId || undefined,

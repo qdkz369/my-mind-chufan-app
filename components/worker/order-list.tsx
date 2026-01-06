@@ -115,7 +115,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
         method: "POST",
         headers,
         body: {
-          order_id: orderId,
+          id: orderId, // 统一使用 id 作为主键标识
           worker_id: workerId || undefined,
         },
         showToast: true,

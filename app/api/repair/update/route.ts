@@ -29,16 +29,20 @@ export async function POST(request: Request) {
       console.log("[更新报修API] 权限验证通过，工人:", authResult.worker.name)
     }
     const {
-      repair_id, // 报修工单ID
+      id, // 报修工单ID（统一使用 id 作为主键标识）
+      repair_id, // 兼容旧参数名
       status, // 新状态：pending, processing, completed, cancelled
       amount, // 维修金额（可选，完成时必填）
       notes, // 备注（可选）
       assigned_to, // 分配的工人ID（可选）
     } = body
 
-    if (!repair_id) {
+    // 统一使用 id，兼容 repair_id
+    const repairId = id || repair_id
+
+    if (!repairId) {
       return NextResponse.json(
-        { error: "缺少必要参数: repair_id" },
+        { error: "缺少必要参数: id" },
         { status: 400 }
       )
     }
@@ -71,7 +75,7 @@ export async function POST(request: Request) {
     const { data: repair, error: repairError } = await supabase
       .from("orders")
       .select("id, status, service_type")
-      .eq("id", repair_id)
+      .eq("id", repairId)
       .eq("service_type", "维修服务") // 使用精确匹配
       .single()
 
@@ -108,7 +112,7 @@ export async function POST(request: Request) {
     const { data: updatedRepair, error: updateError } = await supabase
       .from("orders")
       .update(updateData)
-      .eq("id", repair_id)
+      .eq("id", repairId)
       .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at")
       .single()
 
