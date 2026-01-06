@@ -899,7 +899,6 @@ export default function AdminDashboard() {
       }
       
       const url = `/api/repair/list${params.toString() ? `?${params.toString()}` : ''}`
-      console.log("[Admin Dashboard] 调用接口:", url)
       
       const response = await fetch(url)
       
@@ -911,23 +910,17 @@ export default function AdminDashboard() {
       
       const result = await response.json()
       
-      // 前端强制调试：打印接口返回结果
-      console.log("[Admin Dashboard] 接口返回结果:", result)
-      
       if (result.success) {
-        // 暴力显示逻辑：移除所有多余的过滤逻辑，直接使用接口返回的数据
+        // 直接使用接口返回的数据，不进行任何额外过滤
         const repairs = result.data || []
         
-        // 前端强制调试：如果接口返回成功但列表依然是空的，显示alert
-        if (repairs.length === 0) {
-          console.warn(`[Admin Dashboard] 匹配到的维修单数量: ${repairs.length}`)
-          console.warn(`[Admin Dashboard] 总订单数: ${result.debug?.totalOrders || 0}`)
-          console.warn(`[Admin Dashboard] 过滤后维修单: ${result.debug?.filteredRepairs || 0}`)
-          console.warn(`[Admin Dashboard] 语音工单: ${result.debug?.audioOrders || 0}`)
-          alert(`匹配到的维修单数量: ${repairs.length}\n总订单数: ${result.debug?.totalOrders || 0}\n过滤后维修单: ${result.debug?.filteredRepairs || 0}\n语音工单: ${result.debug?.audioOrders || 0}`)
-        } else {
-          console.log(`[Admin Dashboard] 匹配到的维修单数量: ${repairs.length}`)
-          console.log(`[Admin Dashboard] 语音工单数量: ${result.debug?.audioOrders || 0}`)
+        // 只在数据为空且调试模式下才输出警告
+        if (repairs.length === 0 && process.env.NODE_ENV === 'development') {
+          console.warn(`[Admin Dashboard] 未匹配到维修单`, {
+            totalOrders: result.debug?.totalOrders || 0,
+            filteredRepairs: result.debug?.filteredRepairs || 0,
+            audioOrders: result.debug?.audioOrders || 0
+          })
         }
         
         // 直接使用接口返回的数据，不进行任何额外过滤
@@ -1969,12 +1962,21 @@ export default function AdminDashboard() {
       )
 
       if (restaurantsWithLocation.length > 0) {
-        // 准备热力图数据
-        const heatmapData = restaurantsWithLocation.map(restaurant => ({
-          lng: restaurant.longitude!,
-          lat: restaurant.latitude!,
-          count: 1, // 每个餐厅的权重
-        }))
+        // 准备热力图数据（确保坐标有效）
+        const heatmapData = restaurantsWithLocation
+          .filter(restaurant => {
+            const lng = restaurant.longitude!
+            const lat = restaurant.latitude!
+            return isFinite(lng) && isFinite(lat) && 
+                   !isNaN(lng) && !isNaN(lat) &&
+                   lng >= -180 && lng <= 180 &&
+                   lat >= -90 && lat <= 90
+          })
+          .map(restaurant => ({
+            lng: restaurant.longitude!,
+            lat: restaurant.latitude!,
+            count: 1, // 每个餐厅的权重
+          }))
 
         // 创建热力图
         if (!heatmapRef.current) {
@@ -2075,22 +2077,32 @@ export default function AdminDashboard() {
 
         // 使用解析后的经纬度（再次验证确保有效）
         // AMap 使用 [经度, 纬度] 格式
-        const markerPosition: [number, number] = [lng, lat]
-        
-        // 最终验证：确保坐标是有效数字
-        if (!isFinite(markerPosition[0]) || !isFinite(markerPosition[1])) {
-          // 静默跳过无效坐标，避免控制台刷屏
+        // 最终验证：确保坐标是有效数字且在合理范围内
+        if (!isFinite(lng) || !isFinite(lat) || 
+            isNaN(lng) || isNaN(lat) ||
+            lng < -180 || lng > 180 || 
+            lat < -90 || lat > 90) {
+          // 静默跳过无效坐标，避免控制台刷屏和地图错误
           return
         }
         
+        const markerPosition: [number, number] = [lng, lat]
+        
         // 移除调试日志，避免控制台刷屏
         // 创建HTML标记
-        const marker = new AMap.Marker({
-          position: markerPosition,
-          content: markerHTML,
-          offset: new AMap.Pixel(-20, -20),
-          zIndex: 100,
-        })
+        let marker: any
+        try {
+          marker = new AMap.Marker({
+            position: markerPosition,
+            content: markerHTML,
+            offset: new AMap.Pixel(-20, -20),
+            zIndex: 100,
+          })
+        } catch (error) {
+          // 捕获创建标记时的错误，避免地图崩溃
+          console.error('[Map] 创建标记失败:', restaurant.name, error)
+          return
+        }
 
         // 创建信息窗口
         const infoWindow = new AMap.InfoWindow({
