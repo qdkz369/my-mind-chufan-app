@@ -570,6 +570,65 @@ export default function AdminDashboard() {
   }, [supabase, geocodeAddress])
 
   // 加载餐厅数据
+  // 网络重试工具函数（仅针对网络错误，不影响业务逻辑）
+  // 这个函数包装 Supabase 查询，在网络错误时自动重试
+  const retryOnNetworkError = async <T extends { data: any; error: any }>(
+    fn: () => Promise<T>,
+    maxRetries: number = 3,
+    delay: number = 1000
+  ): Promise<T> => {
+    let lastResult: T | null = null
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const result = await fn()
+        // Supabase 查询成功，检查是否有错误
+        if (result.error) {
+          // 检查是否是网络错误
+          const errorMessage = result.error.message || String(result.error)
+          const isNetworkError = 
+            errorMessage.includes('Failed to fetch') ||
+            errorMessage.includes('ERR_CONNECTION_CLOSED') ||
+            errorMessage.includes('NetworkError') ||
+            errorMessage.includes('fetch') ||
+            result.error.code === 'ECONNRESET' ||
+            result.error.code === 'ETIMEDOUT'
+          
+          if (isNetworkError && i < maxRetries - 1) {
+            // 网络错误且还有重试机会，等待后重试
+            await new Promise(resolve => setTimeout(resolve, delay * (i + 1)))
+            continue
+          }
+          // 非网络错误或已达到最大重试次数，直接返回结果
+          return result
+        }
+        // 没有错误，直接返回
+        return result
+      } catch (error: any) {
+        // 捕获异常（可能是网络层面的错误）
+        const errorMessage = error?.message || String(error)
+        const isNetworkError = 
+          errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('ERR_CONNECTION_CLOSED') ||
+          errorMessage.includes('NetworkError') ||
+          errorMessage.includes('fetch') ||
+          error?.code === 'ECONNRESET' ||
+          error?.code === 'ETIMEDOUT'
+        
+        if (isNetworkError && i < maxRetries - 1) {
+          // 网络错误且还有重试机会，等待后重试
+          await new Promise(resolve => setTimeout(resolve, delay * (i + 1)))
+          continue
+        }
+        // 非网络错误或已达到最大重试次数，抛出异常
+        throw error
+      }
+    }
+    // 如果所有重试都失败，返回最后一次的结果（如果有）
+    if (lastResult) return lastResult
+    // 否则抛出错误
+    throw new Error('网络请求失败，已重试多次')
+  }
+
   const loadRestaurants = useCallback(async () => {
     try {
       setIsLoading(true)
@@ -579,10 +638,12 @@ export default function AdminDashboard() {
         return
       }
 
-      const { data, error } = await supabase
-        .from("restaurants")
-        .select("id, name, contact_name, contact_phone, total_refilled, status, created_at, latitude, longitude, address, qr_token")
-        .order("created_at", { ascending: false })
+      const { data, error } = await retryOnNetworkError(async () => {
+        return await supabase
+          .from("restaurants")
+          .select("id, name, contact_name, contact_phone, total_refilled, status, created_at, latitude, longitude, address, qr_token")
+          .order("created_at", { ascending: false })
+      })
 
       if (error) {
         console.error("[Admin Dashboard] 加载餐厅数据失败:", error)
@@ -657,11 +718,13 @@ export default function AdminDashboard() {
     try {
       setIsLoadingOrders(true)
       
-      const { data: ordersData, error: ordersError } = await supabase
-        .from("orders")
-        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, worker_id")
-        .order("created_at", { ascending: false })
-        .limit(20)
+      const { data: ordersData, error: ordersError } = await retryOnNetworkError(async () => {
+        return await supabase
+          .from("orders")
+          .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, worker_id")
+          .order("created_at", { ascending: false })
+          .limit(20)
+      })
 
       if (ordersError) {
         console.error("[Admin Dashboard] 加载订单失败:", ordersError)
@@ -728,7 +791,13 @@ export default function AdminDashboard() {
         query = query.eq("status", orderStatusFilter)
       }
 
-      const { data: ordersData, error: ordersError } = await query
+      const { data: ordersData, error: ordersError } = await retryOnNetworkError(async () => {
+        const result = await query
+        if (result.error) {
+          throw result.error
+        }
+        return result
+      })
 
       if (ordersError) {
         console.error("[Admin Dashboard] 加载所有订单失败:", ordersError)
@@ -919,10 +988,12 @@ export default function AdminDashboard() {
     if (!supabase) return
 
     try {
-      const { data, error } = await supabase
-        .from("workers")
-        .select("id, name, phone, worker_type, product_types, status, created_at, updated_at")
-        .order("created_at", { ascending: false })
+      const { data, error } = await retryOnNetworkError(async () => {
+        return await supabase
+          .from("workers")
+          .select("id, name, phone, worker_type, product_types, status, created_at, updated_at")
+          .order("created_at", { ascending: false })
+      })
 
       if (error) {
         console.error("[Admin Dashboard] 加载工人列表失败:", error)
@@ -1303,10 +1374,12 @@ export default function AdminDashboard() {
     if (!supabase) return
 
     try {
-      const { data, error } = await supabase
-        .from("devices")
-        .select("device_id, restaurant_id, model, address, installer, install_date, status")
-        .order("install_date", { ascending: false })
+      const { data, error } = await retryOnNetworkError(async () => {
+        return await supabase
+          .from("devices")
+          .select("device_id, restaurant_id, model, address, installer, install_date, status")
+          .order("install_date", { ascending: false })
+      })
 
       if (error) {
         console.error("[Admin Dashboard] 加载设备列表失败:", error)
