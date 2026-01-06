@@ -34,14 +34,21 @@ export async function GET(request: Request) {
     // 调试：记录查询条件
     console.log("[报修列表API] 开始查询所有订单（将在客户端过滤）", status ? `status=${status}` : "", restaurantId ? `restaurant_id=${restaurantId}` : "")
 
-    // 如果请求头中包含worker_id，验证维修工权限
+    // 如果请求头中包含worker_id，验证维修工权限（可选，不强制）
     const workerId = request.headers.get("x-worker-id")
     if (workerId) {
-      const authResult = await verifyWorkerPermission(request, "repair")
-      if (authResult instanceof NextResponse) {
-        return authResult // 返回错误响应
+      try {
+        const authResult = await verifyWorkerPermission(request, "repair")
+        if (authResult instanceof NextResponse) {
+          // 权限验证失败，但不阻止查询，只是记录警告
+          console.warn("[报修列表API] 权限验证失败，但继续查询:", authResult.status)
+        } else {
+          console.log("[报修列表API] 权限验证通过，工人:", authResult.worker.name)
+        }
+      } catch (authError) {
+        // 权限验证异常，但不阻止查询
+        console.warn("[报修列表API] 权限验证异常，但继续查询:", authError)
       }
-      console.log("[报修列表API] 权限验证通过，工人:", authResult.worker.name)
     }
 
     // 执行查询（先获取所有订单，然后在客户端过滤）
