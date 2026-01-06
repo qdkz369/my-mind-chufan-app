@@ -18,7 +18,7 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
-import { OrderStatus, getOrderStatusLabel } from "@/lib/types/order"
+import { getOrderStatusLabel } from "@/lib/types/order"
 import Link from "next/link"
 
 export default function CustomerConfirmPage() {
@@ -72,9 +72,9 @@ export default function CustomerConfirmPage() {
             return
           }
 
-          // 验证订单状态
-          if (orderData.status !== OrderStatus.PENDING_ACCEPTANCE) {
-            setError(`订单状态为 ${getOrderStatusLabel(orderData.status as OrderStatus)}，无法确认验收`)
+          // 验证订单状态（使用小写字符串）
+          if (orderData.status !== "pending_acceptance") {
+            setError(`订单状态为 ${getOrderStatusLabel(orderData.status as any)}，无法确认验收`)
             setIsLoading(false)
             return
           }
@@ -345,7 +345,7 @@ export default function CustomerConfirmPage() {
                 </div>
               </div>
               <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                {getOrderStatusLabel(order.status as OrderStatus)}
+                {getOrderStatusLabel(order.status as any)}
               </Badge>
             </div>
 

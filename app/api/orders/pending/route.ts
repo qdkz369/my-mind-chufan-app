@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
-import { OrderStatus, ProductType } from "@/lib/types/order"
+import { ProductType } from "@/lib/types/order"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 /**
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       .select(
         "id, restaurant_id, product_type, service_type, status, amount, assigned_to, worker_id, tracking_code, proof_image, customer_confirmed, created_at, updated_at, restaurants(id, name, address, contact_phone)"
       )
-      .in("status", [OrderStatus.PROCESSING, OrderStatus.DELIVERING]) // 待派单或配送中
+      .in("status", ["processing", "delivering"]) // 待派单或配送中（使用小写字符串）
 
     // 如果指定了产品类型，进行筛选
     if (productType) {

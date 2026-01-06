@@ -38,7 +38,7 @@ import { WorkerOrderList } from "@/components/worker/order-list"
 import { WorkerRepairList } from "@/components/worker/repair-list"
 import { QRScanner } from "@/components/worker/qr-scanner"
 import { ImageUploader } from "@/components/worker/image-uploader"
-import { OrderStatus } from "@/lib/types/order"
+// 不再使用 OrderStatus 枚举，统一使用小写字符串
 import { useOfflineSync } from "@/hooks/use-offline-sync"
 import { apiRequest } from "@/lib/api-client"
 
@@ -1210,7 +1210,7 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack, workerId 
           body: JSON.stringify({
             restaurant_id: restaurantInfo.restaurant_id,
             service_type: "设备安装",
-            status: OrderStatus.PENDING_ACCEPTANCE, // 待验收
+            status: "pending_acceptance", // 待验收（使用小写字符串）
             amount: 0, // 安装订单金额为0
           }),
         })

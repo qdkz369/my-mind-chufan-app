@@ -175,8 +175,8 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
   return (
     <div className="space-y-3">
       {orders.map((order) => {
-        const isProcessing = order.status === OrderStatus.PROCESSING
-        const isDelivering = order.status === OrderStatus.DELIVERING
+        const isProcessing = order.status === "processing"  // 使用小写字符串
+        const isDelivering = order.status === "delivering"   // 使用小写字符串
         const canAccept = isProcessing && !order.assigned_to
 
         return (

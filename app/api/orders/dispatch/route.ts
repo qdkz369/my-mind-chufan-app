@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
-import { OrderStatus, canTransitionOrderStatus } from "@/lib/types/order"
+import { canTransitionOrderStatus } from "@/lib/types/order"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 /**
@@ -53,19 +53,19 @@ export async function POST(request: Request) {
       )
     }
 
-    // 验证状态是否可以流转
-    if (!canTransitionOrderStatus(order.status as OrderStatus, OrderStatus.DELIVERING)) {
+    // 验证状态是否可以流转（使用小写字符串）
+    if (!canTransitionOrderStatus(order.status as any, "delivering")) {
       return NextResponse.json(
         { error: `订单状态 ${order.status} 无法流转到 delivering` },
         { status: 400 }
       )
     }
 
-    // 更新订单状态和配送员
+    // 更新订单状态和配送员（使用小写字符串）
     const { data: updatedOrder, error: updateError } = await supabase
       .from("orders")
       .update({
-        status: OrderStatus.DELIVERING,
+        status: "delivering",
         assigned_to: worker_id,
         worker_id: worker_id, // 兼容旧字段
         updated_at: new Date().toISOString(),
