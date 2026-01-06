@@ -154,17 +154,17 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
         throw new Error(queryError.message || "加载维修工单失败")
       }
 
-      // 在客户端过滤维修订单
+      // 在客户端过滤维修订单（使用模糊匹配逻辑）
       let repairOrders = (allOrders || []).filter((order: any) => {
         const serviceType = order.service_type
         if (!serviceType) return false
         
-        // 匹配多种可能的 service_type 值
+        // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
+        const normalizedType = serviceType.toLowerCase()
         const isRepair = 
           serviceType === "维修服务" ||
           serviceType.includes("维修") ||
-          serviceType.toLowerCase().includes("repair") ||
-          serviceType === "repair"
+          normalizedType.includes("repair")
         
         return isRepair
       })

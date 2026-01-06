@@ -907,17 +907,17 @@ export default function AdminDashboard() {
         return
       }
 
-      // 在客户端过滤维修订单
+      // 在客户端过滤维修订单（使用模糊匹配逻辑）
       const repairOrders = (allOrders || []).filter((order: any) => {
         const serviceType = order.service_type
         if (!serviceType) return false
         
-        // 匹配多种可能的 service_type 值
+        // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
+        const normalizedType = serviceType.toLowerCase()
         const isRepair = 
           serviceType === "维修服务" ||
           serviceType.includes("维修") ||
-          serviceType.toLowerCase().includes("repair") ||
-          serviceType === "repair"
+          normalizedType.includes("repair")
         
         return isRepair
       })
@@ -2817,10 +2817,13 @@ export default function AdminDashboard() {
                       }`}
                       onClick={async () => {
                         // 根据订单类型跳转到相应的管理页面
+                        // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
+                        const serviceType = order.service_type || ""
+                        const normalizedType = serviceType.toLowerCase()
                         const isRepairOrder = 
-                          order.service_type === "维修服务" ||
-                          order.service_type?.includes("维修") ||
-                          order.service_type?.toLowerCase().includes("repair")
+                          serviceType === "维修服务" ||
+                          serviceType.includes("维修") ||
+                          normalizedType.includes("repair")
                         
                         if (isRepairOrder) {
                           // 跳转到报修管理，使用URL参数传递ID
@@ -2941,11 +2944,20 @@ export default function AdminDashboard() {
   // 渲染订单管理
   const renderOrders = () => {
     // 按服务类型分类
-    const repairOrders = orders.filter((o) => o.service_type?.includes("维修") || o.service_type === "维修服务")
+    // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
+    const repairOrders = orders.filter((o) => {
+      const serviceType = o.service_type || ""
+      const normalizedType = serviceType.toLowerCase()
+      return serviceType === "维修服务" || serviceType.includes("维修") || normalizedType.includes("repair")
+    })
     const deliveryOrders = orders.filter((o) => o.service_type?.includes("配送") || o.service_type === "燃料配送")
     const otherOrders = orders.filter((o) => {
       const serviceType = o.service_type || ""
-      return !serviceType.includes("维修") && !serviceType.includes("配送") && serviceType !== "维修服务" && serviceType !== "燃料配送"
+      const normalizedType = serviceType.toLowerCase()
+      // 排除维修订单（模糊匹配）和配送订单
+      const isRepair = serviceType === "维修服务" || serviceType.includes("维修") || normalizedType.includes("repair")
+      const isDelivery = serviceType.includes("配送") || serviceType === "燃料配送"
+      return !isRepair && !isDelivery
     })
 
     // 按状态分类
@@ -2964,7 +2976,9 @@ export default function AdminDashboard() {
 
     // 获取服务类型标签和颜色
     const getServiceTypeBadge = (serviceType: string) => {
-      if (serviceType?.includes("维修") || serviceType === "维修服务") {
+      // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
+      const normalizedType = (serviceType || "").toLowerCase()
+      if (serviceType === "维修服务" || serviceType?.includes("维修") || normalizedType.includes("repair")) {
         return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">维修服务</Badge>
       } else if (serviceType?.includes("配送") || serviceType === "燃料配送") {
         return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">燃料配送</Badge>
