@@ -893,24 +893,36 @@ export default function AdminDashboard() {
       setIsLoadingRepairs(true)
       
       // 策略: 先查询所有订单，然后在客户端过滤（最可靠的方式）
+      // 注意：只查询数据库中实际存在的字段，避免查询失败
       const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
         async () => await supabase
           .from("orders")
-          .select("id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url")
+          .select("id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id")
           .order("created_at", { ascending: false })
           .limit(500) // 限制查询最近500条订单
       )
 
+      // 添加详细的错误捕获和提示
       if (allOrdersError) {
         console.error("[Admin Dashboard] 查询所有订单失败:", allOrdersError)
+        const errorMessage = `数据库错误详情: ${allOrdersError.message || "未知错误"} 错误代码: ${allOrdersError.code || "N/A"}`
+        alert(errorMessage)
         setRepairs([])
         return
       }
 
+      // 验证数据是否获取成功
+      console.log("[Admin Dashboard] 原始订单数据:", allOrders)
+      console.log("[Admin Dashboard] 订单数量:", allOrders?.length || 0)
+
       // 在客户端过滤维修订单（使用模糊匹配逻辑）
+      console.log("[Admin Dashboard] 开始过滤维修订单，原始订单数量:", (allOrders || []).length)
       const repairOrders = (allOrders || []).filter((order: any) => {
         const serviceType = order.service_type
-        if (!serviceType) return false
+        if (!serviceType) {
+          console.log("[Admin Dashboard] 订单缺少 service_type:", order.id)
+          return false
+        }
         
         // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
         const normalizedType = serviceType.toLowerCase()
@@ -919,8 +931,13 @@ export default function AdminDashboard() {
           serviceType.includes("维修") ||
           normalizedType.includes("repair")
         
+        if (isRepair) {
+          console.log("[Admin Dashboard] 匹配到维修订单:", order.id, "service_type:", serviceType)
+        }
+        
         return isRepair
       })
+      console.log("[Admin Dashboard] 过滤后的维修订单数量:", repairOrders.length)
       
       // 如果找到了维修订单，应用状态筛选
       let filteredRepairs = repairOrders
@@ -942,6 +959,8 @@ export default function AdminDashboard() {
           
           if (restaurantsError) {
             console.error("[Admin Dashboard] 获取餐厅信息失败:", restaurantsError)
+            const errorMessage = `获取餐厅信息失败: ${restaurantsError.message || "未知错误"} 错误代码: ${restaurantsError.code || "N/A"}`
+            alert(errorMessage)
           }
           
           // 将餐厅信息附加到每个订单

@@ -139,10 +139,11 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
 
       // 构建查询 - 直接使用 Supabase 查询 orders 表
       // 策略：先查询所有维修订单，然后在客户端过滤（更可靠）
+      // 注意：只查询数据库中实际存在的字段，避免查询失败
       let query = supabase
         .from("orders")
         .select(
-          "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url, restaurants(id, name, address, contact_phone, contact_name)"
+          "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, worker_id, restaurants(id, name, address, contact_phone, contact_name)"
         )
         .order("created_at", { ascending: false })
         .limit(500) // 限制查询最近500条订单
@@ -150,14 +151,28 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
       // 执行查询
       const { data: allOrders, error: queryError } = await query
 
+      // 添加详细的错误捕获和提示
       if (queryError) {
-        throw new Error(queryError.message || "加载维修工单失败")
+        const errorMessage = `数据库错误详情: ${queryError.message || "未知错误"} 错误代码: ${queryError.code || "N/A"}`
+        console.error("[工人端] 查询订单失败:", queryError)
+        alert(errorMessage)
+        setError(errorMessage)
+        setIsLoading(false)
+        return
       }
 
+      // 验证数据是否获取成功
+      console.log("[工人端] 原始订单数据:", allOrders)
+      console.log("[工人端] 订单数量:", allOrders?.length || 0)
+
       // 在客户端过滤维修订单（使用模糊匹配逻辑）
+      console.log("[工人端] 开始过滤维修订单，原始订单数量:", (allOrders || []).length)
       let repairOrders = (allOrders || []).filter((order: any) => {
         const serviceType = order.service_type
-        if (!serviceType) return false
+        if (!serviceType) {
+          console.log("[工人端] 订单缺少 service_type:", order.id)
+          return false
+        }
         
         // 模糊匹配逻辑：包含"维修"或"repair"（不区分大小写），或者等于"维修服务"
         const normalizedType = serviceType.toLowerCase()
@@ -166,8 +181,13 @@ export function WorkerRepairList({ workerId, statusFilter = "all" }: RepairListP
           serviceType.includes("维修") ||
           normalizedType.includes("repair")
         
+        if (isRepair) {
+          console.log("[工人端] 匹配到维修订单:", order.id, "service_type:", serviceType)
+        }
+        
         return isRepair
       })
+      console.log("[工人端] 过滤后的维修订单数量:", repairOrders.length)
 
       // 根据状态筛选
       if (statusFilter && statusFilter !== "all") {
