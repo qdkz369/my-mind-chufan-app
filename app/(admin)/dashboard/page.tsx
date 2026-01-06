@@ -3469,20 +3469,23 @@ export default function AdminDashboard() {
                 <div className="space-y-2">
                   <Label className="text-slate-300">问题描述</Label>
                   <div className="bg-slate-800/50 p-3 rounded-lg">
-                    {/* 强制显示音频播放器：只要有 audio_url 就显示 */}
-                    {selectedRepair.audio_url && (
+                    {/* 渲染语音播放器：检查 audio_url 字段，如果有值，必须显示 HTML5 音频播放器 */}
+                    {selectedRepair.audio_url && selectedRepair.audio_url.trim() !== "" && (
                       <div className="mb-3">
                         <audio 
                           controls 
                           src={selectedRepair.audio_url}
-                          className="w-full h-10"
+                          className="w-full mt-2"
                         >
                           您的浏览器不支持音频播放
                         </audio>
                       </div>
                     )}
+                    {/* 处理空描述：如果 description 字段为空，页面上请统一显示 '[语音报修内容]' */}
                     <p className="text-white">
-                      {selectedRepair.description || (selectedRepair.audio_url ? "[语音报修单，请播放上方音频]" : "无描述")}
+                      {selectedRepair.description && selectedRepair.description.trim() !== "" 
+                        ? selectedRepair.description 
+                        : "[语音报修内容]"}
                     </p>
                   </div>
                 </div>
