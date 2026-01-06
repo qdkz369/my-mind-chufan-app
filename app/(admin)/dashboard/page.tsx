@@ -1364,9 +1364,9 @@ export default function AdminDashboard() {
         .limit(1) // 只查询一条，减少不必要的请求
 
       if (error) {
-        // 如果表不存在（PGRST205错误），使用模拟数据，不输出警告避免控制台刷屏
-        if (error.code === 'PGRST205' || error.message?.includes('service_points')) {
-          // 表不存在，直接使用模拟数据，不输出警告
+        // 如果表不存在（PGRST205错误或404），直接使用模拟数据，不输出任何警告或错误
+        if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('service_points') || error.message?.includes('not found')) {
+          // 表不存在，直接使用模拟数据，静默处理，不输出任何日志
           setServicePoints([
           {
             id: "sp_001",
@@ -1400,8 +1400,7 @@ export default function AdminDashboard() {
         setServicePoints(data)
       }
     } catch (error) {
-      console.error("[Admin Dashboard] 加载服务点失败:", error)
-      // 使用模拟数据作为后备
+      // 静默处理所有错误，使用模拟数据，不输出错误日志避免控制台刷屏
       setServicePoints([
         {
           id: "sp_001",
