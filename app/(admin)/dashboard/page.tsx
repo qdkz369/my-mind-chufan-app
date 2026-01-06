@@ -890,212 +890,99 @@ export default function AdminDashboard() {
 
     try {
       setIsLoadingRepairs(true)
+      console.log("[Admin Dashboard] 开始加载维修工单...")
       
-      // 构建查询 - 直接使用 Supabase 查询 orders 表
-      // 使用 .or() 同时匹配精确值和模糊匹配，确保能查询到所有维修订单
-      let query = supabase
-        .from("orders")
-        .select(
-          "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url, restaurants(id, name, address, contact_phone, contact_name)"
-        )
-        .or("service_type.eq.维修服务,service_type.ilike.%维修%") // 同时匹配精确值"维修服务"和包含"维修"的订单
-      
-      // 状态筛选
-      if (repairStatusFilter && repairStatusFilter !== "all") {
-        query = query.eq("status", repairStatusFilter)
-      }
-
-      // 执行查询（使用重试机制）
-      const { data: repairsData, error: queryError } = await retryOnNetworkError(
-        async () => await query.order("created_at", { ascending: false })
+      // 策略1: 先查询所有订单，然后在客户端过滤（最可靠的方式）
+      console.log("[Admin Dashboard] 策略1: 查询所有订单并在客户端过滤...")
+      const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
+        async () => await supabase
+          .from("orders")
+          .select("id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url")
+          .order("created_at", { ascending: false })
+          .limit(500) // 限制查询最近500条订单
       )
 
-      // 调试：如果查询结果为空，检查数据库中实际的 service_type 值
-      if (!queryError && (!repairsData || repairsData.length === 0)) {
-        console.warn("[Admin Dashboard] ⚠️ 未找到维修工单，开始诊断...")
+      if (allOrdersError) {
+        console.error("[Admin Dashboard] 查询所有订单失败:", allOrdersError)
+        setRepairs([])
+        return
+      }
+
+      console.log(`[Admin Dashboard] 查询到 ${allOrders?.length || 0} 条订单`)
+
+      // 在客户端过滤维修订单
+      const repairOrders = (allOrders || []).filter((order: any) => {
+        const serviceType = order.service_type
+        if (!serviceType) return false
         
-        // 先尝试查询所有订单，看看是否有数据
-        const { data: allOrdersSample, error: allOrdersError } = await supabase
-          .from("orders")
-          .select("id, service_type, status, created_at")
-          .order("created_at", { ascending: false })
-          .limit(20)
+        // 匹配多种可能的 service_type 值
+        const isRepair = 
+          serviceType === "维修服务" ||
+          serviceType.includes("维修") ||
+          serviceType.toLowerCase().includes("repair") ||
+          serviceType === "repair"
         
-        if (allOrdersError) {
-          console.error("[Admin Dashboard] 查询所有订单失败:", allOrdersError)
-        } else if (allOrdersSample && allOrdersSample.length > 0) {
-          console.warn("[Admin Dashboard] 最近20条订单的 service_type 值:")
-          const repairOrders = allOrdersSample.filter((o: any) => 
-            o.service_type && (o.service_type.includes("维修") || o.service_type === "维修服务")
+        return isRepair
+      })
+
+      console.log(`[Admin Dashboard] 过滤后找到 ${repairOrders.length} 条维修订单`)
+      
+      // 如果找到了维修订单，应用状态筛选
+      let filteredRepairs = repairOrders
+      if (repairStatusFilter && repairStatusFilter !== "all") {
+        filteredRepairs = repairOrders.filter((r: any) => r.status === repairStatusFilter)
+        console.log(`[Admin Dashboard] 应用状态筛选 "${repairStatusFilter}" 后，剩余 ${filteredRepairs.length} 条订单`)
+      }
+
+      // 获取餐厅信息
+      if (filteredRepairs.length > 0) {
+        const restaurantIds = [...new Set(filteredRepairs.map((r: any) => r.restaurant_id).filter(Boolean))]
+        console.log(`[Admin Dashboard] 需要获取 ${restaurantIds.length} 个餐厅的信息`)
+        
+        if (restaurantIds.length > 0) {
+          const { data: restaurantsData, error: restaurantsError } = await retryOnNetworkError(
+            async () => await supabase
+              .from("restaurants")
+              .select("id, name, address, contact_phone, contact_name")
+              .in("id", restaurantIds)
           )
-          allOrdersSample.forEach((o: any) => {
-            const isRepair = o.service_type && (o.service_type.includes("维修") || o.service_type === "维修服务")
-            console.warn(`  - ID: ${o.id}, service_type: "${o.service_type}", status: ${o.status}${isRepair ? " ✓ (匹配维修)" : ""}`)
-          })
-          console.warn(`[Admin Dashboard] 在最近20条订单中，包含"维修"的订单数量: ${repairOrders.length}`)
           
-          // 如果找到了维修订单但查询失败，尝试直接查询
-          if (repairOrders.length > 0) {
-            console.warn("[Admin Dashboard] 发现维修订单但查询失败，尝试直接查询...")
-            const repairIds = repairOrders.map((o: any) => o.id)
-            const { data: directRepairs } = await supabase
-              .from("orders")
-              .select("*")
-              .in("id", repairIds)
-              .order("created_at", { ascending: false })
-            
-            if (directRepairs && directRepairs.length > 0) {
-              console.warn(`[Admin Dashboard] 直接查询成功，找到 ${directRepairs.length} 条维修订单`)
-              // 处理数据并设置
-              const processedRepairs = directRepairs.map((repair: any) => ({
-                ...repair,
-                restaurant_name: undefined, // 稍后手动获取
-              }))
-              setRepairs(processedRepairs)
-              return
-            }
+          if (restaurantsError) {
+            console.warn("[Admin Dashboard] 获取餐厅信息失败:", restaurantsError)
           }
+          
+          // 将餐厅信息附加到每个订单
+          const restaurantMap = new Map((restaurantsData || []).map((r: any) => [r.id, r]))
+          const processedRepairs = filteredRepairs.map((repair: any) => {
+            const restaurant = restaurantMap.get(repair.restaurant_id)
+            return {
+              ...repair,
+              restaurants: restaurant || null,
+              restaurant_name: restaurant?.name || undefined,
+            }
+          })
+          
+          console.log(`[Admin Dashboard] ✅ 最终加载 ${processedRepairs.length} 条维修工单`)
+          setRepairs(processedRepairs)
+          return
+        }
+      }
+
+      // 如果没有找到维修订单，输出调试信息
+      if (repairOrders.length === 0) {
+        console.warn("[Admin Dashboard] ⚠️ 未找到维修工单")
+        if (allOrders && allOrders.length > 0) {
+          console.warn("[Admin Dashboard] 最近10条订单的 service_type 值:")
+          allOrders.slice(0, 10).forEach((o: any) => {
+            console.warn(`  - ID: ${o.id?.slice(0, 8)}..., service_type: "${o.service_type}", status: ${o.status}`)
+          })
         } else {
           console.warn("[Admin Dashboard] 数据库中没有任何订单")
         }
       }
 
-      // 如果关联查询失败（可能是 restaurants 表不存在或外键关系问题），尝试基础查询
-      if (queryError && (queryError.message?.includes("restaurants") || queryError.code === "PGRST116" || queryError.code === "42P01")) {
-        // 重新构建基础查询（不包含 restaurants 关联）
-        let baseQuery = supabase
-          .from("orders")
-          .select(
-            "id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url"
-          )
-          .or("service_type.eq.维修服务,service_type.ilike.%维修%") // 同时匹配精确值和模糊匹配
-        
-        if (repairStatusFilter && repairStatusFilter !== "all") {
-          baseQuery = baseQuery.eq("status", repairStatusFilter)
-        }
-        
-        const baseResult = await retryOnNetworkError(
-          async () => await baseQuery.order("created_at", { ascending: false })
-        )
-        
-        if (baseResult.error) {
-          console.error("[Admin Dashboard] 基础查询也失败:", baseResult.error)
-          setRepairs([])
-          return
-        }
-        
-        // 如果基础查询成功，手动获取餐厅信息
-        if (baseResult.data && baseResult.data.length > 0) {
-          const restaurantIds = [...new Set(baseResult.data.map((r: any) => r.restaurant_id).filter(Boolean))]
-          if (restaurantIds.length > 0) {
-            const { data: restaurantsData } = await retryOnNetworkError(
-              async () => await supabase
-                .from("restaurants")
-                .select("id, name, address, contact_phone, contact_name")
-                .in("id", restaurantIds)
-            )
-            
-            // 将餐厅信息附加到每个订单，并转换为兼容格式
-            if (restaurantsData) {
-              const restaurantMap = new Map(restaurantsData.map((r: any) => [r.id, r]))
-              const processedRepairs = baseResult.data.map((repair: any) => {
-                const restaurant = restaurantMap.get(repair.restaurant_id)
-                return {
-                  ...repair,
-                  restaurants: restaurant || null,
-                  restaurant_name: restaurant?.name || undefined, // 兼容 Order 接口
-                }
-              })
-              setRepairs(processedRepairs)
-              return
-            }
-          }
-        }
-        
-        setRepairs(baseResult.data || [])
-        return
-      }
+      setRepairs([])
 
-      if (queryError) {
-        console.error("[Admin Dashboard] 加载报修失败:", queryError)
-        setRepairs([])
-        return
-      }
-
-      // 处理数据，确保与 Order 接口兼容
-      let processedRepairs = (repairsData || []).map((repair: any) => {
-        // 如果 restaurants 是对象，提取 restaurant_name
-        const restaurant = repair.restaurants
-        return {
-          ...repair,
-          restaurant_name: restaurant?.name || undefined, // 兼容 Order 接口
-        }
-      })
-
-      // 如果查询结果为空，尝试备用方案：查询所有订单并在客户端过滤
-      if (processedRepairs.length === 0 && !queryError) {
-        console.warn("[Admin Dashboard] 主查询返回空结果，尝试备用查询方案...")
-        const { data: allOrders, error: allOrdersError } = await retryOnNetworkError(
-          async () => await supabase
-            .from("orders")
-            .select("id, restaurant_id, service_type, status, description, amount, urgency, contact_phone, created_at, updated_at, assigned_to, worker_id, audio_url")
-            .order("created_at", { ascending: false })
-            .limit(100) // 限制查询最近100条订单
-        )
-        
-        if (!allOrdersError && allOrders) {
-          // 在客户端过滤维修订单
-          const filteredRepairs = allOrders.filter((order: any) => {
-            const serviceType = order.service_type
-            return serviceType && (
-              serviceType === "维修服务" || 
-              serviceType.includes("维修") ||
-              serviceType.toLowerCase().includes("repair")
-            )
-          })
-          
-          if (filteredRepairs.length > 0) {
-            console.warn(`[Admin Dashboard] 备用查询成功，找到 ${filteredRepairs.length} 条维修订单`)
-            // 获取餐厅信息
-            const restaurantIds = [...new Set(filteredRepairs.map((r: any) => r.restaurant_id).filter(Boolean))]
-            if (restaurantIds.length > 0) {
-              const { data: restaurantsData } = await retryOnNetworkError(
-                async () => await supabase
-                  .from("restaurants")
-                  .select("id, name, address, contact_phone, contact_name")
-                  .in("id", restaurantIds)
-              )
-              
-              if (restaurantsData) {
-                const restaurantMap = new Map(restaurantsData.map((r: any) => [r.id, r]))
-                processedRepairs = filteredRepairs.map((repair: any) => {
-                  const restaurant = restaurantMap.get(repair.restaurant_id)
-                  return {
-                    ...repair,
-                    restaurants: restaurant || null,
-                    restaurant_name: restaurant?.name || undefined,
-                  }
-                })
-              } else {
-                processedRepairs = filteredRepairs.map((repair: any) => ({
-                  ...repair,
-                  restaurants: null,
-                  restaurant_name: undefined,
-                }))
-              }
-            } else {
-              processedRepairs = filteredRepairs.map((repair: any) => ({
-                ...repair,
-                restaurants: null,
-                restaurant_name: undefined,
-              }))
-            }
-          }
-        }
-      }
-
-      console.log(`[Admin Dashboard] 最终加载的维修工单数量: ${processedRepairs.length}`)
-      setRepairs(processedRepairs)
     } catch (error) {
       console.error("[Admin Dashboard] 加载报修时出错:", error)
       if (error instanceof Error) {
