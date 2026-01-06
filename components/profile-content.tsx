@@ -145,16 +145,19 @@ export function ProfileContent() {
           plugins: ['AMap.Geolocation', 'AMap.Geocoder'],
         })
 
-        // 初始化定位插件
+        // 初始化定位插件 - 优化配置以提高精度
         geolocationRef.current = new AMap.Geolocation({
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-          convert: true,
+          enableHighAccuracy: true, // 启用高精度定位
+          timeout: 20000, // 增加超时时间到20秒，给定位更多时间
+          maximumAge: 0, // 不使用缓存，每次都获取最新位置
+          convert: true, // 自动偏移坐标，偏移后的坐标为高德坐标
           showButton: false,
           buttonOffset: new AMap.Pixel(10, 20),
-          zoomToAccuracy: true,
+          zoomToAccuracy: true, // 定位成功后调整地图视野范围使定位位置及精度范围视野内可见
           buttonPosition: 'RB',
+          // 扩展配置：使用GPS定位
+          useNative: true, // 优先使用浏览器原生定位
+          extensions: 'all', // 返回详细信息，包括精度、地址等
         })
 
         // 添加定位成功事件监听
@@ -291,11 +294,133 @@ export function ProfileContent() {
     }
   }
 
-  // 高德地图精确定位
+  // 高德地图精确定位 - 优化版本，提高定位精度
   const handleAMapLocation = async () => {
+    // 首先尝试浏览器原生定位（更精确）
+    if (navigator.geolocation) {
+      try {
+        setIsLocating(true)
+        setLocationError("")
+        
+        // 使用浏览器原生定位获取高精度坐标
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            reject,
+            {
+              enableHighAccuracy: true, // 启用高精度
+              timeout: 20000, // 20秒超时
+              maximumAge: 0, // 不使用缓存
+            }
+          )
+        })
+
+        const { latitude, longitude, accuracy } = position.coords
+        
+        // 验证定位精度：如果精度大于50米，提示用户
+        if (accuracy > 50) {
+          console.warn(`[定位] 定位精度较低: ${accuracy.toFixed(0)}米`)
+        } else {
+          console.log(`[定位] 定位精度良好: ${accuracy.toFixed(0)}米`)
+        }
+
+        // 如果高德地图已加载，使用高德逆地理编码获取地址
+        if (amapLoaded && geocoderRef.current) {
+          try {
+            const AMap = (window as any).AMap
+            const lngLat = new AMap.LngLat(longitude, latitude)
+            
+            // 使用高德逆地理编码获取详细地址
+            geocoderRef.current.getAddress(lngLat, (geocodeStatus: string, geocodeResult: any) => {
+              if (geocodeStatus === 'complete' && geocodeResult && geocodeResult.info === 'OK' && geocodeResult.regeocode) {
+                // 优先使用格式化地址
+                let address = geocodeResult.regeocode.formattedAddress
+                
+                // 如果格式化地址为空，尝试从地址组件构建更详细的地址
+                if (!address && geocodeResult.regeocode.addressComponent) {
+                  const addrComp = geocodeResult.regeocode.addressComponent
+                  const parts = [
+                    addrComp.province,
+                    addrComp.city,
+                    addrComp.district,
+                    addrComp.township,
+                    addrComp.neighborhood || addrComp.building,
+                    addrComp.street,
+                    addrComp.streetNumber
+                  ].filter(Boolean)
+                  address = parts.join('')
+                }
+                
+                // 如果还是没有地址，使用坐标
+                if (!address || address.trim() === '') {
+                  address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+                }
+
+                setFormData(prev => ({
+                  ...prev,
+                  latitude,
+                  longitude,
+                  address: address,
+                }))
+                setLocationError("")
+                setIsLocating(false)
+                return
+              } else {
+                // 逆地理编码失败，但坐标已获取，保存坐标
+                setFormData(prev => ({
+                  ...prev,
+                  latitude,
+                  longitude,
+                  address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+                }))
+                setLocationError("地址解析失败，已保存坐标")
+                setIsLocating(false)
+                return
+              }
+            })
+          } catch (error) {
+            console.error('[定位] 高德逆地理编码异常:', error)
+            // 即使逆地理编码失败，也保存坐标
+            setFormData(prev => ({
+              ...prev,
+              latitude,
+              longitude,
+              address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+            }))
+            setLocationError("地址解析异常，已保存坐标")
+            setIsLocating(false)
+            return
+          }
+        } else {
+          // 高德地图未加载，直接保存坐标
+          setFormData(prev => ({
+            ...prev,
+            latitude,
+            longitude,
+            address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+          }))
+          setLocationError("地图服务未加载，已保存坐标")
+          setIsLocating(false)
+          return
+        }
+      } catch (error: any) {
+        console.error('[定位] 浏览器原生定位失败:', error)
+        // 浏览器定位失败，降级使用高德定位
+        if (amapLoaded && geolocationRef.current) {
+          // 继续使用高德定位
+        } else {
+          setLocationError("定位失败，请检查定位权限或稍后重试")
+          setIsLocating(false)
+          return
+        }
+      }
+    }
+
+    // 降级方案：使用高德地图定位
     if (!amapLoaded || !geolocationRef.current || !geocoderRef.current) {
       setLocationError("地图服务未加载完成，请稍候再试")
       console.warn('[定位] 地图服务未就绪:', { amapLoaded, geolocation: !!geolocationRef.current, geocoder: !!geocoderRef.current })
+      setIsLocating(false)
       return
     }
 
@@ -316,7 +441,7 @@ export function ProfileContent() {
           geolocationRef.current.off('error')
         }
       }
-    }, 15000) // 15秒超时
+    }, 25000) // 25秒超时
 
     try {
       console.log('[定位] 开始定位...')
@@ -331,8 +456,28 @@ export function ProfileContent() {
         if (data && data.position) {
           const longitude = data.position.lng || data.position.longitude
           const latitude = data.position.lat || data.position.latitude
+          
+          // 验证坐标有效性
+          if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
+            console.error('[定位] 坐标无效:', { latitude, longitude })
+            setLocationError("获取的坐标无效，请重试")
+            setIsLocating(false)
+            if (geolocationRef.current) {
+              geolocationRef.current.off('complete', handleComplete)
+              geolocationRef.current.off('error', handleError)
+            }
+            return
+          }
 
-          console.log('[定位] 获取到坐标:', { latitude, longitude })
+          // 检查定位精度（如果可用）
+          const accuracy = data.accuracy || data.position.accuracy
+          if (accuracy && accuracy > 100) {
+            console.warn(`[定位] 定位精度较低: ${accuracy.toFixed(0)}米`)
+          } else if (accuracy) {
+            console.log(`[定位] 定位精度: ${accuracy.toFixed(0)}米`)
+          }
+
+          console.log('[定位] 获取到坐标:', { latitude, longitude, accuracy })
 
           // 使用逆地理编码将坐标转换为地址
           // 高德地图的 getAddress 方法需要传入 LngLat 对象
