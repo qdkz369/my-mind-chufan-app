@@ -201,7 +201,7 @@ export default function AdminDashboard() {
   const [isUpdatingRepair, setIsUpdatingRepair] = useState(false)
   const [repairUpdateAmount, setRepairUpdateAmount] = useState<string>("")
   const [repairUpdateStatus, setRepairUpdateStatus] = useState<string>("")
-  const [repairAssignedWorker, setRepairAssignedWorker] = useState<string>("") // 分配的工人ID
+  const [repairAssignedWorker, setRepairAssignedWorker] = useState<string>("none") // 分配的工人ID，"none"表示不分配
   const [isAddWorkerDialogOpen, setIsAddWorkerDialogOpen] = useState(false)
   const [newWorker, setNewWorker] = useState<{
     name: string
@@ -1041,7 +1041,7 @@ export default function AdminDashboard() {
       setSelectedRepair(null)
       setRepairUpdateAmount("")
       setRepairUpdateStatus("")
-      setRepairAssignedWorker("")
+      setRepairAssignedWorker("none")
       
       // 显示成功提示
       if (status === "completed") {
@@ -1074,7 +1074,7 @@ export default function AdminDashboard() {
           setSelectedRepair(repair)
           setRepairUpdateStatus(repair.status)
           setRepairUpdateAmount(repair.amount?.toString() || "")
-          setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "")
+          setRepairAssignedWorker(repair.assigned_to || repair.worker_id || "none")
           setIsRepairDetailDialogOpen(true)
           // 清除URL参数
           if (typeof window !== 'undefined') {
@@ -3675,7 +3675,7 @@ export default function AdminDashboard() {
                       <SelectValue placeholder="选择工人（可选）" />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-700">
-                      <SelectItem value="" className="text-white hover:bg-slate-700">
+                      <SelectItem value="none" className="text-white hover:bg-slate-700">
                         不分配
                       </SelectItem>
                       {workers
@@ -3753,7 +3753,9 @@ export default function AdminDashboard() {
                     return
                   }
                   const amount = repairUpdateStatus === "completed" ? parseFloat(repairUpdateAmount) : undefined
-                  updateRepairStatus(selectedRepair.id, repairUpdateStatus, amount, repairAssignedWorker || undefined)
+                  // 如果选择的是"不分配"（"none"），则传递 undefined
+                  const assignedTo = repairAssignedWorker === "none" ? undefined : repairAssignedWorker
+                  updateRepairStatus(selectedRepair.id, repairUpdateStatus, amount, assignedTo)
                 }}
                 disabled={isUpdatingRepair || !repairUpdateStatus}
                 className="bg-purple-600 hover:bg-purple-700 text-white"
