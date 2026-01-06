@@ -1175,6 +1175,19 @@ function IoTDashboard() {
         return
       }
 
+      // 获取当前用户ID（用于 RLS 策略）
+      let userId: string | null = null
+      try {
+        if (supabase) {
+          const { data: { user }, error: userError } = await supabase.auth.getUser()
+          if (!userError && user) {
+            userId = user.id
+          }
+        }
+      } catch (userErr) {
+        console.warn("[报修提交] 无法获取用户ID:", userErr)
+      }
+
       const response = await fetch("/api/repair/create", {
         method: "POST",
         headers: {
@@ -1186,6 +1199,7 @@ function IoTDashboard() {
           description: descriptionText,
           urgency: repairUrgency,
           audio_url: audioUrlToSubmit || undefined,
+          user_id: userId || undefined, // 传递用户ID（如果获取到）
         }),
       })
 

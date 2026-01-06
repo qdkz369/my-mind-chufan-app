@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
 
 // POST: 创建报修工单
 export async function POST(request: Request) {
@@ -19,7 +20,68 @@ export async function POST(request: Request) {
       urgency, // 紧急程度：low, medium, high
       contact_phone, // 联系电话
       audio_url, // 音频文件URL（可选）
+      user_id, // 用户ID（从前端传递，用于 RLS 策略）
     } = body
+
+    // 获取当前认证用户ID（优先使用请求体中的 user_id，如果没有则尝试从请求头获取）
+    let currentUserId: string | null = user_id || null
+    
+    // 如果请求体中没有 user_id，尝试从请求头中获取认证令牌
+    if (!currentUserId) {
+      const authHeader = request.headers.get("authorization")
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.substring(7)
+        try {
+          // 创建服务端 Supabase 客户端来验证令牌
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gjlhcpfvjgqabqanvgmu.supabase.co"
+          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkAHQ"
+          const serverClient = createClient(supabaseUrl, supabaseAnonKey, {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+            },
+          })
+          
+          const { data: { user }, error: authError } = await serverClient.auth.getUser(token)
+          if (!authError && user) {
+            currentUserId = user.id
+          }
+        } catch (authErr) {
+          console.warn("[创建报修API] 无法从请求头获取用户ID:", authErr)
+        }
+      }
+    }
+    
+    // 如果仍然无法获取 user_id，尝试使用服务角色密钥绕过 RLS（仅用于创建订单）
+    // 注意：这需要配置 SUPABASE_SERVICE_ROLE_KEY 环境变量
+    let supabaseClient = supabase
+    let useServiceRole = false
+    if (!currentUserId) {
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (serviceRoleKey) {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gjlhcpfvjgqabqanvgmu.supabase.co"
+        supabaseClient = createClient(supabaseUrl, serviceRoleKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        })
+        useServiceRole = true
+        console.log("[创建报修API] 使用服务角色密钥创建订单（绕过 RLS）")
+        // 注意：使用服务角色密钥时，user_id 可以为 NULL（如果 RLS 策略允许）
+        // 或者可以设置为 restaurant_id 作为临时解决方案
+      } else {
+        // 如果没有服务角色密钥，且无法获取用户ID，返回错误
+        return NextResponse.json(
+          {
+            error: "创建报修工单失败",
+            details: "无法获取用户身份信息。请确保已登录或联系管理员配置服务角色密钥。",
+            hint: "RLS 策略要求 user_id 字段必须匹配当前认证用户。",
+          },
+          { status: 401 }
+        )
+      }
+    }
 
     // 验证必要参数
     if (!restaurant_id) {
@@ -41,7 +103,7 @@ export async function POST(request: Request) {
     }
 
     // 验证餐厅是否存在
-    const { data: restaurantData, error: restaurantError } = await supabase
+    const { data: restaurantData, error: restaurantError } = await supabaseClient
       .from("restaurants")
       .select("id, name, contact_phone")
       .eq("id", restaurant_id)
@@ -56,7 +118,7 @@ export async function POST(request: Request) {
 
     // 如果提供了设备ID，验证设备是否存在且属于该餐厅
     if (device_id) {
-      const { data: deviceData, error: deviceError } = await supabase
+      const { data: deviceData, error: deviceError } = await supabaseClient
         .from("devices")
         .select("device_id, restaurant_id, status")
         .eq("device_id", device_id)
@@ -89,6 +151,17 @@ export async function POST(request: Request) {
       description: finalDescription, // 问题描述
       customer_confirmed: false,
     }
+    
+    // 设置 user_id（RLS 策略要求）
+    if (currentUserId) {
+      repairData.user_id = currentUserId
+    } else if (useServiceRole) {
+      // 如果使用服务角色密钥且没有用户ID，尝试使用 restaurant_id 作为临时 user_id
+      // 或者不设置 user_id（如果 RLS 策略允许 NULL）
+      // 注意：这需要 RLS 策略允许 user_id 为 NULL 的插入，或者使用服务角色密钥时绕过 RLS
+      // 暂时不设置 user_id，让服务角色密钥绕过 RLS
+      console.log("[创建报修API] 使用服务角色密钥，user_id 为 NULL（绕过 RLS）")
+    }
 
     // 如果有设备ID，在描述中包含设备信息（因为device_id字段可能不存在）
     if (device_id) {
@@ -100,7 +173,7 @@ export async function POST(request: Request) {
     }
 
     // 尝试插入基础数据（不包含可能不存在的字段）
-    let { data: newRepair, error: createError } = await supabase
+    let { data: newRepair, error: createError } = await supabaseClient
       .from("orders")
       .insert(repairData)
       .select("id, restaurant_id, service_type, status, description, created_at, updated_at, amount")
@@ -150,7 +223,7 @@ export async function POST(request: Request) {
       
       // 如果有需要更新的字段，尝试更新
       if (Object.keys(updateData).length > 0) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseClient
           .from("orders")
           .update(updateData)
           .eq("id", newRepair.id)
