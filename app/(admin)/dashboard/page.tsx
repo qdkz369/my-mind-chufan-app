@@ -361,7 +361,7 @@ export default function AdminDashboard() {
         if (AMap.plugin) {
           AMap.plugin('AMap.Geocoder', () => {
             if (AMap.Geocoder) {
-              console.log('[地理编码] Geocoder 插件加载成功')
+              // 移除调试日志，避免控制台刷屏
               // 重新调用地理编码
               geocodeAddress(address).then(resolve)
             } else {
@@ -382,7 +382,7 @@ export default function AdminDashboard() {
 
       // 生成地址降级列表
       const addressFallbacks = generateAddressFallbacks(address)
-      console.log('[地理编码] 尝试地址列表:', addressFallbacks)
+      // 移除调试日志，避免控制台刷屏
 
       let currentIndex = 0
 
@@ -392,7 +392,7 @@ export default function AdminDashboard() {
           if (status === 'complete' && result.geocodes && result.geocodes.length > 0) {
             const location = result.geocodes[0].location
             if (location && location.lat && location.lng) {
-              console.log('[地理编码] 成功:', addr, '->', { latitude: location.lat, longitude: location.lng })
+              // 移除调试日志，避免控制台刷屏
               resolve({
                 latitude: location.lat,
                 longitude: location.lng,
@@ -404,11 +404,11 @@ export default function AdminDashboard() {
           // 当前地址失败，尝试下一个降级地址
           currentIndex++
           if (currentIndex < addressFallbacks.length) {
-            console.log(`[地理编码] "${addr}" 失败，尝试降级地址: "${addressFallbacks[currentIndex]}"`)
+            // 移除调试日志，避免控制台刷屏
             tryGeocode(addressFallbacks[currentIndex])
           } else {
             // 所有地址都失败，尝试POI搜索
-            console.log('[地理编码] 所有地址都失败，尝试POI搜索:', address)
+            // 移除调试日志，避免控制台刷屏
             tryPOISearch(address)
           }
         })
@@ -422,7 +422,7 @@ export default function AdminDashboard() {
           if (AMap.plugin) {
             AMap.plugin('AMap.PlaceSearch', () => {
               if (AMap.PlaceSearch) {
-                console.log('[地理编码] PlaceSearch 插件加载成功')
+                // 移除调试日志，避免控制台刷屏
                 // 重新尝试 POI 搜索
                 tryPOISearch(searchText)
               } else {
@@ -448,12 +448,7 @@ export default function AdminDashboard() {
           if (status === 'complete' && result.poiList && result.poiList.pois && result.poiList.pois.length > 0) {
             const poi = result.poiList.pois[0]
             if (poi.location && poi.location.lat && poi.location.lng) {
-              console.log('[地理编码] POI搜索成功:', searchText, '->', { 
-                name: poi.name, 
-                address: poi.address,
-                latitude: poi.location.lat, 
-                longitude: poi.location.lng 
-              })
+              // 移除调试日志，避免控制台刷屏
               resolve({
                 latitude: poi.location.lat,
                 longitude: poi.location.lng,
@@ -465,8 +460,7 @@ export default function AdminDashboard() {
           // POI搜索也失败，尝试使用地址中的关键地名进行POI搜索
           const keyPlaceMatch = searchText.match(/([^省市区县镇乡街道]+(?:村|庄|社区|小区|路|街|巷|弄|公交站))/)
           if (keyPlaceMatch && keyPlaceMatch[1] && keyPlaceMatch[1] !== searchText) {
-            console.log('[地理编码] POI搜索失败，尝试关键地名:', keyPlaceMatch[1])
-            
+            // 移除调试日志，避免控制台刷屏
             // 再次检查 PlaceSearch 是否可用
             if (!AMap.PlaceSearch || typeof AMap.PlaceSearch !== 'function') {
               console.warn('[地理编码] PlaceSearch 插件不可用，跳过关键地名搜索')
@@ -483,12 +477,7 @@ export default function AdminDashboard() {
               if (status2 === 'complete' && result2.poiList && result2.poiList.pois && result2.poiList.pois.length > 0) {
                 const poi = result2.poiList.pois[0]
                 if (poi.location && poi.location.lat && poi.location.lng) {
-                  console.log('[地理编码] 关键地名POI搜索成功:', keyPlaceMatch[1], '->', { 
-                    name: poi.name, 
-                    address: poi.address,
-                    latitude: poi.location.lat, 
-                    longitude: poi.location.lng 
-                  })
+                  // 移除调试日志，避免控制台刷屏
                   resolve({
                     latitude: poi.location.lat,
                     longitude: poi.location.lng,
@@ -1556,11 +1545,7 @@ export default function AdminDashboard() {
     // 如果只有一个餐厅，直接使用该餐厅的坐标
     if (restaurantsWithLocation.length === 1) {
       const firstRestaurant = restaurantsWithLocation[0]
-      console.log('[Map] 只有一个餐厅，聚焦到:', { 
-        center: [firstRestaurant.longitude!, firstRestaurant.latitude!], 
-        zoom: 15,
-        restaurant: firstRestaurant.name 
-      })
+      // 移除调试日志，避免控制台刷屏
       return {
         center: [firstRestaurant.longitude!, firstRestaurant.latitude!] as [number, number],
         zoom: 15
@@ -1584,11 +1569,7 @@ export default function AdminDashboard() {
     // 如果所有餐厅都在同一个位置（范围非常小），使用第一个餐厅的坐标
     if (maxDiff < 0.0001) {
       const firstRestaurant = restaurantsWithLocation[0]
-      console.log('[Map] 所有餐厅位置相同，聚焦到第一个餐厅:', { 
-        center: [firstRestaurant.longitude!, firstRestaurant.latitude!], 
-        zoom: 15,
-        restaurant: firstRestaurant.name 
-      })
+      // 移除调试日志，避免控制台刷屏
       return {
         center: [firstRestaurant.longitude!, firstRestaurant.latitude!] as [number, number],
         zoom: 15
@@ -1618,11 +1599,12 @@ export default function AdminDashboard() {
       zoom = 15 // 范围很小，放大视图
     }
 
-    console.log('[Map] 计算地图中心点（多个餐厅）:', { 
-      center: [centerLng, centerLat], 
-      zoom, 
-      restaurantCount: restaurantsWithLocation.length,
-      range: { lngDiff, latDiff, maxDiff }
+    // 移除调试日志，避免控制台刷屏
+    // 计算地图中心点（多个餐厅）: { 
+    //   center: [centerLng, centerLat], 
+    //   zoom, 
+    //   restaurantCount: restaurantsWithLocation.length,
+    //   range: { lngDiff, latDiff, maxDiff }
     })
 
     return {
@@ -1699,8 +1681,7 @@ export default function AdminDashboard() {
       return
     }
 
-    console.log('[Map] 开始更新标记，当前餐厅数量:', restaurants.length)
-
+    // 移除调试日志，避免控制台刷屏
     // 清除现有标记
     markersRef.current.forEach(marker => {
       map.remove(marker)
@@ -1792,16 +1773,7 @@ export default function AdminDashboard() {
 
       // 为每个餐厅创建标记
       restaurants.forEach(restaurant => {
-        console.log('[Map] 处理餐厅:', restaurant.name, {
-          latitude: restaurant.latitude,
-          longitude: restaurant.longitude,
-          address: restaurant.address,
-          hasLat: !!restaurant.latitude,
-          hasLng: !!restaurant.longitude,
-          latValid: restaurant.latitude && !isNaN(Number(restaurant.latitude)),
-          lngValid: restaurant.longitude && !isNaN(Number(restaurant.longitude))
-        })
-        
+        // 移除详细的调试日志，避免控制台刷屏
         // 检查经纬度是否有效
         const lat = typeof restaurant.latitude === 'number' ? restaurant.latitude : parseFloat(restaurant.latitude as any)
         const lng = typeof restaurant.longitude === 'number' ? restaurant.longitude : parseFloat(restaurant.longitude as any)
@@ -1809,11 +1781,11 @@ export default function AdminDashboard() {
         if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
           // 如果有地址但没有经纬度，尝试地理编码（异步，不阻塞标记创建）
           if (restaurant.address && restaurant.address.trim() !== '' && restaurant.address !== '地址待完善') {
-            console.log('[Map] 餐厅有地址但无经纬度，尝试地理编码:', restaurant.name, restaurant.address)
+            // 移除调试日志，避免控制台刷屏
             // 异步地理编码，不阻塞当前标记创建
             geocodeAddress(restaurant.address).then(location => {
               if (location && supabase) {
-                console.log('[Map] 地理编码成功，获得坐标:', location)
+                // 移除调试日志，避免控制台刷屏
                 // 更新数据库
                 supabase
                   .from("restaurants")
@@ -1825,7 +1797,7 @@ export default function AdminDashboard() {
                   .eq("id", restaurant.id)
                   .then(({ error }) => {
                     if (!error) {
-                      console.log('[Map] 数据库更新成功，餐厅坐标已保存:', restaurant.name)
+                      // 移除调试日志，避免控制台刷屏
                       // 更新本地状态并重新创建标记
                       setRestaurants(prev => prev.map(r => 
                         r.id === restaurant.id 
@@ -1834,7 +1806,7 @@ export default function AdminDashboard() {
                       ))
                       // 触发标记更新
                       setTimeout(() => {
-                        console.log('[Map] 触发标记更新，餐厅:', restaurant.name)
+                        // 移除调试日志，避免控制台刷屏
                         updateMarkers()
                       }, 500)
                     } else {
@@ -1858,8 +1830,7 @@ export default function AdminDashboard() {
 
         // 使用解析后的经纬度
         const markerPosition = [lng, lat]
-        console.log('[Map] 创建标记:', restaurant.name, '位置:', markerPosition)
-
+        // 移除调试日志，避免控制台刷屏
         // 创建HTML标记
         const marker = new AMap.Marker({
           position: markerPosition,
@@ -1930,7 +1901,7 @@ export default function AdminDashboard() {
               if (position) {
                 infoWindow.open(map, position)
                 setSelectedMarkerRestaurant(restaurant)
-                console.log('[Map] 单击显示餐厅信息:', restaurant.name)
+                // 移除调试日志，避免控制台刷屏
               }
             }
             // 重置双击标志
@@ -1972,8 +1943,7 @@ export default function AdminDashboard() {
 
           const position = marker.getPosition()
           if (position) {
-            console.log('[Map] 双击追踪到餐厅:', restaurant.name, '位置:', position)
-            
+            // 移除调试日志，避免控制台刷屏
             // 使用 setZoomAndCenter 实现平滑动画
             // 参数：缩放级别、中心点、是否立即执行（false表示使用动画）
             map.setZoomAndCenter(18, position, false)
@@ -1985,7 +1955,7 @@ export default function AdminDashboard() {
               if (stillDoubleClick) {
                 infoWindow.open(map, position)
                 setSelectedMarkerRestaurant(restaurant)
-                console.log('[Map] 双击后显示餐厅信息:', restaurant.name)
+                // 移除调试日志，避免控制台刷屏
                 // 重置标志
                 markerDoubleClickFlagsRef.current.set(restaurantId, false)
               }
@@ -1999,10 +1969,10 @@ export default function AdminDashboard() {
         
         // 存储标记和信息窗口的映射关系，用于定位功能
         markerMapRef.current.set(restaurant.id, { marker, infoWindow })
-        console.log('[Map] 标记已添加到地图:', restaurant.name, '当前标记总数:', markersRef.current.length)
+        // 移除调试日志，避免控制台刷屏
       })
       
-      console.log('[Map] 标记创建完成，共创建', markersRef.current.length, '个标记，餐厅总数:', restaurants.length)
+      // 移除调试日志，避免控制台刷屏
     }
 
     // 根据状态决定是否绘制服务点范围圆圈
@@ -2051,8 +2021,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      console.log('[Map] 开始初始化地图，容器:', mapContainerRef.current)
-      
+      // 移除调试日志，避免控制台刷屏
       // 计算地图中心点和缩放级别
       const { center, zoom } = calculateMapCenterAndZoom()
       
@@ -2076,7 +2045,7 @@ export default function AdminDashboard() {
           return
         }
 
-        console.log('[Map] 创建地图实例，中心点:', center, '缩放级别:', zoom)
+        // 移除调试日志，避免控制台刷屏
         // 创建地图实例，使用计算出的中心点和缩放级别
         const map = new AMap.Map(mapContainerRef.current, {
           mapStyle: 'amap://styles/darkblue',
@@ -2090,13 +2059,13 @@ export default function AdminDashboard() {
         // 加载必要的地图插件（Geocoder 和 PlaceSearch）
         if (AMap.plugin) {
           AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => {
-            console.log('[Map] 地图插件加载完成 (Geocoder, PlaceSearch)')
+            // 移除调试日志，避免控制台刷屏
           })
         }
 
         // 地图加载完成
         map.on('complete', () => {
-          console.log('[Map] 地图加载完成')
+          // 移除调试日志，避免控制台刷屏
           setMapLoaded(true)
           // 地图加载完成后，尝试更新没有经纬度的餐厅坐标
           // 使用函数式更新，确保获取最新的 restaurants 状态
@@ -2112,7 +2081,7 @@ export default function AdminDashboard() {
 
         // 如果地图已经加载完成
         if (map.getStatus() === 'complete') {
-          console.log('[Map] 地图已加载完成（快速路径）')
+          // 移除调试日志，避免控制台刷屏
           setMapLoaded(true)
         }
       }
@@ -2146,7 +2115,7 @@ export default function AdminDashboard() {
   // 当餐厅、订单、服务点数据或显示状态更新时，更新标记和范围
   useEffect(() => {
     if (mapInstanceRef.current && mapLoaded) {
-      console.log('[Map] 更新标记，餐厅数量:', restaurants.length, '订单数量:', orders.length, '服务点数量:', servicePoints.length, '显示服务点:', showServicePoints, '显示热力图:', showHeatmap)
+      // 移除频繁的调试日志，避免控制台刷屏
       updateMarkers()
       
       // 如果餐厅数据更新后，检查是否有需要地理编码的餐厅
@@ -2158,7 +2127,7 @@ export default function AdminDashboard() {
       )
       
       if (needsGeocode && typeof window !== 'undefined' && (window as any).AMap) {
-        console.log('[Map] 检测到需要地理编码的餐厅，自动处理...')
+        // 移除调试日志，避免控制台刷屏
         setTimeout(() => {
           updateRestaurantCoordinates(restaurants)
         }, 1000)
