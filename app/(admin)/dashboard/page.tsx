@@ -163,6 +163,7 @@ const menuItems = [
   { icon: Users, label: "餐厅管理", key: "restaurants" },
   { icon: Package, label: "订单管理", key: "orders" },
   { icon: Wrench, label: "报修管理", key: "repairs" },
+  { icon: Package, label: "设备租赁管理", key: "equipmentRental" },
   { icon: Wrench, label: "设备监控", key: "devices" },
   { icon: Truck, label: "工人管理", key: "workers" },
   { icon: DollarSign, label: "燃料实时价格监控", key: "fuelPricing" },
@@ -268,6 +269,13 @@ export default function AdminDashboard() {
   ])
   const [isSavingPrice, setIsSavingPrice] = useState(false)
   const [isSyncingPrice, setIsSyncingPrice] = useState(false)
+  
+  // 设备租赁管理相关状态
+  const [rentalOrders, setRentalOrders] = useState<any[]>([])
+  const [isLoadingRentalOrders, setIsLoadingRentalOrders] = useState(false)
+  const [rentalOrderStatusFilter, setRentalOrderStatusFilter] = useState<string>("all")
+  const [selectedRentalOrder, setSelectedRentalOrder] = useState<any | null>(null)
+  const [isRentalOrderDetailDialogOpen, setIsRentalOrderDetailDialogOpen] = useState(false)
   
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
@@ -1091,6 +1099,39 @@ export default function AdminDashboard() {
       loadAllOrders()
     }
   }, [activeMenu, orderServiceTypeFilter, orderStatusFilter, loadAllOrders])
+
+  // 加载设备租赁订单（管理端）
+  const loadRentalOrders = useCallback(async () => {
+    setIsLoadingRentalOrders(true)
+    try {
+      const params = new URLSearchParams()
+      if (rentalOrderStatusFilter && rentalOrderStatusFilter !== "all") {
+        params.append("status", rentalOrderStatusFilter)
+      }
+
+      const response = await fetch(`/api/equipment/rental/admin/list?${params.toString()}`)
+      const result = await response.json()
+      
+      if (result.success) {
+        setRentalOrders(result.data || [])
+      } else {
+        console.error("[设备租赁管理] 加载失败:", result.error)
+        setRentalOrders([])
+      }
+    } catch (err) {
+      console.error("[设备租赁管理] 加载失败:", err)
+      setRentalOrders([])
+    } finally {
+      setIsLoadingRentalOrders(false)
+    }
+  }, [rentalOrderStatusFilter])
+
+  // 当切换到设备租赁管理或筛选条件改变时加载数据
+  useEffect(() => {
+    if (activeMenu === "equipmentRental") {
+      loadRentalOrders()
+    }
+  }, [activeMenu, rentalOrderStatusFilter, loadRentalOrders])
 
   // 实时推送：监听维修工单变化（使用 Supabase Realtime，符合官方最佳实践）
   // 此接口保留用于后期扩展实时派单功能
@@ -3776,6 +3817,401 @@ export default function AdminDashboard() {
     )
   }
 
+  // 渲染设备租赁管理
+  const renderEquipmentRental = () => {
+    const pendingOrders = rentalOrders.filter((o) => o.order_status === "pending")
+    const confirmedOrders = rentalOrders.filter((o) => o.order_status === "confirmed")
+    const activeOrders = rentalOrders.filter((o) => o.order_status === "active")
+    const completedOrders = rentalOrders.filter((o) => o.order_status === "completed")
+    const cancelledOrders = rentalOrders.filter((o) => o.order_status === "cancelled")
+
+    const filteredOrders = rentalOrders.filter((order) => {
+      if (rentalOrderStatusFilter === "all") return true
+      return order.order_status === rentalOrderStatusFilter
+    })
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "pending":
+          return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+        case "confirmed":
+          return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+        case "active":
+          return "bg-green-500/20 text-green-400 border-green-500/30"
+        case "completed":
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+        case "cancelled":
+          return "bg-red-500/20 text-red-400 border-red-500/30"
+        default:
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+      }
+    }
+
+    const getStatusLabel = (status: string) => {
+      switch (status) {
+        case "pending":
+          return "待确认"
+        case "confirmed":
+          return "已确认"
+        case "active":
+          return "租赁中"
+        case "completed":
+          return "已完成"
+        case "cancelled":
+          return "已取消"
+        default:
+          return status
+      }
+    }
+
+    const getPaymentStatusColor = (status: string) => {
+      switch (status) {
+        case "paid":
+          return "bg-green-500/20 text-green-400 border-green-500/30"
+        case "partial":
+          return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+        case "pending":
+          return "bg-orange-500/20 text-orange-400 border-orange-500/30"
+        case "refunded":
+          return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+        default:
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+      }
+    }
+
+    const getPaymentStatusLabel = (status: string) => {
+      switch (status) {
+        case "paid":
+          return "已支付"
+        case "partial":
+          return "部分支付"
+        case "pending":
+          return "待支付"
+        case "refunded":
+          return "已退款"
+        default:
+          return status
+      }
+    }
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">设备租赁管理</h1>
+          <p className="text-slate-400">管理所有设备租赁订单</p>
+        </div>
+
+        {/* 统计卡片 */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">总订单数</CardDescription>
+              <CardTitle className="text-3xl text-white">{rentalOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-yellow-950/90 border-yellow-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">待确认</CardDescription>
+              <CardTitle className="text-3xl text-yellow-400">{pendingOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">租赁中</CardDescription>
+              <CardTitle className="text-3xl text-blue-400">{activeOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">已完成</CardDescription>
+              <CardTitle className="text-3xl text-green-400">{completedOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-slate-400">已取消</CardDescription>
+              <CardTitle className="text-3xl text-red-400">{cancelledOrders.length}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* 筛选器 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-white text-lg">筛选条件</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2.5">
+              {["all", "pending", "confirmed", "active", "completed", "cancelled"].map((status) => (
+                <Button
+                  key={status}
+                  variant={rentalOrderStatusFilter === status ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setRentalOrderStatusFilter(status)}
+                  className={
+                    rentalOrderStatusFilter === status
+                      ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/30 border-0 px-4 h-9 font-medium transition-all"
+                      : "border-slate-600/50 text-slate-300 hover:bg-slate-800/50 hover:border-slate-500 hover:text-white px-4 h-9 font-medium transition-all"
+                  }
+                >
+                  {status === "all" ? "全部" : getStatusLabel(status)}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 订单列表 */}
+        {isLoadingRentalOrders ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-400 mr-2" />
+            <span className="text-slate-400">加载中...</span>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+            <CardContent className="p-8 text-center">
+              <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+              <p className="text-slate-400">暂无租赁订单</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {filteredOrders.map((order) => (
+              <Card
+                key={order.id}
+                className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all cursor-pointer"
+                onClick={() => {
+                  setSelectedRentalOrder(order)
+                  setIsRentalOrderDetailDialogOpen(true)
+                }}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3">
+                        <h3 className="text-lg font-bold text-white">
+                          {order.equipment?.name || "未知设备"}
+                        </h3>
+                        <Badge className={getStatusColor(order.order_status)}>
+                          {getStatusLabel(order.order_status)}
+                        </Badge>
+                        <Badge className={getPaymentStatusColor(order.payment_status)}>
+                          {getPaymentStatusLabel(order.payment_status)}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-slate-400">订单号：</span>
+                          <span className="text-white">{order.order_number}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">餐厅：</span>
+                          <span className="text-white">{order.restaurants?.name || "未知"}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">数量：</span>
+                          <span className="text-white">{order.quantity} 台</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">租期：</span>
+                          <span className="text-white">{order.rental_period} 个月</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">开始日期：</span>
+                          <span className="text-white">{order.start_date}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">结束日期：</span>
+                          <span className="text-white">{order.end_date || "未设置"}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">总金额：</span>
+                          <span className="text-blue-400 font-bold">¥{order.total_amount?.toFixed(2) || "0.00"}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">押金：</span>
+                          <span className="text-white">¥{order.deposit_amount?.toFixed(2) || "0.00"}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <Eye className="h-5 w-5 text-slate-400 ml-4" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* 订单详情对话框 */}
+        <Dialog open={isRentalOrderDetailDialogOpen} onOpenChange={setIsRentalOrderDetailDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">租赁订单详情</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                订单号：{selectedRentalOrder?.order_number}
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedRentalOrder && (
+              <div className="space-y-4">
+                {/* 设备信息 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg">
+                  <h4 className="text-lg font-semibold text-white mb-3">设备信息</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">设备名称：</span>
+                      <span className="text-white">{selectedRentalOrder.equipment?.name || "未知"}</span>
+                    </div>
+                    {selectedRentalOrder.equipment?.brand && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">品牌：</span>
+                        <span className="text-white">{selectedRentalOrder.equipment.brand}</span>
+                      </div>
+                    )}
+                    {selectedRentalOrder.equipment?.model && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">型号：</span>
+                        <span className="text-white">{selectedRentalOrder.equipment.model}</span>
+                      </div>
+                    )}
+                    {selectedRentalOrder.equipment?.equipment_categories && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">分类：</span>
+                        <span className="text-white">{selectedRentalOrder.equipment.equipment_categories.name}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 订单信息 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg">
+                  <h4 className="text-lg font-semibold text-white mb-3">订单信息</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">餐厅：</span>
+                      <span className="text-white">{selectedRentalOrder.restaurants?.name || "未知"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">数量：</span>
+                      <span className="text-white">{selectedRentalOrder.quantity} 台</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">租期：</span>
+                      <span className="text-white">{selectedRentalOrder.rental_period} 个月</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">开始日期：</span>
+                      <span className="text-white">{selectedRentalOrder.start_date}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">结束日期：</span>
+                      <span className="text-white">{selectedRentalOrder.end_date || "未设置"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">订单状态：</span>
+                      <Badge className={getStatusColor(selectedRentalOrder.order_status)}>
+                        {getStatusLabel(selectedRentalOrder.order_status)}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 费用信息 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg">
+                  <h4 className="text-lg font-semibold text-white mb-3">费用信息</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">月租金：</span>
+                      <span className="text-white">¥{selectedRentalOrder.monthly_rental_price?.toFixed(2) || "0.00"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">押金：</span>
+                      <span className="text-white">¥{selectedRentalOrder.deposit_amount?.toFixed(2) || "0.00"}</span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t border-slate-700">
+                      <span className="text-white font-medium">总金额：</span>
+                      <span className="text-blue-400 font-bold text-lg">
+                        ¥{selectedRentalOrder.total_amount?.toFixed(2) || "0.00"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">支付状态：</span>
+                      <Badge className={getPaymentStatusColor(selectedRentalOrder.payment_status)}>
+                        {getPaymentStatusLabel(selectedRentalOrder.payment_status)}
+                      </Badge>
+                    </div>
+                    {selectedRentalOrder.payment_method && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">支付方式：</span>
+                        <span className="text-white">
+                          {selectedRentalOrder.payment_method === "cash" ? "现金支付" :
+                           selectedRentalOrder.payment_method === "alipay" ? "支付宝" :
+                           selectedRentalOrder.payment_method === "wechat" ? "微信支付" :
+                           selectedRentalOrder.payment_method === "bank_transfer" ? "银行转账" :
+                           selectedRentalOrder.payment_method}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 联系信息 */}
+                {(selectedRentalOrder.delivery_address || selectedRentalOrder.contact_phone) && (
+                  <div className="bg-slate-800/50 p-4 rounded-lg">
+                    <h4 className="text-lg font-semibold text-white mb-3">联系信息</h4>
+                    <div className="space-y-2 text-sm">
+                      {selectedRentalOrder.delivery_address && (
+                        <div>
+                          <span className="text-slate-400">配送地址：</span>
+                          <span className="text-white ml-2">{selectedRentalOrder.delivery_address}</span>
+                        </div>
+                      )}
+                      {selectedRentalOrder.contact_phone && (
+                        <div>
+                          <span className="text-slate-400">联系电话：</span>
+                          <span className="text-white ml-2">{selectedRentalOrder.contact_phone}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 备注 */}
+                {selectedRentalOrder.notes && (
+                  <div className="bg-slate-800/50 p-4 rounded-lg">
+                    <h4 className="text-lg font-semibold text-white mb-3">备注</h4>
+                    <p className="text-slate-300 text-sm">{selectedRentalOrder.notes}</p>
+                  </div>
+                )}
+
+                {/* 时间信息 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg">
+                  <h4 className="text-lg font-semibold text-white mb-3">时间信息</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">创建时间：</span>
+                      <span className="text-white">
+                        {new Date(selectedRentalOrder.created_at).toLocaleString("zh-CN")}
+                      </span>
+                    </div>
+                    {selectedRentalOrder.updated_at && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">更新时间：</span>
+                        <span className="text-white">
+                          {new Date(selectedRentalOrder.updated_at).toLocaleString("zh-CN")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
+
   // 渲染设备监控
   const renderDevices = () => {
     return (
@@ -5182,6 +5618,7 @@ export default function AdminDashboard() {
           {activeMenu === "restaurants" && renderRestaurants()}
           {activeMenu === "orders" && renderOrders()}
           {activeMenu === "repairs" && renderRepairs()}
+          {activeMenu === "equipmentRental" && renderEquipmentRental()}
           {activeMenu === "devices" && renderDevices()}
           {activeMenu === "workers" && renderWorkers()}
           {activeMenu === "api" && renderApiConfig()}
