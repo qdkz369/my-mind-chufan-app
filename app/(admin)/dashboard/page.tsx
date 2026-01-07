@@ -4050,12 +4050,12 @@ export default function AdminDashboard() {
 
         {/* 订单列表 */}
         {isLoadingRentalOrders ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-12" key="loading">
             <Loader2 className="h-6 w-6 animate-spin text-blue-400 mr-2" />
             <span className="text-slate-400">加载中...</span>
           </div>
         ) : filteredOrders.length === 0 ? (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+          <Card key="empty" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
             <CardContent className="p-8 text-center">
               <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
               <p className="text-slate-400">
@@ -4064,10 +4064,13 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {filteredOrders.map((order) => (
+          <div key="orders-list" className="space-y-4">
+            {filteredOrders.map((order, index) => {
+              // 确保每个订单都有唯一的 key，使用稳定的标识符
+              const orderKey = order.id || order.order_number || `order-${index}-${order.created_at || Date.now()}`
+              return (
               <Card
-                key={order.id}
+                key={orderKey}
                 className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all cursor-pointer"
                 onClick={() => {
                   setSelectedRentalOrder(order)
@@ -4127,7 +4130,8 @@ export default function AdminDashboard() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              )
+            })}
           </div>
         )}
 
