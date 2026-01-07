@@ -370,6 +370,8 @@ export default function EquipmentRentalPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
+                  id="equipment-search"
+                  name="equipment-search"
                   placeholder="搜索设备名称、品牌、型号..."
                   value={searchKeyword}
                   onChange={(e) => setSearchKeyword(e.target.value)}
@@ -658,6 +660,8 @@ export default function EquipmentRentalPage() {
                     <X className="h-4 w-4" />
                   </Button>
                   <Input
+                    id="rental-quantity"
+                    name="rental-quantity"
                     type="number"
                     value={rentalQuantity}
                     onChange={(e) => {
@@ -697,6 +701,8 @@ export default function EquipmentRentalPage() {
                     <X className="h-4 w-4" />
                   </Button>
                   <Input
+                    id="rental-period"
+                    name="rental-period"
                     type="number"
                     value={rentalPeriod}
                     onChange={(e) => {
@@ -732,6 +738,8 @@ export default function EquipmentRentalPage() {
               <div className="space-y-2">
                 <Label className="text-slate-300">租赁开始日期</Label>
                 <Input
+                  id="start-date"
+                  name="start-date"
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
@@ -744,6 +752,8 @@ export default function EquipmentRentalPage() {
               <div className="space-y-2">
                 <Label className="text-slate-300">配送地址（可选）</Label>
                 <Input
+                  id="delivery-address"
+                  name="delivery-address"
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
                   placeholder="请输入配送地址"
@@ -755,6 +765,8 @@ export default function EquipmentRentalPage() {
               <div className="space-y-2">
                 <Label className="text-slate-300">联系电话（可选）</Label>
                 <Input
+                  id="contact-phone"
+                  name="contact-phone"
                   value={contactPhone}
                   onChange={(e) => setContactPhone(e.target.value)}
                   placeholder="请输入联系电话"
@@ -793,6 +805,8 @@ export default function EquipmentRentalPage() {
               <div className="space-y-2">
                 <Label className="text-slate-300">备注（可选）</Label>
                 <Input
+                  id="rental-notes"
+                  name="rental-notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="请输入备注信息"

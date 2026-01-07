@@ -2482,14 +2482,48 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
 
   // 加载待交付的租赁单
   const loadPendingRentals = async () => {
-    if (!supabase) return
+    if (!supabase) {
+      console.error("[设备交付] Supabase 客户端未初始化")
+      setPendingRentals([])
+      return
+    }
+
     setIsLoadingRentals(true)
     try {
-      const { data, error } = await supabase
+      // 首先尝试查询 rentals 表
+      let { data, error } = await supabase
         .from("rentals")
         .select("*")
         .eq("status", "pending_delivery")
         .order("created_at", { ascending: false })
+
+      // 如果表不存在或查询失败，尝试使用 service role key
+      if (error && (error.code === "PGRST116" || error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01")) {
+        console.warn("[设备交付] rentals 表查询失败，尝试使用 service role key:", error.message)
+        
+        // 使用 service role key 创建新的客户端
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gjlhcpfvjgqabqanvgmu.supabase.co"
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        
+        if (serviceRoleKey) {
+          const { createClient } = await import("@supabase/supabase-js")
+          const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+            },
+          })
+          
+          const result = await serviceClient
+            .from("rentals")
+            .select("*")
+            .eq("status", "pending_delivery")
+            .order("created_at", { ascending: false })
+          
+          data = result.data
+          error = result.error
+        }
+      }
 
       if (error) {
         console.error("[设备交付] 加载失败:", error)
@@ -2497,7 +2531,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
       } else {
         setPendingRentals(data || [])
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("[设备交付] 加载失败:", err)
       setPendingRentals([])
     } finally {

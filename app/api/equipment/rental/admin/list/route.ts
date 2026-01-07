@@ -57,6 +57,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status")
     const restaurantId = searchParams.get("restaurant_id")
 
+    // 首先尝试查询 rental_orders 表，如果不存在则查询 rentals 表
     let query = supabaseClient
       .from("rental_orders")
       .select(`
@@ -95,9 +96,85 @@ export async function GET(request: Request) {
 
     query = query.order("created_at", { ascending: false })
 
-    const { data: orders, error } = await query
+    let { data: orders, error } = await query
 
-    if (error) {
+    // 如果 rental_orders 表不存在，尝试查询 rentals 表作为后备
+    if (error && (error.code === "PGRST116" || error.message?.includes("does not exist") || error.message?.includes("schema cache"))) {
+      console.warn("[设备租赁管理API] rental_orders 表不存在，尝试查询 rentals 表")
+      
+      // 查询 rentals 表（简化版本，不包含关联查询）
+      let rentalsQuery = supabaseClient
+        .from("rentals")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      // 状态映射：rental_orders 的状态 -> rentals 的状态
+      if (status && status !== "all") {
+        const statusMap: Record<string, string> = {
+          "pending": "pending_delivery",
+          "confirmed": "pending_delivery",
+          "active": "active",
+          "completed": "returned",
+          "cancelled": "returned"
+        }
+        const mappedStatus = statusMap[status] || status
+        rentalsQuery = rentalsQuery.eq("status", mappedStatus)
+      }
+
+      const { data: rentalsData, error: rentalsError } = await rentalsQuery
+
+      if (rentalsError) {
+        console.error("[设备租赁管理API] rentals 表查询也失败:", rentalsError)
+        return NextResponse.json(
+          {
+            success: false,
+            error: "获取租赁订单列表失败",
+            details: `rental_orders 表不存在，且 rentals 表查询失败: ${rentalsError.message}`,
+            data: [],
+          },
+          { status: 200 }
+        )
+      }
+
+      // 将 rentals 数据转换为与 rental_orders 兼容的格式
+      orders = (rentalsData || []).map((rental: any) => ({
+        id: rental.id,
+        order_number: `RENTAL-${rental.id.substring(0, 8).toUpperCase()}`,
+        restaurant_id: null,
+        user_id: null,
+        equipment_id: null,
+        quantity: 1,
+        rental_period: rental.end_date && rental.start_date 
+          ? Math.ceil((new Date(rental.end_date).getTime() - new Date(rental.start_date).getTime()) / (1000 * 60 * 60 * 24 * 30))
+          : 1,
+        start_date: rental.start_date,
+        end_date: rental.end_date,
+        monthly_rental_price: rental.rent_amount,
+        total_amount: rental.rent_amount,
+        deposit_amount: rental.deposit,
+        payment_status: "pending",
+        order_status: rental.status === "pending_delivery" ? "pending" : 
+                     rental.status === "active" ? "active" : 
+                     rental.status === "returned" ? "completed" : "pending",
+        payment_method: null,
+        delivery_address: null,
+        contact_phone: rental.customer_phone,
+        notes: rental.notes,
+        created_at: rental.created_at,
+        updated_at: rental.updated_at,
+        equipment: {
+          id: null,
+          name: rental.device_name,
+          brand: null,
+          model: null,
+          images: null,
+          monthly_rental_price: rental.rent_amount,
+          deposit_amount: rental.deposit,
+        },
+        restaurants: null,
+      }))
+      error = null
+    } else if (error) {
       console.error("[设备租赁管理API] 查询失败:", error)
       return NextResponse.json(
         {
