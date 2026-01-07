@@ -538,6 +538,7 @@ export default function EquipmentRentalPage() {
                   </Card>
                 ))}
               </div>
+              </>
             )}
           </TabsContent>
 
