@@ -60,6 +60,9 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
         'hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors',
         className,
       )}
+      style={{
+        height: 'var(--space-table-row-height, 2.5rem)',
+      }}
       {...props}
     />
   )
@@ -70,9 +73,14 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
-        'text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        'text-foreground text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
+      style={{
+        height: 'var(--space-table-header-height, 3rem)',
+        paddingLeft: 'var(--space-table-cell-padding-x, 0.75rem)',
+        paddingRight: 'var(--space-table-cell-padding-x, 0.75rem)',
+      }}
       {...props}
     />
   )
@@ -83,9 +91,15 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
     <td
       data-slot="table-cell"
       className={cn(
-        'p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        'align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
+      style={{
+        paddingTop: 'var(--space-table-cell-padding-y, 0.5rem)',
+        paddingBottom: 'var(--space-table-cell-padding-y, 0.5rem)',
+        paddingLeft: 'var(--space-table-cell-padding-x, 0.75rem)',
+        paddingRight: 'var(--space-table-cell-padding-x, 0.75rem)',
+      }}
       {...props}
     />
   )

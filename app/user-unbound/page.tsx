@@ -74,14 +74,14 @@ export default function UserUnboundPage() {
   const { setTheme, theme } = useTheme()
 
   // 主题初始化：在身份判定之后执行
-  // 已注册未绑定用户默认主题：Tech Blue（理性/潜力）
+  // 已注册未绑定用户默认主题：Base Theme（Industrial Blue，通过 globals.css 的 :root 自动加载）
+  // ⚠️ 注意：Base Theme 不允许通过 JavaScript 切换，会自动通过 CSS 加载
   useEffect(() => {
     const savedTheme = typeof window !== "undefined" ? localStorage.getItem("ios-theme-preference") : null
-    if (!savedTheme) {
-      setTheme("tech-blue") // 已注册未绑定用户默认主题：Tech Blue（理性/潜力）
-    }
-    console.log('[User Unbound Page] 已注册未绑定页面加载，主题:', savedTheme || theme || "tech-blue")
-  }, [setTheme, theme])
+    // Base Theme 会自动通过 globals.css 的 :root 加载，不需要手动设置
+    // 如果有保存的 Visual Theme（如 apple-white），会自动应用
+    console.log('[User Unbound Page] 已注册未绑定页面加载，主题:', savedTheme || 'base (industrial-blue)')
+  }, [])
 
   return (
     <main className="min-h-screen bg-background pb-20">

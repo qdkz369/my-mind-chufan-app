@@ -5,8 +5,18 @@ import * as RechartsPrimitive from 'recharts'
 
 import { cn } from '@/lib/utils'
 
-// Format: { THEME_NAME: CSS_SELECTOR }
-const THEMES = { light: '', dark: '.dark' } as const
+/**
+ * 主题选择器映射
+ * 
+ * 核心原则：
+ * - 使用语义化主题选择器，不感知具体主题名称
+ * - Base Theme 使用 :root（无 data-theme 属性）
+ * - Visual Themes 使用 [data-theme="..."]
+ */
+const THEMES = { 
+  base: '', // Base Theme（:root，无 data-theme 属性）
+  visual: '[data-theme="apple-white"]' // Visual Themes（通过 data-theme 属性）
+} as const
 
 export type ChartConfig = {
   [k in string]: {
@@ -17,6 +27,19 @@ export type ChartConfig = {
     | { color?: never; theme: Record<keyof typeof THEMES, string> }
   )
 }
+
+/**
+ * 语义化颜色 token
+ * 
+ * 所有图表颜色应该使用这些语义化 token，而不是硬编码颜色值
+ */
+export const CHART_SEMANTIC_COLORS = {
+  primary: 'var(--chart-1)',
+  secondary: 'var(--chart-2)',
+  success: 'var(--chart-3)',
+  warning: 'var(--chart-4)',
+  destructive: 'var(--chart-5)',
+} as const
 
 type ChartContextProps = {
   config: ChartConfig
@@ -55,7 +78,7 @@ function ChartContainer({
         data-slot="chart"
         data-chart={chartId}
         className={cn(
-          "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border flex aspect-video justify-center text-xs [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
+          "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-polar-grid_line]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line]:stroke-border flex aspect-video justify-center text-xs [&_.recharts-dot]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-sector]:outline-hidden [&_.recharts-sector]:stroke-transparent [&_.recharts-surface]:outline-hidden",
           className,
         )}
         {...props}

@@ -349,16 +349,16 @@ export default function EquipmentRentalPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
+    <main className="min-h-screen bg-background pb-20">
       <Header />
       
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "browse" | "orders")}>
-          <TabsList className="grid w-full grid-cols-2 bg-slate-900/50 mb-6">
-            <TabsTrigger value="browse" className="data-[state=active]:bg-blue-600">
+          <TabsList className="grid w-full grid-cols-2 bg-muted/50 mb-6">
+            <TabsTrigger value="browse" className="data-[state=active]:bg-primary">
               浏览设备
             </TabsTrigger>
-            <TabsTrigger value="orders" className="data-[state=active]:bg-blue-600">
+            <TabsTrigger value="orders" className="data-[state=active]:bg-primary">
               我的订单
             </TabsTrigger>
           </TabsList>
@@ -375,7 +375,7 @@ export default function EquipmentRentalPage() {
                   placeholder="搜索设备名称、品牌、型号..."
                   value={searchKeyword}
                   onChange={(e) => setSearchKeyword(e.target.value)}
-                  className="pl-10 bg-slate-900/50 border-slate-700 text-white"
+                  className="pl-10 theme-input"
                 />
               </div>
             </div>

@@ -1,14 +1,46 @@
 /**
- * 餐厅统计数据 API（Read-Only）
+ * Facts API - 餐厅统计数据（Read-Only）
+ * 
+ * ========================================
+ * Facts API 使用约束
+ * ========================================
+ * 
+ * 1. 只读 Facts API
+ *    - 本 API 为只读事实表面（Read-Only Truth Surface）
+ *    - 不执行任何业务逻辑，不修改任何数据
+ *    - 所有操作均为只读查询（SELECT），不执行 INSERT/UPDATE/DELETE
+ * 
+ * 2. 主要消费方
+ *    - User UI: 用户界面（展示事实视图，不进行业务判断）
+ *    - Admin: 管理端（审计、治理、运营分析）
+ *    - AI: AI 系统（解释引擎、分析系统、智能助手）
+ * 
+ * 3. UI 使用约束（⚠️ 重要）
+ *    - UI 禁止基于 Facts 进行业务判断或流程控制
+ *    - UI 禁止根据 fact_warnings 或 fact_health 自动触发业务动作
+ *    - UI 禁止将 Facts 当作业务 API 使用（如：根据 fact_health.score 决定是否显示按钮）
+ *    - UI 只能将 Facts 用于"展示事实视图"，不能用于"业务决策"
+ * 
+ * 4. 明确声明
+ *    - 不写数据库：所有操作均为只读查询（SELECT），不执行 INSERT/UPDATE/DELETE
+ *    - 不触发业务动作：不修改订单状态、不发送通知、不调用外部 API
+ *    - 不承担决策责任：仅提供事实信息，不判断"应该做什么"或"不应该做什么"
  * 
  * GET /api/facts/restaurant/:restaurant_id/stats
  * 
+ * ⚠️ Financial View 禁止事项：
+ * - 本 API 不返回任何金融字段（amount, rate, installment, repayment, interest）
+ * - 如需展示金融信息，请使用独立的 Financial View API
+ * - 严禁写入 facts 表或结构
+ * 
  * 返回结构：
  * {
- *   "total_orders": number,        // 累计订单数
- *   "total_spent": number,          // 累计消费金额
- *   "points_balance": number,       // 积分余额
+ *   "total_orders": number,        // 累计订单数（事实）
+ *   "points_balance": number,       // 积分余额（事实，非金融字段）
  * }
+ * 
+ * ⚠️ 已移除字段：
+ * - "total_spent": number          // Financial View – Derived / Non-Fact（已移除）
  */
 
 import { NextResponse } from "next/server"
@@ -25,7 +57,6 @@ export async function GET(
       return NextResponse.json({
         success: true,
         total_orders: 0,
-        total_spent: 0,
         points_balance: 0,
       })
     }
@@ -37,7 +68,6 @@ export async function GET(
       return NextResponse.json({
         success: true,
         total_orders: 0,
-        total_spent: 0,
         points_balance: 0,
       })
     }
@@ -59,43 +89,11 @@ export async function GET(
       console.error("[餐厅统计API] 查询订单数失败:", ordersError)
     }
 
-    // 2. 查询累计消费金额（统计所有订单的总金额，优先统计已支付订单）
-    let total_spent = 0
-    try {
-      // 先尝试查询已支付订单
-      const { data: paidOrdersData, error: paidOrdersError } = await supabase
-        .from("delivery_orders")
-        .select("total_amount")
-        .eq("restaurant_id", restaurant_id)
-        .in("payment_status", ["paid", "completed"])
-
-      if (paidOrdersData && paidOrdersData.length > 0) {
-        total_spent = paidOrdersData.reduce((sum, order) => {
-          return sum + (Number(order.total_amount) || 0)
-        }, 0)
-      } else {
-        // 如果没有已支付订单，查询所有订单的总金额
-        const { data: allOrdersData, error: allOrdersError } = await supabase
-          .from("delivery_orders")
-          .select("total_amount")
-          .eq("restaurant_id", restaurant_id)
-
-        if (allOrdersData && allOrdersData.length > 0) {
-          total_spent = allOrdersData.reduce((sum, order) => {
-            return sum + (Number(order.total_amount) || 0)
-          }, 0)
-        }
-        if (allOrdersError && allOrdersError.code !== "PGRST116") {
-          console.error("[餐厅统计API] 查询所有订单总金额失败:", allOrdersError)
-        }
-      }
-      if (paidOrdersError && paidOrdersError.code !== "PGRST116") {
-        console.error("[餐厅统计API] 查询已支付订单失败:", paidOrdersError)
-      }
-    } catch (error) {
-      console.error("[餐厅统计API] 计算累计消费金额时出错:", error)
-      total_spent = 0
-    }
+    // 2. ⚠️ Financial View – Derived / Non-Fact
+    // 已移除：累计消费金额（total_spent）
+    // 原因：Facts API 禁止返回任何金融字段（amount, rate, installment, repayment, interest）
+    // 如需展示金融信息，请使用独立的 Financial View API
+    // 严禁写入 facts 表或结构
 
     // 3. 查询积分余额（从 restaurants 表的 points 字段或单独的 points 表）
     // 先尝试从 restaurants 表查询
@@ -130,7 +128,6 @@ export async function GET(
     return NextResponse.json({
       success: true,
       total_orders: total_orders,
-      total_spent: total_spent,
       points_balance: points_balance,
     })
   } catch (error) {
@@ -139,7 +136,6 @@ export async function GET(
     return NextResponse.json({
       success: true,
       total_orders: 0,
-      total_spent: 0,
       points_balance: 0,
     })
   }

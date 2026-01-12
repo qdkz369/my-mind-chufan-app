@@ -40,8 +40,8 @@ const itemVariants = cva(
         muted: 'bg-muted/50',
       },
       size: {
-        default: 'p-4 gap-4 ',
-        sm: 'py-3 px-4 gap-2.5',
+        default: '',
+        sm: '',
       },
     },
     defaultVariants: {
@@ -60,12 +60,25 @@ function Item({
 }: React.ComponentProps<'div'> &
   VariantProps<typeof itemVariants> & { asChild?: boolean }) {
   const Comp = asChild ? Slot : 'div'
+  const paddingStyle = size === 'sm' 
+    ? {
+        paddingTop: 'var(--space-item-padding-y, 0.75rem)',
+        paddingBottom: 'var(--space-item-padding-y, 0.75rem)',
+        paddingLeft: 'var(--space-item-padding-x, 1rem)',
+        paddingRight: 'var(--space-item-padding-x, 1rem)',
+        gap: 'var(--space-gap-sm, 0.5rem)',
+      }
+    : {
+        padding: 'var(--space-item-padding, 0.75rem)',
+        gap: 'var(--space-gap-md, 0.75rem)',
+      }
   return (
     <Comp
       data-slot="item"
       data-variant={variant}
       data-size={size}
       className={cn(itemVariants({ variant, size, className }))}
+      style={paddingStyle}
       {...props}
     />
   )
@@ -108,9 +121,12 @@ function ItemContent({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="item-content"
       className={cn(
-        'flex flex-1 flex-col gap-1 [&+[data-slot=item-content]]:flex-none',
+        'flex flex-1 flex-col [&+[data-slot=item-content]]:flex-none',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-xs, 0.25rem)',
+      }}
       {...props}
     />
   )
@@ -121,9 +137,12 @@ function ItemTitle({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="item-title"
       className={cn(
-        'flex w-fit items-center gap-2 text-sm leading-snug font-medium',
+        'flex w-fit items-center text-sm leading-snug font-medium',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-sm, 0.5rem)',
+      }}
       {...props}
     />
   )
@@ -147,7 +166,10 @@ function ItemActions({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="item-actions"
-      className={cn('flex items-center gap-2', className)}
+      className={cn('flex items-center', className)}
+      style={{
+        gap: 'var(--space-gap-sm, 0.5rem)',
+      }}
       {...props}
     />
   )
@@ -158,9 +180,12 @@ function ItemHeader({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="item-header"
       className={cn(
-        'flex basis-full items-center justify-between gap-2',
+        'flex basis-full items-center justify-between',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-sm, 0.5rem)',
+      }}
       {...props}
     />
   )
@@ -171,9 +196,12 @@ function ItemFooter({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="item-footer"
       className={cn(
-        'flex basis-full items-center justify-between gap-2',
+        'flex basis-full items-center justify-between',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-sm, 0.5rem)',
+      }}
       {...props}
     />
   )

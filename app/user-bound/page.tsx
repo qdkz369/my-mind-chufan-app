@@ -28,7 +28,8 @@ import { IoTDashboard } from "@/components/iot-dashboard"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { OrderTimeline } from "@/components/facts/OrderTimeline"
 import { AssetFactCard } from "@/components/facts/AssetFactCard"
-import { OrderFactContract, AssetFactContract, TraceFactContract } from "@/lib/facts/contracts/order.fact"
+import { convertOrderFactsToTimelineViewModel, OrderTimelineViewModel } from "@/lib/facts-ui/orderTimeline.viewmodel"
+import { convertAssetFactToCardViewModel, AssetCardViewModel } from "@/lib/facts-ui/assetCard.viewmodel"
 import { Package, Clock, Activity, Truck } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
@@ -49,12 +50,8 @@ export default function UserBoundPage() {
   
   // 状态管理
   const [restaurantOverview, setRestaurantOverview] = useState<RestaurantOverview | null>(null)
-  const [latestOrder, setLatestOrder] = useState<{
-    order: OrderFactContract
-    assets: AssetFactContract[]
-    traces: TraceFactContract[]
-  } | null>(null)
-  const [assetsList, setAssetsList] = useState<AssetFactContract[]>([])
+  const [latestOrderTimeline, setLatestOrderTimeline] = useState<OrderTimelineViewModel | null>(null)
+  const [assetsList, setAssetsList] = useState<AssetCardViewModel[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isDevicesDialogOpen, setIsDevicesDialogOpen] = useState(false)
 
@@ -67,16 +64,16 @@ export default function UserBoundPage() {
   const themeContext = useTheme()
 
   // 主题初始化：在身份判定之后执行
-  // 正式用户默认主题：Industrial Blue（专业/操作）
+  // 正式用户默认主题：Base Theme（Industrial Blue，通过 globals.css 的 :root 自动加载）
+  // ⚠️ 注意：Base Theme 不允许通过 JavaScript 切换，会自动通过 CSS 加载
   useEffect(() => {
     if (!mounted) return
     
     const savedTheme = typeof window !== "undefined" ? localStorage.getItem("ios-theme-preference") : null
-    if (!savedTheme) {
-      themeContext.setTheme("industrial-blue") // 正式用户默认主题：Industrial Blue（专业/操作）
-    }
-    console.log('[User Bound Page] 正式用户页面加载，主题:', savedTheme || themeContext.theme || "industrial-blue")
-  }, [mounted, themeContext])
+    // Base Theme 会自动通过 globals.css 的 :root 加载，不需要手动设置
+    // 如果有保存的 Visual Theme（如 apple-white），会自动应用
+    console.log('[User Bound Page] 正式用户页面加载，主题:', savedTheme || 'base (industrial-blue)')
+  }, [mounted])
 
   // 获取 restaurant_id 并加载事实数据
   useEffect(() => {
@@ -130,7 +127,9 @@ export default function UserBoundPage() {
           if (assetsResponse.ok) {
             const assetsData = await assetsResponse.json()
             if (assetsData.success && assetsData.assets && Array.isArray(assetsData.assets)) {
-              setAssetsList(assetsData.assets)
+              // Facts → ViewModel 转换（在 page 层完成）
+              const assetViewModels = assetsData.assets.map(convertAssetFactToCardViewModel)
+              setAssetsList(assetViewModels)
             }
           } else if (assetsResponse.status === 401 || assetsResponse.status === 403) {
             console.error('[User Bound Page] 权限验证失败，请确保已登录')
@@ -187,18 +186,21 @@ export default function UserBoundPage() {
                     })
                   }
                   
-                  setLatestOrder({
-                    order: orderFactData.order,
-                    assets: orderFactData.assets || [],
-                    traces: orderFactData.traces || [],
-                  })
+                  // Facts → ViewModel 转换（在 page 层完成）
+                  const timelineViewModel = convertOrderFactsToTimelineViewModel(
+                    orderFactData.order,
+                    orderFactData.traces || []
+                  )
+                  setLatestOrderTimeline(timelineViewModel)
                   
                   // 将订单关联的资产与现有资产列表合并（去重）
                   if (orderFactData.assets && Array.isArray(orderFactData.assets) && orderFactData.assets.length > 0) {
+                    // Facts → ViewModel 转换（在 page 层完成）
+                    const newAssetViewModels = orderFactData.assets.map(convertAssetFactToCardViewModel)
                     setAssetsList((prev) => {
-                      const existingIds = new Set(prev.map((a) => a.asset_id))
-                      const newAssets = orderFactData.assets.filter(
-                        (a: AssetFactContract) => !existingIds.has(a.asset_id)
+                      const existingIds = new Set(prev.map((a) => a.assetId))
+                      const newAssets = newAssetViewModels.filter(
+                        (a) => !existingIds.has(a.assetId)
                       )
                       return [...prev, ...newAssets]
                     })
@@ -272,7 +274,7 @@ export default function UserBoundPage() {
           </Card>
 
           {/* 最近一次配送（OrderTimeline） */}
-          {latestOrder && (
+          {latestOrderTimeline && (
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-linear-to-br from-success to-emerald-600 flex items-center justify-center shadow-lg shadow-success/30" style={{ borderRadius: 'var(--radius-button)' }}>
@@ -283,10 +285,7 @@ export default function UserBoundPage() {
                   <p className="text-xs text-muted-foreground">订单事实时间线</p>
                 </div>
               </div>
-              <OrderTimeline 
-                order={latestOrder.order} 
-                traces={latestOrder.traces}
-              />
+              <OrderTimeline viewModel={latestOrderTimeline} />
             </div>
           )}
 
@@ -306,10 +305,10 @@ export default function UserBoundPage() {
               </DialogHeader>
               {assetsList.length > 0 ? (
                 <div className="grid md:grid-cols-2 gap-4 mt-4">
-                  {assetsList.map((asset) => (
+                  {assetsList.map((assetViewModel) => (
                     <AssetFactCard 
-                      key={asset.asset_id} 
-                      asset={asset}
+                      key={assetViewModel.assetId} 
+                      viewModel={assetViewModel}
                     />
                   ))}
                 </div>

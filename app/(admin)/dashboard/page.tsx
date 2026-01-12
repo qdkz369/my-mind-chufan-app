@@ -328,6 +328,25 @@ export default function AdminDashboard() {
     notes: "",
   })
   
+  // 设备租赁基础功能相关状态（使用 device_rentals 表）
+  const [deviceRentals, setDeviceRentals] = useState<any[]>([])
+  const [isLoadingDeviceRentals, setIsLoadingDeviceRentals] = useState(false)
+  const [deviceRentalError, setDeviceRentalError] = useState<string | null>(null)
+  const [deviceRentalStatusFilter, setDeviceRentalStatusFilter] = useState<string>("all")
+  const [deviceRentalSearchQuery, setDeviceRentalSearchQuery] = useState<string>("")
+  const [selectedDeviceRental, setSelectedDeviceRental] = useState<any | null>(null)
+  const [isDeviceRentalDetailDialogOpen, setIsDeviceRentalDetailDialogOpen] = useState(false)
+  const [isAddDeviceRentalDialogOpen, setIsAddDeviceRentalDialogOpen] = useState(false)
+  const [isCreatingDeviceRental, setIsCreatingDeviceRental] = useState(false)
+  const [isEndingDeviceRental, setIsEndingDeviceRental] = useState(false)
+  const [newDeviceRental, setNewDeviceRental] = useState({
+    device_id: "",
+    restaurant_id: "",
+    start_at: new Date().toISOString().slice(0, 16), // 格式：YYYY-MM-DDTHH:mm
+  })
+  const [availableDevices, setAvailableDevices] = useState<any[]>([])
+  const [availableRestaurants, setAvailableRestaurants] = useState<any[]>([])
+  
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
@@ -1228,14 +1247,143 @@ export default function AdminDashboard() {
     }
   }, [rentalOrderStatusFilter])
 
+  // 加载设备租赁记录列表
+  const loadDeviceRentals = useCallback(async () => {
+    setIsLoadingDeviceRentals(true)
+    setDeviceRentalError(null)
+    try {
+      const params = new URLSearchParams()
+      if (deviceRentalStatusFilter && deviceRentalStatusFilter !== "all") {
+        params.append("status", deviceRentalStatusFilter)
+      }
+
+      const response = await fetch(`/api/device-rentals/list?${params.toString()}`)
+      const result = await response.json()
+      
+      if (result.success) {
+        setDeviceRentals(result.data || [])
+        setDeviceRentalError(null)
+      } else {
+        const errorMsg = result.error || "获取设备租赁记录列表失败"
+        const details = result.details ? `: ${result.details}` : ""
+        console.error("[设备租赁基础功能] 加载失败:", errorMsg, details)
+        setDeviceRentalError(`${errorMsg}${details}`)
+        setDeviceRentals([])
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || "网络请求失败"
+      console.error("[设备租赁基础功能] 加载失败:", err)
+      setDeviceRentalError(errorMsg)
+      setDeviceRentals([])
+    } finally {
+      setIsLoadingDeviceRentals(false)
+    }
+  }, [deviceRentalStatusFilter])
+  
+  // 加载设备和餐厅列表（用于创建设备租赁记录）
+  const loadDevicesAndRestaurantsForRental = useCallback(async () => {
+    if (!supabase) return
+    try {
+      // 加载设备列表
+      const { data: devicesData } = await supabase
+        .from("devices")
+        .select("device_id, model, status")
+        .order("device_id")
+      if (devicesData) setAvailableDevices(devicesData)
+
+      // 加载餐厅列表
+      const { data: restaurantData } = await supabase
+        .from("restaurants")
+        .select("id, name, address")
+        .order("name")
+      if (restaurantData) setAvailableRestaurants(restaurantData)
+    } catch (err) {
+      console.error("[设备租赁基础功能] 加载设备和餐厅列表失败:", err)
+    }
+  }, [supabase])
+  
+  // 创建设备租赁记录
+  const handleCreateDeviceRental = useCallback(async () => {
+    if (!newDeviceRental.device_id || !newDeviceRental.restaurant_id || !newDeviceRental.start_at) {
+      alert("请填写所有必需字段")
+      return
+    }
+
+    setIsCreatingDeviceRental(true)
+    try {
+      const response = await fetch("/api/device-rentals/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device_id: newDeviceRental.device_id,
+          restaurant_id: newDeviceRental.restaurant_id,
+          start_at: newDeviceRental.start_at,
+        }),
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        await loadDeviceRentals()
+        setIsAddDeviceRentalDialogOpen(false)
+        setNewDeviceRental({
+          device_id: "",
+          restaurant_id: "",
+          start_at: new Date().toISOString().slice(0, 16),
+        })
+        alert("设备租赁记录创建成功")
+      } else {
+        alert(`创建失败: ${result.error}`)
+      }
+    } catch (err: any) {
+      alert(`创建失败: ${err.message}`)
+    } finally {
+      setIsCreatingDeviceRental(false)
+    }
+  }, [newDeviceRental, loadDeviceRentals])
+  
+  // 结束设备租赁记录
+  const handleEndDeviceRental = useCallback(async (rentalId: string) => {
+    if (!confirm("确定要结束此设备租赁记录吗？")) {
+      return
+    }
+
+    setIsEndingDeviceRental(true)
+    try {
+      const response = await fetch("/api/device-rentals/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rental_id: rentalId,
+        }),
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        await loadDeviceRentals()
+        setIsDeviceRentalDetailDialogOpen(false)
+        setSelectedDeviceRental(null)
+        alert("设备租赁记录已结束")
+      } else {
+        alert(`结束失败: ${result.error}`)
+      }
+    } catch (err: any) {
+      alert(`结束失败: ${err.message}`)
+    } finally {
+      setIsEndingDeviceRental(false)
+    }
+  }, [loadDeviceRentals])
+
   // 当切换到设备租赁管理或筛选条件改变时加载数据
   useEffect(() => {
     if (activeMenu === "equipmentRental") {
       loadRentalOrders()
       // 加载设备和餐厅列表
       loadEquipmentAndRestaurants()
+      // 加载设备租赁基础功能数据
+      loadDeviceRentals()
+      loadDevicesAndRestaurantsForRental()
     }
-  }, [activeMenu, rentalOrderStatusFilter, loadRentalOrders])
+  }, [activeMenu, rentalOrderStatusFilter, deviceRentalStatusFilter, loadRentalOrders, loadDeviceRentals, loadDevicesAndRestaurantsForRental])
 
   // 加载设备和餐厅列表（用于新增订单）
   const loadEquipmentAndRestaurants = useCallback(async () => {
@@ -4336,11 +4484,222 @@ export default function AdminDashboard() {
       }
     }
 
+    // 设备租赁基础功能：筛选和搜索
+    const filteredDeviceRentals = deviceRentals.filter((rental) => {
+      // 状态筛选
+      if (deviceRentalStatusFilter !== "all" && rental.status !== deviceRentalStatusFilter) {
+        return false
+      }
+      // 搜索筛选
+      if (deviceRentalSearchQuery) {
+        const query = deviceRentalSearchQuery.toLowerCase()
+        return (
+          rental.device_id?.toLowerCase().includes(query) ||
+          rental.devices?.device_id?.toLowerCase().includes(query) ||
+          rental.devices?.model?.toLowerCase().includes(query) ||
+          rental.restaurants?.name?.toLowerCase().includes(query) ||
+          rental.restaurants?.address?.toLowerCase().includes(query)
+        )
+      }
+      return true
+    })
+
+    const activeDeviceRentals = deviceRentals.filter((r) => r.status === "active")
+    const endedDeviceRentals = deviceRentals.filter((r) => r.status === "ended")
+
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">设备租赁管理</h1>
           <p className="text-slate-400">管理所有设备租赁订单</p>
+        </div>
+        
+        {/* 设备租赁基础功能区域 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white text-xl flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              设备租赁基础功能
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              管理设备的使用租赁关系（不涉及租金计算和金融逻辑）
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* 统计卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="bg-slate-800/50 border-slate-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">总租赁记录</CardDescription>
+                  <CardTitle className="text-2xl text-white">{deviceRentals.length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-green-800/50 border-green-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">租赁中</CardDescription>
+                  <CardTitle className="text-2xl text-green-400">{activeDeviceRentals.length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-slate-700/50 border-slate-600/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">已结束</CardDescription>
+                  <CardTitle className="text-2xl text-slate-400">{endedDeviceRentals.length}</CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            {/* 搜索和操作栏 */}
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+              <div className="flex-1 w-full md:w-auto">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="搜索设备ID、设备型号、餐厅名称或地址..."
+                    value={deviceRentalSearchQuery}
+                    onChange={(e) => setDeviceRentalSearchQuery(e.target.value)}
+                    className="pl-10 bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-500"
+                  />
+                </div>
+              </div>
+              <Button
+                onClick={() => setIsAddDeviceRentalDialogOpen(true)}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                创建租赁记录
+              </Button>
+            </div>
+
+            {/* 状态筛选 */}
+            <div className="flex flex-wrap gap-2">
+              {["all", "active", "ended"].map((status) => (
+                <Button
+                  key={status}
+                  variant={deviceRentalStatusFilter === status ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDeviceRentalStatusFilter(status)}
+                  className={
+                    deviceRentalStatusFilter === status
+                      ? "bg-green-600 hover:bg-green-700 text-white"
+                      : "border-slate-600/50 text-slate-300 hover:bg-slate-800/50"
+                  }
+                >
+                  {status === "all" ? "全部" : status === "active" ? "租赁中" : "已结束"}
+                </Button>
+              ))}
+            </div>
+
+            {/* 错误提示 */}
+            {deviceRentalError && (
+              <Card className="bg-red-900/50 border-red-700/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="h-5 w-5 text-red-400" />
+                    <div className="flex-1">
+                      <p className="text-red-400 font-medium">加载失败</p>
+                      <p className="text-red-300 text-sm mt-1">{deviceRentalError}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => loadDeviceRentals()}
+                      className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                    >
+                      重试
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 租赁记录列表 */}
+            {isLoadingDeviceRentals ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-green-400 mr-2" />
+                <span className="text-slate-400">加载中...</span>
+              </div>
+            ) : filteredDeviceRentals.length === 0 ? (
+              <Card className="bg-slate-800/50 border-slate-700/50">
+                <CardContent className="p-8 text-center">
+                  <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+                  <p className="text-slate-400">
+                    {deviceRentalError ? "加载失败，请点击上方重试按钮" : "暂无设备租赁记录"}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {filteredDeviceRentals.map((rental) => (
+                  <Card
+                    key={rental.id}
+                    className="bg-slate-800/50 border-slate-700/50 hover:border-green-500/50 transition-all cursor-pointer"
+                    onClick={() => {
+                      setSelectedDeviceRental(rental)
+                      setIsDeviceRentalDetailDialogOpen(true)
+                    }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-lg font-bold text-white">
+                              {rental.devices?.device_id || rental.device_id}
+                            </h3>
+                            <Badge
+                              className={
+                                rental.status === "active"
+                                  ? "bg-green-500/20 text-green-400 border-green-500/30"
+                                  : "bg-slate-500/20 text-slate-400 border-slate-500/30"
+                              }
+                            >
+                              {rental.status === "active" ? "租赁中" : "已结束"}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="text-slate-400">设备型号：</span>
+                              <span className="text-white ml-2">
+                                {rental.devices?.model || "未知"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">餐厅：</span>
+                              <span className="text-white ml-2">
+                                {rental.restaurants?.name || "未知"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">开始时间：</span>
+                              <span className="text-white ml-2">
+                                {new Date(rental.start_at).toLocaleString("zh-CN")}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">结束时间：</span>
+                              <span className="text-white ml-2">
+                                {rental.end_at
+                                  ? new Date(rental.end_at).toLocaleString("zh-CN")
+                                  : "未结束"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 分隔线 */}
+        <div className="border-t border-slate-700/50 my-6"></div>
+        
+        {/* 原有设备租赁订单管理（rental_orders 表） */}
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-4">设备租赁订单管理</h2>
+          <p className="text-slate-400 mb-6">管理复杂的设备租赁订单（包含租金、支付等）</p>
         </div>
 
         {/* 统计卡片 */}
@@ -4746,6 +5105,207 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* 创建设备租赁记录对话框 */}
+        <Dialog open={isAddDeviceRentalDialogOpen} onOpenChange={setIsAddDeviceRentalDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">创建设备租赁记录</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                为设备创建使用租赁关系（不涉及租金计算）
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* 选择设备 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">设备 <span className="text-red-400">*</span></Label>
+                <Select
+                  value={newDeviceRental.device_id}
+                  onValueChange={(value) =>
+                    setNewDeviceRental({ ...newDeviceRental, device_id: value })
+                  }
+                >
+                  <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="选择设备" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {availableDevices.map((device) => (
+                      <SelectItem
+                        key={device.device_id}
+                        value={device.device_id}
+                        className="text-white hover:bg-slate-700"
+                      >
+                        {device.device_id} - {device.model || "未知型号"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 选择餐厅 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">餐厅 <span className="text-red-400">*</span></Label>
+                <Select
+                  value={newDeviceRental.restaurant_id}
+                  onValueChange={(value) =>
+                    setNewDeviceRental({ ...newDeviceRental, restaurant_id: value })
+                  }
+                >
+                  <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="选择餐厅" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {availableRestaurants.map((restaurant) => (
+                      <SelectItem
+                        key={restaurant.id}
+                        value={restaurant.id}
+                        className="text-white hover:bg-slate-700"
+                      >
+                        {restaurant.name} {restaurant.address ? `- ${restaurant.address}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 开始时间 */}
+              <div className="space-y-2">
+                <Label className="text-slate-300">开始时间 <span className="text-red-400">*</span></Label>
+                <Input
+                  type="datetime-local"
+                  value={newDeviceRental.start_at}
+                  onChange={(e) =>
+                    setNewDeviceRental({ ...newDeviceRental, start_at: e.target.value })
+                  }
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+
+              {/* 操作按钮 */}
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsAddDeviceRentalDialogOpen(false)}
+                  className="border-slate-600/50 text-slate-300 hover:bg-slate-800/50"
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleCreateDeviceRental}
+                  disabled={isCreatingDeviceRental}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {isCreatingDeviceRental ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      创建中...
+                    </>
+                  ) : (
+                    "创建"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 设备租赁记录详情对话框 */}
+        <Dialog
+          open={isDeviceRentalDetailDialogOpen}
+          onOpenChange={setIsDeviceRentalDetailDialogOpen}
+        >
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">设备租赁记录详情</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                查看设备租赁记录的详细信息
+              </DialogDescription>
+            </DialogHeader>
+            {selectedDeviceRental && (
+              <div className="space-y-4">
+                {/* 基本信息 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">状态：</span>
+                    <Badge
+                      className={
+                        selectedDeviceRental.status === "active"
+                          ? "bg-green-500/20 text-green-400 border-green-500/30"
+                          : "bg-slate-500/20 text-slate-400 border-slate-500/30"
+                      }
+                    >
+                      {selectedDeviceRental.status === "active" ? "租赁中" : "已结束"}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">设备ID：</span>
+                    <span className="text-white">
+                      {selectedDeviceRental.devices?.device_id || selectedDeviceRental.device_id}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">设备型号：</span>
+                    <span className="text-white">
+                      {selectedDeviceRental.devices?.model || "未知"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">餐厅：</span>
+                    <span className="text-white">
+                      {selectedDeviceRental.restaurants?.name || "未知"}
+                    </span>
+                  </div>
+                  {selectedDeviceRental.restaurants?.address && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">餐厅地址：</span>
+                      <span className="text-white">{selectedDeviceRental.restaurants.address}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">开始时间：</span>
+                    <span className="text-white">
+                      {new Date(selectedDeviceRental.start_at).toLocaleString("zh-CN")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">结束时间：</span>
+                    <span className="text-white">
+                      {selectedDeviceRental.end_at
+                        ? new Date(selectedDeviceRental.end_at).toLocaleString("zh-CN")
+                        : "未结束"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">创建时间：</span>
+                    <span className="text-white">
+                      {new Date(selectedDeviceRental.created_at).toLocaleString("zh-CN")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 操作按钮 */}
+                {selectedDeviceRental.status === "active" && (
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      onClick={() => handleEndDeviceRental(selectedDeviceRental.id)}
+                      disabled={isEndingDeviceRental}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      {isEndingDeviceRental ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          结束中...
+                        </>
+                      ) : (
+                        "结束租赁"
+                      )}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </DialogContent>
@@ -6697,7 +7257,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex" data-density="dense">
       {/* 侧边栏 */}
       <div className={`${sidebarOpen ? "w-64" : "w-20"} bg-gradient-to-b from-slate-900 to-blue-950 border-r border-blue-800/50 transition-all duration-300 flex flex-col`}>
         <div className="p-4 border-b border-blue-800/50">

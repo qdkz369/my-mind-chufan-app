@@ -717,7 +717,7 @@ function PaymentContent() {
         {/* 返回按钮和记忆提示 */}
         <div className="flex items-center justify-between mb-4">
           <Link href="/">
-            <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-4 w-4 mr-2" />
               返回首页
             </Button>
@@ -730,8 +730,8 @@ function PaymentContent() {
         </div>
 
         {/* 燃料选择 */}
-        <Card className="bg-slate-900/90 border-slate-700/50 backdrop-blur-sm p-6">
-          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <Card className="theme-card p-6">
+          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Calculator className="h-5 w-5" />
             选择燃料类型
           </h2>

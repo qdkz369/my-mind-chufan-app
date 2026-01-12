@@ -3338,7 +3338,7 @@ export default function WorkerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20" data-density="compact">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 backdrop-blur-lg border-b border-blue-800/30">
         <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
@@ -3570,13 +3570,13 @@ export default function WorkerPage() {
           {currentView === "home" && (
             <div className="space-y-6">
               {/* 欢迎卡片 */}
-              <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+              <Card className="theme-card p-6">
                 <div className="text-center space-y-2">
-                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-blue-500/30">
-                    <Package className="h-8 w-8 text-white" />
+                  <div className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mx-auto shadow-lg shadow-primary/30" style={{ borderRadius: '50%' }}>
+                    <Package className="h-8 w-8 text-primary-foreground" />
                   </div>
-                  <h2 className="text-xl font-bold text-white">服务端工作台</h2>
-                  <p className="text-sm text-slate-400">选择您要执行的操作</p>
+                  <h2 className="text-xl font-bold text-foreground">服务端工作台</h2>
+                  <p className="text-sm text-muted-foreground">选择您要执行的操作</p>
                 </div>
               </Card>
 

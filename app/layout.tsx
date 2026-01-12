@@ -47,18 +47,24 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  var theme = localStorage.getItem('ios-theme-preference') || 'industrial-blue';
                   var root = document.documentElement;
-                  if (theme === 'industrial-blue') {
-                    root.setAttribute('data-theme', 'industrial-blue');
-                    root.style.setProperty('--background', '#0A1628');
-                    root.style.setProperty('--background-secondary', '#0F1B2E');
-                    root.style.setProperty('--foreground', '#E5E8ED');
-                  } else if (theme === 'apple-white') {
+                  
+                  // 规则：
+                  // - Base Theme 不设置 data-theme 属性，完全使用 globals.css 的 :root 样式
+                  // - 仅当有可切换主题时，才设置 data-theme 和 CSS 变量
+                  
+                  // 检查是否有可切换的 Visual Theme（仅非 Base Theme）
+                  var savedTheme = localStorage.getItem('ios-theme-preference');
+                  if (savedTheme === 'apple-white') {
+                    // 如果保存的是可切换主题，则应用它（设置 data-theme 和 CSS 变量）
                     root.setAttribute('data-theme', 'apple-white');
                     root.style.setProperty('--background', '#F2F2F7');
                     root.style.setProperty('--background-secondary', '#FFFFFF');
                     root.style.setProperty('--foreground', '#1D1D1F');
+                  } else {
+                    // 否则使用 Base Theme（不设置 data-theme，完全依赖 globals.css 的 :root）
+                    root.removeAttribute('data-theme');
+                    root.removeAttribute('style');
                   }
                 } catch (e) {}
               })();

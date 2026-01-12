@@ -1,21 +1,93 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "../lib/styles/base/density.css";
 
 @custom-variant dark (&:is(.dark *));
 
 /**
- * 全局主题变量定义
+ * CSS 加载顺序锁死
  * 
- * 两套互斥主题：
- * - Industrial Blue（工业蓝/默认）：深工业蓝背景，硬朗直线，小圆角(4px)，高对比度
- * - Apple White（苹果白）：#F2F2F7背景，24px圆角，SF Pro感，柔和阴影
+ * 核心架构：
+ * 1. base-theme（原始 UI，不可切换）- 通过 :root 定义，永远先加载
+ * 2. visual-theme-[name]（可切换）- 通过 [data-theme="..."] 定义，作为覆盖层叠加
+ * 3. user-overrides（预留，不实现）- 未来用户自定义覆盖层
  * 
- * 注意：实际主题值由 ThemeProvider 通过 data-theme 属性动态设置
- * 这里只定义默认值（Industrial Blue）
+ * ⛔ 严格禁止：
+ * - Visual Theme 覆盖结构变量（--spacing-*, --layout-*, --font-size-*, --line-height-*, --z-index-*）
+ * - 动态注入 base-theme（Base Theme 只在 CSS 中定义，不被 JavaScript 动态注入）
+ * 
+ * Base Theme（:root）：
+ * - 工业蓝背景，硬朗直线，小圆角(4px)，高对比度
+ * - 这是不可变的基础 UI，删除 localStorage 后必须回到这个状态
+ * - 包含所有结构相关的 token（spacing、layout、fontSize、lineHeight、zIndex）
  */
 
+/**
+ * CSS Layer 定义（确保加载顺序）
+ * 
+ * 顺序：
+ * 1. base-theme（最先加载，不可覆盖）
+ * 2. visual-theme（其次加载，覆盖视觉变量）
+ * 3. user-overrides（最后加载，预留）
+ */
+@layer base-theme, visual-theme, user-overrides;
+
+/**
+ * Layer 1: Base Theme（原始 UI，不可切换）
+ * 
+ * ⚠️ 重要：Base Theme 只在 CSS 中定义，不被 JavaScript 动态注入
+ * ⚠️ 重要：Base Theme 永远先加载，包含所有结构变量和视觉变量的默认值
+ */
+@layer base-theme {
 :root {
-  /* 默认主题：Industrial Blue（工业蓝） */
+  /* ========================================
+   * Base Theme：结构相关和语义 token（不可覆盖）
+   * ======================================== */
+  
+  /* Spacing（间距）- 禁止 Visual Themes 修改 */
+  --spacing-xs: 0.25rem;    /* 4px */
+  --spacing-sm: 0.5rem;      /* 8px */
+  --spacing-md: 1rem;        /* 16px */
+  --spacing-lg: 1.5rem;      /* 24px */
+  --spacing-xl: 2rem;        /* 32px */
+  --spacing-2xl: 3rem;       /* 48px */
+  --spacing-3xl: 4rem;       /* 64px */
+  
+  /* Layout（布局）- 禁止 Visual Themes 修改 */
+  --layout-container-max-width: 1280px;
+  --layout-sidebar-width: 256px;
+  --layout-header-height: 64px;
+  --layout-footer-height: 80px;
+  
+  /* Typography Scale（字体大小）- 禁止 Visual Themes 修改 */
+  --font-size-xs: 0.75rem;     /* 12px */
+  --font-size-sm: 0.875rem;    /* 14px */
+  --font-size-base: 1rem;      /* 16px */
+  --font-size-lg: 1.125rem;    /* 18px */
+  --font-size-xl: 1.25rem;     /* 20px */
+  --font-size-2xl: 1.5rem;     /* 24px */
+  --font-size-3xl: 1.875rem;   /* 30px */
+  --font-size-4xl: 2.25rem;    /* 36px */
+  
+  /* Line Height（行高）- 禁止 Visual Themes 修改 */
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* Z-Index Scale（层级）- 禁止 Visual Themes 修改 */
+  --z-index-dropdown: 1000;
+  --z-index-sticky: 1020;
+  --z-index-fixed: 1030;
+  --z-index-modal: 1040;
+  --z-index-popover: 1050;
+  --z-index-tooltip: 1060;
+  
+  /* ========================================
+   * Base Theme：视觉相关 token（可被 Visual Themes 覆盖）
+   * ======================================== */
+  
+  /* Base UI：Industrial Blue（工业蓝/原始 UI） */
+  /* 视觉优化：根据历史UI风格调整颜色，保持工业风基础 */
   --background: #0A1628;
   --background-secondary: #0F1B2E;
   --foreground: #E5E8ED;
@@ -24,22 +96,22 @@
   --card-foreground: #E5E8ED;
   --popover: #141F35;
   --popover-foreground: #E5E8ED;
-  --primary: #3B82F6;
+  --primary: #3B82F6; /* 蓝色主色（保持） */
   --primary-foreground: #FFFFFF;
   --secondary: #1E293B;
   --secondary-foreground: #E5E8ED;
-  --accent: #60A5FA;
+  --accent: #60A5FA; /* 蓝色强调色（保持） */
   --accent-foreground: #FFFFFF;
   --muted: #1E293B;
   --muted-foreground: #8B94A6;
   --border: #1E293B;
   --input: #1E293B;
   --ring: #3B82F6;
-  --destructive: #EF4444;
+  --destructive: #EF4444; /* 红色（用于红色闪电图标、红色按钮） */
   --destructive-foreground: #FFFFFF;
-  --success: #10B981;
+  --success: #10B981; /* 绿色（用于在线状态、成功提示） */
   --success-foreground: #FFFFFF;
-  --warning: #F59E0B;
+  --warning: #F59E0B; /* 橙色（用于待处理标签、警告提示） */
   --warning-foreground: #FFFFFF;
   --glass: rgba(20, 31, 53, 0.7);
   --glass-border: rgba(59, 130, 246, 0.2);
@@ -68,52 +140,67 @@
   --sidebar-border: #1E293B;
   --sidebar-ring: #3B82F6;
 }
+}
 
-/* Apple White 主题（通过 data-theme="apple-white" 应用） */
+/**
+ * Layer 2: Visual Theme - Apple White（可切换）
+ * 
+ * ⛔ 严格禁止：
+ * - 严禁修改 spacing、layout、组件结构
+ * - 严禁修改 fontSize、lineHeight、zIndex
+ * - 严禁覆盖结构变量（--spacing-*, --layout-*, --font-size-*, --line-height-*, --z-index-*）
+ * - 只能覆盖颜色、圆角、阴影、字体
+ * 
+ * 核心原则：
+ * - 只覆盖视觉样式（颜色、圆角、阴影、字体）
+ * - 禁止修改布局比例和组件结构
+ * - 禁止修改组件语义色含义（primary 还是 primary，destructive 还是 destructive）
+ * 
+ * ⚠️ 重要：Visual Theme 作为覆盖层叠加在 Base Theme 之上
+ * ⚠️ 重要：Visual Theme 通过 data-theme 属性应用，可以被 JavaScript 动态切换
+ */
+@layer visual-theme {
 [data-theme="apple-white"] {
+  /* 只覆盖颜色变量，不改变布局比例 */
   --background: #F2F2F7;
   --background-secondary: #FFFFFF;
-  --foreground: #1D1D1F; /* 纯深黑，增强压重感 */
-  --foreground-secondary: #86868B; /* 增强对比度 */
+  --foreground: #1D1D1F;
+  --foreground-secondary: #86868B;
   --card: #FFFFFF;
   --card-foreground: #1D1D1F;
   --popover: #FFFFFF;
   --popover-foreground: #1D1D1F;
-  --primary: #007AFF;
+  --primary: #007AFF; /* 语义色含义不变：primary 还是 primary */
   --primary-foreground: #FFFFFF;
   --secondary: #F5F5F7;
   --secondary-foreground: #1D1D1F;
   --accent: #007AFF;
   --accent-foreground: #FFFFFF;
   --muted: #F5F5F7;
-  --muted-foreground: #86868B; /* 增强对比度，从 #6E6E73 改为 #86868B */
+  --muted-foreground: #86868B;
   --border: #E5E5EA;
   --input: #E5E5EA;
   --ring: #007AFF;
-  --destructive: #FF3B30;
+  --destructive: #FF3B30; /* 语义色含义不变：destructive 还是 destructive */
   --destructive-foreground: #FFFFFF;
-  --success: #34C759;
+  --success: #34C759; /* 语义色含义不变：success 还是 success */
   --success-foreground: #FFFFFF;
-  --warning: #FF9500;
+  --warning: #FF9500; /* 语义色含义不变：warning 还是 warning */
   --warning-foreground: #FFFFFF;
   --glass: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.18);
   
-  /* 圆角规范：Apple White 使用大圆角（24px） */
-  --radius-card: 1.5rem; /* 24px */
-  --radius-button: 1.5rem;
-  --radius-input: 1.5rem;
-  --radius-small: 1rem;
-  --radius: 1.5rem;
+  /* 禁止修改布局比例：圆角保持与 Base UI 一致（4px） */
+  /* 不覆盖 --radius-* 变量，使用 :root 的值 */
   
-  /* 图表颜色 */
+  /* 图表颜色（只改变颜色值，不改变语义） */
   --chart-1: #007AFF;
   --chart-2: #5AC8FA;
   --chart-3: #34C759;
   --chart-4: #FF9500;
   --chart-5: #FF3B30;
   
-  /* 侧边栏 */
+  /* 侧边栏（只改变颜色值，不改变语义） */
   --sidebar: #FFFFFF;
   --sidebar-foreground: #1D1D1F;
   --sidebar-primary: #007AFF;
@@ -122,6 +209,18 @@
   --sidebar-accent-foreground: #1D1D1F;
   --sidebar-border: #E5E5EA;
   --sidebar-ring: #007AFF;
+}
+}
+
+/**
+ * Layer 3: User Overrides（预留，不实现）
+ * 
+ * 未来用户可以在这里添加自定义覆盖层
+ * 当前不实现，但保留 layer 定义以确保加载顺序
+ */
+@layer user-overrides {
+  /* 预留：用户自定义覆盖层 */
+  /* 当前不实现 */
 }
 
 @theme inline {
@@ -184,9 +283,10 @@
   }
   
   /* 工业蓝主题：应用从 #0A1628 到 #060E1A 的深邃渐变背景 */
-  :root:not([data-theme="apple-white"]) body,
-  [data-theme="industrial-blue"] body {
-    background: linear-gradient(135deg, var(--background) 0%, #060E1A 100%);
+  /* 视觉优化：增强渐变层次，提升视觉深度 */
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]) 选择器 */
+  :root:not([data-theme="apple-white"]) body {
+    background: linear-gradient(135deg, var(--background) 0%, #060E1A 50%, #0A1628 100%);
     background-attachment: fixed;
     background-color: var(--background); /* 回退色 */
   }
@@ -216,14 +316,15 @@
   }
   
   /* 工业蓝主题：微妙渐变背景、半透明蓝色边框和阴影 */
+  /* 视觉优化：增强卡片层次感，保持工业精密感 */
   :root:not([data-theme="apple-white"]) .theme-card {
     /* 极其微妙的背景渐变（基于 --card 颜色） */
     background: linear-gradient(135deg, var(--card) 0%, rgba(15, 23, 42, 0.95) 100%);
     background-color: var(--card); /* 回退色 */
     /* 0.5px 半透明蓝色边框，找回工业精密感 */
-    border: 0.5px solid rgba(59, 130, 246, 0.2);
-    /* 微妙阴影 */
-    --theme-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    border: 0.5px solid rgba(59, 130, 246, 0.25);
+    /* 增强阴影，提升卡片层次感 */
+    --theme-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 1px rgba(59, 130, 246, 0.1);
     box-shadow: var(--theme-shadow);
   }
   
@@ -277,8 +378,8 @@
   }
   
   /* Industrial Blue 模式：使用 backdrop-blur: 16px */
-  [data-theme="industrial-blue"] .theme-glass,
-  :root:not([data-theme]) .theme-glass {
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]) 选择器 */
+  :root:not([data-theme="apple-white"]) .theme-glass {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
   }
@@ -336,31 +437,23 @@
     transform: translateZ(0); /* 启用硬件加速 */
   }
   
-  /* 补丁 2：数据显示板精修 - Apple White 模式 */
-  [data-theme="apple-white"] .data-value {
-    font-weight: 700; /* 加粗 */
-    font-size: 1.5rem; /* 放大字号（从 text-xl 到 text-2xl） */
+  /* 数据显示板 - 禁止主题修改布局比例 */
+  /* 所有主题使用相同的字体大小，只改变颜色 */
+  .data-value {
+    font-weight: 700;
+    font-size: 1.25rem; /* 保持 Base UI 的字体大小 */
     line-height: 1.2;
   }
   
-  [data-theme="apple-white"] .data-unit {
-    font-size: 0.75rem; /* 缩小字号 */
-    color: var(--muted-foreground);
-    opacity: 0.6; /* 颜色变淡 */
-    margin-left: 0.25rem; /* 4px 间距 */
-  }
-  
-  /* Industrial Blue 模式保持原样 */
-  [data-theme="industrial-blue"] .data-value,
-  :root:not([data-theme]) .data-value {
-    font-weight: 700;
-    font-size: 1.25rem; /* text-xl */
-  }
-  
-  [data-theme="industrial-blue"] .data-unit,
-  :root:not([data-theme]) .data-unit {
+  .data-unit {
     font-size: 0.75rem;
     margin-left: 0.25rem;
+  }
+  
+  /* Apple White 模式：只改变颜色，不改变字体大小 */
+  [data-theme="apple-white"] .data-unit {
+    color: var(--muted-foreground);
+    opacity: 0.6;
   }
   
   /* ========== 全站主题自愈：确保所有文字和图标自动适配 ========== */
@@ -398,8 +491,8 @@
   }
   
   /* 工业蓝模式：保持原有样式（使用浅色文字） */
-  [data-theme="industrial-blue"] svg:not([class*="text-"]),
-  :root:not([data-theme]) svg:not([class*="text-"]) {
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]) 选择器 */
+  :root:not([data-theme="apple-white"]) svg:not([class*="text-"]) {
     color: var(--foreground);
     stroke: var(--foreground);
     fill: var(--foreground);

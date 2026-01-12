@@ -32,18 +32,18 @@ export function IoTDashboardOffline() {
   return (
     <div className="space-y-4">
       {/* 主要燃料监控卡片 - 离线状态 */}
-      <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-slate-700/50 backdrop-blur-sm p-6">
+      <Card className="theme-card p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-slate-600 to-slate-700 rounded-xl flex items-center justify-center shadow-lg shadow-slate-500/20">
-              <Flame className="h-6 w-6 text-slate-400" />
+            <div className="w-12 h-12 bg-muted/50 rounded-xl flex items-center justify-center shadow-lg" style={{ borderRadius: 'var(--radius-button)' }}>
+              <Flame className="h-6 w-6 text-muted-foreground" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">燃料实时监控</h3>
-              <p className="text-xs text-slate-400">IoT智能传感器</p>
+              <h3 className="text-lg font-semibold text-foreground">燃料实时监控</h3>
+              <p className="text-xs text-muted-foreground">IoT智能传感器</p>
             </div>
           </div>
-          <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">
+          <Badge className="bg-muted/20 text-muted-foreground border-muted/30">
             <AlertCircle className="h-3 w-3 mr-1" />
             离线
           </Badge>
@@ -67,7 +67,7 @@ export function IoTDashboardOffline() {
 
         {/* 数据统计网格 - 显示占位符 */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800">
+          <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
             <div className="flex items-center gap-2 mb-1">
               <Activity className="h-4 w-4 text-slate-500" />
               <span className="text-xs text-slate-400">累计加注</span>
@@ -76,7 +76,7 @@ export function IoTDashboardOffline() {
             <div className="text-xs text-slate-600">--kg/天</div>
           </div>
 
-          <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800">
+          <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
             <div className="flex items-center gap-2 mb-1">
               <Activity className="h-4 w-4 text-slate-500" />
               <span className="text-xs text-slate-400">日均消耗</span>
@@ -85,7 +85,7 @@ export function IoTDashboardOffline() {
             <div className="text-xs text-slate-600">--kg/天</div>
           </div>
 
-          <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800">
+          <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
             <div className="flex items-center gap-2 mb-1">
               <Activity className="h-4 w-4 text-slate-500" />
               <span className="text-xs text-slate-400">使用效率</span>
@@ -110,25 +110,25 @@ export function IoTDashboardOffline() {
 
       {/* 设备状态监控 */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-slate-700/50 backdrop-blur-sm p-4">
+        <Card className="theme-card p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">我的设备</span>
-            <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30 text-xs">未绑定</Badge>
+            <span className="text-sm text-foreground">我的设备</span>
+            <Badge className="bg-muted/20 text-muted-foreground border-muted/30 text-xs">未绑定</Badge>
           </div>
-          <div className="text-3xl font-bold text-slate-500 mb-1">--</div>
-          <div className="text-xs text-slate-500 flex items-center gap-1">
+          <div className="text-3xl font-bold text-muted-foreground mb-1">--</div>
+          <div className="text-xs text-muted-foreground flex items-center gap-1">
             <AlertCircle className="h-3 w-3" />
             请绑定设备以查看数据
           </div>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-slate-700/50 backdrop-blur-sm p-4">
+        <Card className="theme-card p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">设备绑定</span>
-            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">待完成</Badge>
+            <span className="text-sm text-foreground">设备绑定</span>
+            <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">待完成</Badge>
           </div>
-          <div className="text-3xl font-bold text-blue-400 mb-1">0</div>
-          <div className="text-xs text-blue-400">请前往设备管理页面绑定设备</div>
+          <div className="text-3xl font-bold text-primary mb-1">0</div>
+          <div className="text-xs text-primary">请前往设备管理页面绑定设备</div>
         </Card>
       </div>
     </div>

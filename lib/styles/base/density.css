@@ -1,0 +1,211 @@
+/**
+ * UI Density（信息密度）规范
+ * 
+ * 核心原则：
+ * - Density 只影响空间和行高，不影响视觉风格
+ * - 三个密度等级：compact（工人端）、normal（用户端，默认）、dense（管理端）
+ * - 使用 CSS 变量形式，便于统一管理和切换
+ * 
+ * ⛔ 严格禁止：
+ * - 颜色（color、background-color、border-color）
+ * - 字体家族（font-family）
+ * - 字体粗细（font-weight）
+ * - 圆角视觉风格（border-radius）
+ * - 边框样式（border-style、border-width）
+ * - 阴影（box-shadow、text-shadow）
+ * 
+ * ✅ 允许影响：
+ * - padding（内边距）
+ * - gap（间距）
+ * - line-height（行高）
+ * - 表格行高（table row height）
+ * - 卡片内部间距（card internal spacing）
+ */
+
+/**
+ * Density 等级定义
+ * 
+ * 1. --density-compact（工人端）
+ *    - 最紧凑的布局，适合移动端和触摸操作
+ *    - 减少 padding 和 gap，提高信息密度
+ * 
+ * 2. --density-normal（用户端，默认）
+ *    - 平衡的布局，适合大多数用户场景
+ *    - 标准的 padding 和 gap，舒适的阅读体验
+ * 
+ * 3. --density-dense（管理端）
+ *    - 最密集的布局，适合数据展示和管理界面
+ *    - 最大化信息密度，适合桌面端和鼠标操作
+ */
+
+/* ========================================
+ * Density: Compact（工人端）
+ * ======================================== */
+[data-density="compact"] {
+  /* Padding（内边距） */
+  --space-card-padding: 0.75rem;        /* 12px - 卡片内边距 */
+  --space-card-padding-y: 0.75rem;      /* 12px - 卡片垂直内边距 */
+  --space-card-padding-x: 0.75rem;      /* 12px - 卡片水平内边距 */
+  --space-section-padding: 0.75rem;      /* 12px - 区块内边距 */
+  --space-section-padding-y: 0.75rem;    /* 12px - 区块垂直内边距 */
+  --space-section-padding-x: 1rem;      /* 16px - 区块水平内边距 */
+  --space-item-padding: 0.5rem;         /* 8px - 列表项内边距 */
+  --space-item-padding-y: 0.5rem;       /* 8px - 列表项垂直内边距 */
+  --space-item-padding-x: 0.75rem;      /* 12px - 列表项水平内边距 */
+  --space-button-padding-y: 0.375rem;   /* 6px - 按钮垂直内边距 */
+  --space-button-padding-x: 0.75rem;    /* 12px - 按钮水平内边距 */
+  --space-input-padding-y: 0.375rem;    /* 6px - 输入框垂直内边距 */
+  --space-input-padding-x: 0.75rem;      /* 12px - 输入框水平内边距 */
+  --space-form-padding: 0.75rem;        /* 12px - 表单内边距 */
+  --space-form-group-gap: 0.5rem;       /* 8px - 表单组间距 */
+  
+  /* Gap（间距） */
+  --space-gap-xs: 0.25rem;              /* 4px - 极小间距 */
+  --space-gap-sm: 0.375rem;            /* 6px - 小间距 */
+  --space-gap-md: 0.5rem;              /* 8px - 中等间距 */
+  --space-gap-lg: 0.75rem;              /* 12px - 大间距 */
+  --space-gap-xl: 1rem;                 /* 16px - 超大间距 */
+  --space-gap-card: 0.5rem;             /* 8px - 卡片内部间距 */
+  --space-gap-section: 0.75rem;         /* 12px - 区块间距 */
+  --space-gap-list: 0.5rem;             /* 8px - 列表项间距 */
+  --space-gap-form: 0.5rem;             /* 8px - 表单字段间距 */
+  --space-gap-button-group: 0.375rem;   /* 6px - 按钮组间距 */
+  
+  /* Line Height（行高） */
+  --line-height-base: 1.375;            /* 22px / 16px - 基础行高 */
+  --line-height-tight: 1.25;            /* 20px / 16px - 紧凑行高 */
+  --line-height-normal: 1.375;          /* 22px / 16px - 正常行高 */
+  --line-height-relaxed: 1.5;           /* 24px / 16px - 宽松行高 */
+  --line-height-heading: 1.25;          /* 标题行高 */
+  --line-height-body: 1.375;            /* 正文行高 */
+  --line-height-caption: 1.25;          /* 说明文字行高 */
+  
+  /* Table（表格） */
+  --space-table-cell-padding-y: 0.375rem;  /* 6px - 表格单元格垂直内边距 */
+  --space-table-cell-padding-x: 0.5rem;     /* 8px - 表格单元格水平内边距 */
+  --space-table-row-height: 2rem;           /* 32px - 表格行高 */
+  --space-table-header-height: 2.25rem;     /* 36px - 表格表头行高 */
+  --space-table-gap: 0.25rem;               /* 4px - 表格列间距 */
+  
+  /* Card（卡片） */
+  --space-card-internal: 0.5rem;        /* 8px - 卡片内部元素间距 */
+  --space-card-header-padding: 0.75rem; /* 12px - 卡片头部内边距 */
+  --space-card-body-padding: 0.75rem;   /* 12px - 卡片主体内边距 */
+  --space-card-footer-padding: 0.75rem; /* 12px - 卡片底部内边距 */
+  --space-card-gap: 0.5rem;             /* 8px - 卡片内部元素间距 */
+}
+
+/* ========================================
+ * Density: Normal（用户端，默认）
+ * ======================================== */
+:root,
+[data-density="normal"] {
+  /* Padding（内边距） */
+  --space-card-padding: 1rem;           /* 16px - 卡片内边距 */
+  --space-card-padding-y: 1rem;         /* 16px - 卡片垂直内边距 */
+  --space-card-padding-x: 1rem;         /* 16px - 卡片水平内边距 */
+  --space-section-padding: 1rem;        /* 16px - 区块内边距 */
+  --space-section-padding-y: 1rem;      /* 16px - 区块垂直内边距 */
+  --space-section-padding-x: 1.5rem;   /* 24px - 区块水平内边距 */
+  --space-item-padding: 0.75rem;        /* 12px - 列表项内边距 */
+  --space-item-padding-y: 0.75rem;      /* 12px - 列表项垂直内边距 */
+  --space-item-padding-x: 1rem;        /* 16px - 列表项水平内边距 */
+  --space-button-padding-y: 0.5rem;    /* 8px - 按钮垂直内边距 */
+  --space-button-padding-x: 1rem;      /* 16px - 按钮水平内边距 */
+  --space-input-padding-y: 0.5rem;     /* 8px - 输入框垂直内边距 */
+  --space-input-padding-x: 0.75rem;    /* 12px - 输入框水平内边距 */
+  --space-form-padding: 1rem;          /* 16px - 表单内边距 */
+  --space-form-group-gap: 0.75rem;    /* 12px - 表单组间距 */
+  
+  /* Gap（间距） */
+  --space-gap-xs: 0.25rem;            /* 4px - 极小间距 */
+  --space-gap-sm: 0.5rem;             /* 8px - 小间距 */
+  --space-gap-md: 0.75rem;             /* 12px - 中等间距 */
+  --space-gap-lg: 1rem;               /* 16px - 大间距 */
+  --space-gap-xl: 1.5rem;              /* 24px - 超大间距 */
+  --space-gap-card: 0.75rem;           /* 12px - 卡片内部间距 */
+  --space-gap-section: 1rem;           /* 16px - 区块间距 */
+  --space-gap-list: 0.75rem;           /* 12px - 列表项间距 */
+  --space-gap-form: 0.75rem;           /* 12px - 表单字段间距 */
+  --space-gap-button-group: 0.5rem;    /* 8px - 按钮组间距 */
+  
+  /* Line Height（行高） */
+  --line-height-base: 1.5;             /* 24px / 16px - 基础行高 */
+  --line-height-tight: 1.375;          /* 22px / 16px - 紧凑行高 */
+  --line-height-normal: 1.5;           /* 24px / 16px - 正常行高 */
+  --line-height-relaxed: 1.75;         /* 28px / 16px - 宽松行高 */
+  --line-height-heading: 1.375;        /* 标题行高 */
+  --line-height-body: 1.5;             /* 正文行高 */
+  --line-height-caption: 1.375;        /* 说明文字行高 */
+  
+  /* Table（表格） */
+  --space-table-cell-padding-y: 0.5rem;    /* 8px - 表格单元格垂直内边距 */
+  --space-table-cell-padding-x: 0.75rem;    /* 12px - 表格单元格水平内边距 */
+  --space-table-row-height: 2.5rem;        /* 40px - 表格行高 */
+  --space-table-header-height: 3rem;       /* 48px - 表格表头行高 */
+  --space-table-gap: 0.5rem;                /* 8px - 表格列间距 */
+  
+  /* Card（卡片） */
+  --space-card-internal: 0.75rem;      /* 12px - 卡片内部元素间距 */
+  --space-card-header-padding: 1rem;   /* 16px - 卡片头部内边距 */
+  --space-card-body-padding: 1rem;     /* 16px - 卡片主体内边距 */
+  --space-card-footer-padding: 1rem;  /* 16px - 卡片底部内边距 */
+  --space-card-gap: 0.75rem;           /* 12px - 卡片内部元素间距 */
+}
+
+/* ========================================
+ * Density: Dense（管理端）
+ * ======================================== */
+[data-density="dense"] {
+  /* Padding（内边距） */
+  --space-card-padding: 0.5rem;        /* 8px - 卡片内边距 */
+  --space-card-padding-y: 0.5rem;      /* 8px - 卡片垂直内边距 */
+  --space-card-padding-x: 0.75rem;     /* 12px - 卡片水平内边距 */
+  --space-section-padding: 0.75rem;     /* 12px - 区块内边距 */
+  --space-section-padding-y: 0.75rem;  /* 12px - 区块垂直内边距 */
+  --space-section-padding-x: 1rem;     /* 16px - 区块水平内边距 */
+  --space-item-padding: 0.375rem;      /* 6px - 列表项内边距 */
+  --space-item-padding-y: 0.375rem;    /* 6px - 列表项垂直内边距 */
+  --space-item-padding-x: 0.75rem;     /* 12px - 列表项水平内边距 */
+  --space-button-padding-y: 0.25rem;   /* 4px - 按钮垂直内边距 */
+  --space-button-padding-x: 0.75rem;   /* 12px - 按钮水平内边距 */
+  --space-input-padding-y: 0.25rem;    /* 4px - 输入框垂直内边距 */
+  --space-input-padding-x: 0.5rem;     /* 8px - 输入框水平内边距 */
+  --space-form-padding: 0.75rem;       /* 12px - 表单内边距 */
+  --space-form-group-gap: 0.375rem;    /* 6px - 表单组间距 */
+  
+  /* Gap（间距） */
+  --space-gap-xs: 0.125rem;           /* 2px - 极小间距 */
+  --space-gap-sm: 0.25rem;             /* 4px - 小间距 */
+  --space-gap-md: 0.375rem;            /* 6px - 中等间距 */
+  --space-gap-lg: 0.5rem;              /* 8px - 大间距 */
+  --space-gap-xl: 0.75rem;              /* 12px - 超大间距 */
+  --space-gap-card: 0.375rem;          /* 6px - 卡片内部间距 */
+  --space-gap-section: 0.5rem;          /* 8px - 区块间距 */
+  --space-gap-list: 0.375rem;          /* 6px - 列表项间距 */
+  --space-gap-form: 0.375rem;          /* 6px - 表单字段间距 */
+  --space-gap-button-group: 0.25rem;   /* 4px - 按钮组间距 */
+  
+  /* Line Height（行高） */
+  --line-height-base: 1.25;            /* 20px / 16px - 基础行高 */
+  --line-height-tight: 1.125;          /* 18px / 16px - 紧凑行高 */
+  --line-height-normal: 1.25;           /* 20px / 16px - 正常行高 */
+  --line-height-relaxed: 1.375;        /* 22px / 16px - 宽松行高 */
+  --line-height-heading: 1.125;         /* 标题行高 */
+  --line-height-body: 1.25;             /* 正文行高 */
+  --line-height-caption: 1.125;         /* 说明文字行高 */
+  
+  /* Table（表格） */
+  --space-table-cell-padding-y: 0.25rem;   /* 4px - 表格单元格垂直内边距 */
+  --space-table-cell-padding-x: 0.5rem;    /* 8px - 表格单元格水平内边距 */
+  --space-table-row-height: 1.75rem;      /* 28px - 表格行高 */
+  --space-table-header-height: 2rem;      /* 32px - 表格表头行高 */
+  --space-table-gap: 0.25rem;              /* 4px - 表格列间距 */
+  
+  /* Card（卡片） */
+  --space-card-internal: 0.375rem;     /* 6px - 卡片内部元素间距 */
+  --space-card-header-padding: 0.75rem; /* 12px - 卡片头部内边距 */
+  --space-card-body-padding: 0.75rem;  /* 12px - 卡片主体内边距 */
+  --space-card-footer-padding: 0.75rem; /* 12px - 卡片底部内边距 */
+  --space-card-gap: 0.375rem;          /* 6px - 卡片内部元素间距 */
+}

@@ -12,10 +12,12 @@ function FieldSet({ className, ...props }: React.ComponentProps<'fieldset'>) {
     <fieldset
       data-slot="field-set"
       className={cn(
-        'flex flex-col gap-6',
-        'has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3',
+        'flex flex-col',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-lg, 1rem)',
+      }}
       {...props}
     />
   )
@@ -46,16 +48,19 @@ function FieldGroup({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="field-group"
       className={cn(
-        'group/field-group @container/field-group flex w-full flex-col gap-7 data-[slot=checkbox-group]:gap-3 [&>[data-slot=field-group]]:gap-4',
+        'group/field-group @container/field-group flex w-full flex-col',
         className,
       )}
+      style={{
+        gap: 'var(--space-form-group-gap, 0.75rem)',
+      }}
       {...props}
     />
   )
 }
 
 const fieldVariants = cva(
-  'group/field flex w-full gap-3 data-[invalid=true]:text-destructive',
+  'group/field flex w-full data-[invalid=true]:text-destructive',
   {
     variants: {
       orientation: {
@@ -89,6 +94,9 @@ function Field({
       data-slot="field"
       data-orientation={orientation}
       className={cn(fieldVariants({ orientation }), className)}
+      style={{
+        gap: 'var(--space-gap-md, 0.75rem)',
+      }}
       {...props}
     />
   )
@@ -99,9 +107,12 @@ function FieldContent({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="field-content"
       className={cn(
-        'group/field-content flex flex-1 flex-col gap-1.5 leading-snug',
+        'group/field-content flex flex-1 flex-col leading-snug',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-xs, 0.25rem)',
+      }}
       {...props}
     />
   )
@@ -115,11 +126,14 @@ function FieldLabel({
     <Label
       data-slot="field-label"
       className={cn(
-        'group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50',
-        'has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border [&>*]:data-[slot=field]:p-4',
-        'has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:border-primary dark:has-data-[state=checked]:bg-primary/10',
+        'group/field-label peer/field-label flex w-fit leading-snug group-data-[disabled=true]/field:opacity-50',
+        'has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border',
+        'has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:border-primary [data-theme="apple-white"]:has-data-[state=checked]:bg-primary/10',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-sm, 0.5rem)',
+      }}
       {...props}
     />
   )
@@ -130,9 +144,12 @@ function FieldTitle({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="field-label"
       className={cn(
-        'flex w-fit items-center gap-2 text-sm leading-snug font-medium group-data-[disabled=true]/field:opacity-50',
+        'flex w-fit items-center text-sm leading-snug font-medium group-data-[disabled=true]/field:opacity-50',
         className,
       )}
+      style={{
+        gap: 'var(--space-gap-sm, 0.5rem)',
+      }}
       {...props}
     />
   )

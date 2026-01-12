@@ -136,6 +136,19 @@ export type OrderFactGovernanceContext = {
     action: string
     created_at: string
   }>
+  
+  /**
+   * asset_id 到 device_id 的映射（best-effort）
+   * 
+   * 用于填充 FactWarning.device_id
+   * - 如果 trace.asset_id 能在 devices 表中找到（devices.device_id = trace.asset_id），则填充 device_id
+   * - 如果无法关联，device_id 允许为 null
+   * 
+   * 结构：{ [asset_id: string]: string | null }
+   * - key: asset_id（来自 trace.asset_id）
+   * - value: device_id（如果 asset_id 在 devices 表中存在，则为 device_id；否则为 null）
+   */
+  assetIdToDeviceIdMap?: Record<string, string | null>
 }
 
 /**
@@ -152,7 +165,7 @@ export function OrderFactGuard(
   const warnings: string[] = []
   const warningsStructured: FactWarning[] = []
 
-  const { order, traces, audit_logs } = context
+  const { order, traces, audit_logs, assetIdToDeviceIdMap } = context
 
   // ========== 检查 1：accepted_at 存在但 audit_logs 中无对应记录 ==========
   if (order.accepted_at !== null && order.accepted_at !== undefined) {
@@ -180,6 +193,10 @@ export function OrderFactGuard(
           accepted_at: order.accepted_at,
           audit_logs_actions: audit_logs.map(log => log.action),
         },
+        detected_at: new Date().toISOString(),
+        restaurant_id: order.restaurant_id,
+        worker_id: order.worker_id ?? null,
+        device_id: null, // 订单级别的警告，不涉及 trace，device_id 为 null
       })
     }
   }
@@ -209,6 +226,10 @@ export function OrderFactGuard(
           completed_at: order.completed_at,
           time_diff_ms: completedTime - createdTime,
         },
+        detected_at: new Date().toISOString(),
+        restaurant_id: order.restaurant_id,
+        worker_id: order.worker_id ?? null,
+        device_id: null, // 订单级别的警告，不涉及 trace，device_id 为 null
       })
     }
   }
@@ -241,6 +262,10 @@ export function OrderFactGuard(
               audit_log_created_at: log.created_at,
               time_diff_ms: logCreatedTime - orderCreatedTime,
             },
+            detected_at: new Date().toISOString(),
+            restaurant_id: order.restaurant_id,
+            worker_id: order.worker_id ?? null,
+            device_id: null,
           })
         }
       }
@@ -275,6 +300,10 @@ export function OrderFactGuard(
               audit_log_created_at: log.created_at,
               time_diff_ms: logCreatedTime - orderCreatedTime,
             },
+            detected_at: new Date().toISOString(),
+            restaurant_id: order.restaurant_id,
+            worker_id: order.worker_id ?? null,
+            device_id: null, // audit_logs 级别的警告，不涉及 trace，device_id 为 null
           })
         }
       }
@@ -307,6 +336,10 @@ export function OrderFactGuard(
           invalid_action_type: trace.action_type,
           allowed_action_types: allowedActionTypes,
         },
+        detected_at: new Date().toISOString(),
+        restaurant_id: order.restaurant_id,
+        worker_id: order.worker_id ?? null,
+        device_id: getDeviceId(trace.asset_id, assetIdToDeviceIdMap), // best-effort：从映射中获取 device_id
       })
     }
   })
@@ -341,6 +374,10 @@ export function OrderFactGuard(
               order_created_at: order.created_at,
               time_diff_ms: traceCreatedTime - orderCreatedTime,
             },
+            detected_at: new Date().toISOString(),
+            restaurant_id: order.restaurant_id,
+            worker_id: order.worker_id ?? null,
+            device_id: getDeviceId(trace.asset_id, assetIdToDeviceIdMap), // best-effort：从映射中获取 device_id
           })
         } else {
           // 如果 trace.order_id 为空或不同，可能是订单创建前的资产操作，这是合理的
@@ -363,6 +400,10 @@ export function OrderFactGuard(
               order_created_at: order.created_at,
               time_diff_ms: traceCreatedTime - orderCreatedTime,
             },
+            detected_at: new Date().toISOString(),
+            restaurant_id: order.restaurant_id,
+            worker_id: order.worker_id ?? null,
+            device_id: getDeviceId(trace.asset_id, assetIdToDeviceIdMap), // best-effort：从映射中获取 device_id
           })
         }
       }

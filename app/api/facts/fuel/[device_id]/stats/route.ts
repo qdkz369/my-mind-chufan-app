@@ -1,5 +1,37 @@
 /**
- * 燃料统计数据 API（Read-Only）
+ * Facts API - 燃料统计数据（Read-Only）
+ * 
+ * ========================================
+ * Facts API 使用约束
+ * ========================================
+ * 
+ * 1. 只读 Facts API
+ *    - 本 API 为只读事实表面（Read-Only Truth Surface）
+ *    - 不执行任何业务逻辑，不修改任何数据
+ *    - 所有操作均为只读查询（SELECT），不执行 INSERT/UPDATE/DELETE
+ * 
+ * 2. 主要消费方
+ *    - User UI: 用户界面（展示事实视图，不进行业务判断）
+ *    - Admin: 管理端（审计、治理、运营分析）
+ *    - AI: AI 系统（解释引擎、分析系统、智能助手）
+ * 
+ * 3. UI 使用约束（⚠️ 重要）
+ *    - UI 禁止基于 Facts 进行业务判断或流程控制
+ *    - UI 禁止根据 fact_warnings 或 fact_health 自动触发业务动作
+ *    - UI 禁止将 Facts 当作业务 API 使用（如：根据 fact_health.score 决定是否显示按钮）
+ *    - UI 只能将 Facts 用于"展示事实视图"，不能用于"业务决策"
+ * 
+ * 4. 明确声明
+ *    - 不写数据库：所有操作均为只读查询（SELECT），不执行 INSERT/UPDATE/DELETE
+ *    - 不触发业务动作：不修改订单状态、不发送通知、不调用外部 API
+ *    - 不承担决策责任：仅提供事实信息，不判断"应该做什么"或"不应该做什么"
+ * 
+ * 5. ⚠️ Financial View 禁止事项（重要）
+ *    - 本 API 不返回任何金融字段（amount, rate, installment, repayment, interest）
+ *    - 如需展示金融信息，请使用独立的 Financial View API
+ *    - 严禁写入 facts 表或结构
+ *    - Financial View – Derived / Non-Fact（金融视图是派生/非事实数据）
+ *    - 本 API 只返回数量（kg），不返回金额
  * 
  * GET /api/facts/fuel/:device_id/stats
  * 
@@ -59,7 +91,9 @@ export async function GET(
     const restaurant_id = deviceData.restaurant_id
 
     // 2. 查询累计加注量（从 delivery_orders 表查询该餐厅的燃料订单）
-    // 注意：需要根据订单类型和状态判断是否为加注订单
+    // ⚠️ Facts API 禁止：不查询任何金融字段（amount, rate, installment, repayment, interest）
+    // ⚠️ Facts API 禁止：不计算任何金额或费用
+    // 注意：只查询 quantity（数量，kg），不查询 total_amount（金额）
     // 也可以从 restaurants.total_refilled 字段直接获取（如果已维护）
     const { data: restaurantData, error: restaurantError } = await supabase
       .from("restaurants")
@@ -69,26 +103,23 @@ export async function GET(
 
     let total_refilled = 0
     if (restaurantData && restaurantData.total_refilled !== null && restaurantData.total_refilled !== undefined) {
-      // 优先使用 restaurants.total_refilled（更准确）
+      // 优先使用 restaurants.total_refilled（更准确，这是事实字段，不是金融字段）
       total_refilled = Number(restaurantData.total_refilled) || 0
     } else {
       // 降级：从 delivery_orders 表查询累计加注量
+      // ⚠️ 只查询 quantity（数量），不查询 total_amount（金额）
       const { data: refillOrdersData, error: refillOrdersError } = await supabase
         .from("delivery_orders")
-        .select("total_amount, quantity, created_at")
+        .select("quantity, created_at")
         .eq("restaurant_id", restaurant_id)
         .eq("status", "completed")
         .ilike("service_type", "%燃料%")
 
       if (refillOrdersData) {
-        // 累加所有加注订单的数量（优先使用 quantity，否则使用 total_amount / 单价估算）
+        // 累加所有加注订单的数量（只使用 quantity，不涉及金额）
+        // ⚠️ 如果 quantity 不存在，返回 0（不通过 total_amount 估算）
         total_refilled = refillOrdersData.reduce((sum, order) => {
-          if (order.quantity) {
-            return sum + (Number(order.quantity) || 0)
-          }
-          // 如果没有 quantity，使用 total_amount / 11.5（假设单价）估算
-          const amount = Number(order.total_amount) || 0
-          return sum + (amount > 0 ? Math.round(amount / 11.5) : 0)
+          return sum + (Number(order.quantity) || 0)
         }, 0)
       }
       if (refillOrdersError) {

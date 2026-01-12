@@ -75,3 +75,115 @@ export type TraceFact = {
   order_id?: string
   created_at: string
 }
+
+/**
+ * 事实警告级别
+ */
+export type FactWarningLevel = 'low' | 'medium' | 'high'
+
+/**
+ * 事实警告领域
+ */
+export type FactWarningDomain = 'order' | 'trace' | 'audit'
+
+/**
+ * 事实警告代码
+ */
+export type FactWarningCode =
+  | 'FACT_ACCEPTED_AT_MISSING_AUDIT_LOG'
+  | 'FACT_COMPLETED_AT_MISSING_AUDIT_LOG'
+  | 'FACT_TIME_INVERSION'
+  | 'FACT_ENUM_VALUE_INVALID'
+  | 'FACT_TIMELINE_BREAK'
+  | 'FACT_TIMELINE_ANOMALY'
+
+/**
+ * 结构化事实警告
+ * 
+ * 用于后续：
+ * - 管理端治理列表
+ * - 自动修复任务
+ * - 事实健康度可视化
+ * - 观察层（Observation Layer）统计和归因
+ * 
+ * @remarks Observation Layer 标准维度字段
+ * 
+ * Observation Layer 可以依赖以下字段作为标准维度进行统计和归因：
+ * - `detected_at`: 警告检测时间（用于按时间窗口统计）
+ * - `level`: 警告级别（用于按风险级别聚合）
+ * - `restaurant_id`: 餐厅ID（用于按餐厅归因）
+ * - `worker_id`: 配送员ID（用于按配送员归因）
+ * - `device_id`: 设备ID（用于按设备归因）
+ * 
+ * 重要说明：
+ * - Observation Layer 可以假设这些字段存在（即使可能为 null）
+ * - 不应再通过 `order` / `trace` / `evidence` 反向推断这些维度
+ * - 这些字段已在 Facts API 生成警告时直接填充，无需额外查询
+ */
+export type FactWarning = {
+  /**
+   * 警告代码（唯一标识符）
+   */
+  code: FactWarningCode
+
+  /**
+   * 警告级别
+   * - low: 可能是合理的异常（如订单创建前的资产操作）
+   * - medium: 数据不一致（如枚举值不在允许范围内）
+   * - high: 严重的事实违反（如时间逻辑异常）
+   */
+  level: FactWarningLevel
+
+  /**
+   * 警告领域
+   * - order: 订单相关
+   * - trace: 溯源相关
+   * - audit: 审计日志相关
+   */
+  domain: FactWarningDomain
+
+  /**
+   * 人类可读的警告消息
+   */
+  message: string
+
+  /**
+   * 相关字段列表（用于定位问题）
+   * 例如：['order.completed_at', 'order.created_at']
+   */
+  fields: string[]
+
+  /**
+   * 原始值快照（只读，用于调试和修复）
+   * 包含触发警告的相关数据
+   */
+  evidence?: any
+
+  /**
+   * 警告检测时间（ISO 8601 格式）
+   * 用于按时间窗口统计警告
+   * 来源：Facts API 生成警告时的系统时间
+   */
+  detected_at?: string
+
+  /**
+   * 餐厅ID（警告的直接归因对象）
+   * 用于按餐厅归因统计
+   * 来源：order.restaurant_id（delivery_orders.restaurant_id）
+   */
+  restaurant_id?: string
+
+  /**
+   * 配送员ID（警告的直接归因对象）
+   * 用于按配送员归因统计
+   * 来源：order.worker_id（delivery_orders.worker_id）
+   */
+  worker_id?: string | null
+
+  /**
+   * 设备ID（警告的直接归因对象）
+   * 用于按设备归因统计
+   * 来源：从 trace.asset_id 或 asset.asset_id 关联查询 devices 表获取
+   */
+  device_id?: string | null
+}

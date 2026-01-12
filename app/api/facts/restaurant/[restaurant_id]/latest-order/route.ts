@@ -1,5 +1,36 @@
 /**
- * 获取餐厅最近一次配送订单 ID API（Read-Only）
+ * Facts API - 餐厅最近一次配送订单 ID（Read-Only）
+ * 
+ * ========================================
+ * Facts API 使用约束
+ * ========================================
+ * 
+ * 1. 只读 Facts API
+ *    - 本 API 为只读事实表面（Read-Only Truth Surface）
+ *    - 不执行任何业务逻辑，不修改任何数据
+ *    - 所有操作均为只读查询（SELECT），不执行 INSERT/UPDATE/DELETE
+ * 
+ * 2. 主要消费方
+ *    - User UI: 用户界面（展示事实视图，不进行业务判断）
+ *    - Admin: 管理端（审计、治理、运营分析）
+ *    - AI: AI 系统（解释引擎、分析系统、智能助手）
+ * 
+ * 3. UI 使用约束（⚠️ 重要）
+ *    - UI 禁止基于 Facts 进行业务判断或流程控制
+ *    - UI 禁止根据 fact_warnings 或 fact_health 自动触发业务动作
+ *    - UI 禁止将 Facts 当作业务 API 使用（如：根据 fact_health.score 决定是否显示按钮）
+ *    - UI 只能将 Facts 用于"展示事实视图"，不能用于"业务决策"
+ * 
+ * 4. 明确声明
+ *    - 不写数据库：所有操作均为只读查询（SELECT），不执行 INSERT/UPDATE/DELETE
+ *    - 不触发业务动作：不修改订单状态、不发送通知、不调用外部 API
+ *    - 不承担决策责任：仅提供事实信息，不判断"应该做什么"或"不应该做什么"
+ * 
+ * 5. ⚠️ Financial View 禁止事项（重要）
+ *    - 本 API 不返回任何金融字段（amount, rate, installment, repayment, interest）
+ *    - 如需展示金融信息，请使用独立的 Financial View API
+ *    - 严禁写入 facts 表或结构
+ *    - Financial View – Derived / Non-Fact（金融视图是派生/非事实数据）
  * 
  * GET /api/facts/restaurant/:restaurant_id/latest-order
  * 

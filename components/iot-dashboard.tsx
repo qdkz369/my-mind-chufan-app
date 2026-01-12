@@ -241,7 +241,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
       <Card className="theme-card p-6" style={{ padding: '1.5rem' }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
+            <div className="w-12 h-12 bg-gradient-to-br from-warning to-destructive rounded-xl flex items-center justify-center shadow-lg shadow-warning/30" style={{ borderRadius: 'var(--radius-button)' }}>
               <Flame className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
