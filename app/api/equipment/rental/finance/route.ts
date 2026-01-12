@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: 无（不直接访问数据库，预留接口）
+// TARGET_KEY: 待实现
+// 说明：admin/staff 调用，第三方金融机构接口（预留），必须强制 company_id 过滤
+
 import { NextResponse } from "next/server"
 
 /**
@@ -99,4 +105,6 @@ export async function GET(request: Request) {
     )
   }
 }
+
+
 

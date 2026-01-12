@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：admin/staff 调用，必须强制 company_id 过滤，已使用 Anon Key，需完善 RLS
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { OrderStatus, ProductType } from "@/lib/types/order"
@@ -48,11 +54,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // 创建订单
+    // 创建配送订单（表已分离，固定为 delivery_orders）
+    // 初始状态必须为 'pending'，不接受其他值
     const orderData: any = {
       restaurant_id: restaurant_id,
-      service_type: service_type || "燃料配送",
-      status: status || "pending", // 默认状态为 pending（待处理），与管理端保持一致
+      service_type: "燃料配送", // 固定值，因为表已分离
+      status: "pending", // 统一初始状态为 pending，不接受 created / new / null 等值
       amount: amount || 0,
       customer_confirmed: false, // 默认未确认
       created_at: new Date().toISOString(),
@@ -65,27 +72,18 @@ export async function POST(request: Request) {
     }
 
     // 添加配送员ID（优先使用 assigned_to，兼容 worker_id）
+    // 注意：即使有配送员，初始状态仍为 pending，需要通过 accept 接口接单
     const deliveryWorkerId = assigned_to || worker_id
     if (deliveryWorkerId) {
       orderData.assigned_to = deliveryWorkerId
       orderData.worker_id = deliveryWorkerId // 兼容旧字段
-      // 如果有配送员，状态设为 processing（处理中）
-      if (!status) {
-        orderData.status = "processing"
-      }
-    } else {
-      // 如果没有配送员，状态设为 pending（待处理）
-      if (!status) {
-        orderData.status = "pending"
-      }
     }
 
+    // 插入订单并返回真实写入的 id（使用 .single() 确保只返回一条记录）
     const { data: newOrder, error: createError } = await supabase
-      .from("orders")
+      .from("delivery_orders")
       .insert(orderData)
-      .select(
-        "id, restaurant_id, worker_id, assigned_to, product_type, service_type, status, amount, tracking_code, proof_image, customer_confirmed, created_at, updated_at"
-      )
+      .select("id, restaurant_id, worker_id, assigned_to, product_type, service_type, status, amount, tracking_code, proof_image, customer_confirmed, created_at, updated_at")
       .single()
 
     if (createError) {
@@ -99,10 +97,22 @@ export async function POST(request: Request) {
       )
     }
 
+    // 确保返回真实写入的 id（禁止返回客户端传入的伪 id）
+    if (!newOrder || !newOrder.id) {
+      console.error("[创建订单API] 创建成功但未返回 id")
+      return NextResponse.json(
+        {
+          error: "创建订单失败",
+          details: "订单创建成功但未返回有效的订单ID",
+        },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({
       success: true,
       message: "订单创建成功",
-      data: newOrder,
+      data: newOrder, // 包含真实写入的 id
     })
   } catch (error) {
     console.error("[创建订单API] 处理请求时出错:", error)

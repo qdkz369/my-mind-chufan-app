@@ -59,12 +59,29 @@ export default function CustomerConfirmPage() {
 
         // 如果有订单ID，加载订单信息（原有逻辑）
         if (orderId) {
-          // 查询订单
-          const { data: orderData, error: orderError } = await supabase
-            .from("orders")
+          // 查询订单（需要判断是报修工单还是配送订单）
+          // 先尝试查询 delivery_orders（配送订单）
+          let { data: orderData, error: orderError } = await supabase
+            .from("delivery_orders")
             .select("*")
             .eq("id", orderId)
             .single()
+          
+          // 如果 delivery_orders 中不存在，尝试查询 repair_orders（报修工单）
+          if (orderError || !orderData) {
+            const repairResult = await supabase
+              .from("repair_orders")
+              .select("*")
+              .eq("id", orderId)
+              .single()
+            
+            if (!repairResult.error && repairResult.data) {
+              orderData = repairResult.data
+              orderError = null
+            } else {
+              orderError = repairResult.error || orderError
+            }
+          }
 
           if (orderError || !orderData) {
             setError("订单不存在")

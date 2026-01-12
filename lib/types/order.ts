@@ -53,6 +53,70 @@ export const OrderStatusFlow = {
 }
 
 /**
+ * 配送订单（delivery_orders）状态类型
+ * 阶段 2B-5：业务现实化 · 状态治理 · 可运营系统
+ */
+export type DeliveryOrderStatus =
+  | "pending"        // 待接单
+  | "accepted"       // 已接单
+  | "delivering"     // 配送中
+  | "completed"      // 已完成
+  | "rejected"       // 被拒单
+  | "cancelled"      // 用户取消
+  | "exception"      // 异常挂起
+  | "returned"       // 退回（未完成）
+
+/**
+ * 配送订单（delivery_orders）专用状态流转规则（白名单）
+ * 阶段 2B-5：业务现实化 · 状态治理 · 可运营系统
+ * 
+ * 规则：
+ * - pending 可以流转到 accepted（接单）、rejected（拒单）、cancelled（取消）
+ * - accepted 可以流转到 delivering（派单）、exception（异常）
+ * - delivering 可以流转到 completed（完成）、exception（异常）、returned（退回）
+ * - exception 可以流转到 delivering（恢复）、returned（退回）、cancelled（取消）
+ * - returned、rejected、cancelled、completed 为终态，不能流转
+ */
+export const ORDER_STATUS_FLOW: Record<DeliveryOrderStatus, DeliveryOrderStatus[]> = {
+  pending: ["accepted", "rejected", "cancelled"],
+  accepted: ["delivering", "exception"],
+  delivering: ["completed", "exception", "returned"],
+  exception: ["delivering", "returned", "cancelled"],
+  returned: [],    // 终态
+  rejected: [],    // 终态
+  cancelled: [],   // 终态
+  completed: [],   // 终态
+}
+
+// 兼容旧版本（向后兼容）
+export const DeliveryOrderStatusFlow: Record<string, string[]> = ORDER_STATUS_FLOW as Record<string, string[]>
+
+/**
+ * 检查配送订单状态是否可以流转到目标状态
+ * 阶段 2B-5：使用统一的状态流转白名单
+ * 
+ * @param currentStatus 当前状态
+ * @param targetStatus 目标状态
+ * @returns 是否可以流转
+ */
+export function canTransitionDeliveryOrderStatus(
+  currentStatus: string,
+  targetStatus: string
+): boolean {
+  // 标准化状态（转小写）
+  const normalizedCurrent = currentStatus.toLowerCase() as DeliveryOrderStatus
+  const normalizedTarget = targetStatus.toLowerCase() as DeliveryOrderStatus
+  
+  // 检查白名单
+  const allowedTargets = ORDER_STATUS_FLOW[normalizedCurrent]
+  if (!allowedTargets) {
+    return false
+  }
+  
+  return allowedTargets.includes(normalizedTarget)
+}
+
+/**
  * 获取订单状态的中文显示
  */
 export function getOrderStatusLabel(status: OrderStatus): string {

@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: PUBLIC (公开API)
+// ALLOWED_ROLES: 无（公开访问）
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：公开API，用于获取商户定位地址，无需权限验证
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 

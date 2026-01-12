@@ -1,6 +1,13 @@
+// ACCESS_LEVEL: STAFF_LEVEL
+// ALLOWED_ROLES: staff
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：只能 staff 调用，必须绑定 worker_id / assigned_to，后续必须使用 RLS 限制只能访问自己数据
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
+import { CONFIG_REQUIRE_ASSET_TRACE } from "@/lib/config/asset-trace"
 
 /**
  * POST: 更新报修工单状态和金额
@@ -45,10 +52,11 @@ export async function POST(request: Request) {
       amount, // 维修金额（可选，完成时必填）
       notes, // 备注（可选）
       assigned_to, // 分配的工人ID（可选）
+      asset_ids, // 资产ID列表（可选，预留接口，当前不强制绑定）
     } = body
 
-    // 统一使用 id，兼容 repair_id
-    const repairId = id || repair_id
+    // 统一使用 id，兼容 repair_id，确保解析为字符串
+    const repairId = String(id || repair_id || "").trim()
 
     if (!repairId) {
       return NextResponse.json(
@@ -81,12 +89,13 @@ export async function POST(request: Request) {
       )
     }
 
-    // 查询报修工单是否存在（放宽 service_type 匹配，允许所有类型的工单）
+    // 查询报修工单是否存在（使用 maybeSingle 避免多条记录错误）
+    // 确保从 repair_orders 表查询，ID 已解析为字符串
     const { data: repair, error: repairError } = await supabase
-      .from("orders")
+      .from("repair_orders")
       .select("id, status, service_type")
       .eq("id", repairId)
-      .single()
+      .maybeSingle()
 
     if (repairError) {
       console.error("[更新报修API] 查询工单失败:", repairError)
@@ -129,13 +138,14 @@ export async function POST(request: Request) {
 
     console.log("[更新报修API] 准备更新工单:", { repairId, updateData })
 
-    // 更新报修工单
+    // 更新报修工单（使用 maybeSingle 避免多条记录错误）
+    // 确保操作 repair_orders 表，ID 已解析为字符串
     const { data: updatedRepair, error: updateError } = await supabase
-      .from("orders")
+      .from("repair_orders")
       .update(updateData)
       .eq("id", repairId)
       .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to")
-      .single()
+      .maybeSingle()
 
     if (updateError) {
       console.error("[更新报修API] 更新失败:", {
@@ -155,6 +165,43 @@ export async function POST(request: Request) {
         },
         { status: 500 }
       )
+    }
+
+    // 如果查询不到记录，返回404
+    if (!updatedRepair) {
+      return NextResponse.json(
+        {
+          error: "报修工单不存在",
+          details: "无法找到要更新的报修工单",
+        },
+        { status: 404 }
+      )
+    }
+
+    // 预留接口：如果提供了 asset_ids，写入 trace_logs（资产溯源记录）
+    // 当前不强制 asset 绑定，仅为未来扩展预留
+    if (asset_ids && Array.isArray(asset_ids) && asset_ids.length > 0) {
+      // 获取操作员ID（从请求体中获取 worker_id 或 assigned_to）
+      const operatorId = body.worker_id || assigned_to || null
+      
+      const traceLogs = asset_ids.map((assetId: string) => ({
+        asset_id: assetId,
+        operator_id: operatorId,
+        action_type: "维修", // 或根据 status 动态设置：completed -> "维修", processing -> "维修中"
+        order_id: repairId, // 关联报修工单ID
+        created_at: new Date().toISOString(),
+      }))
+
+      const { error: traceError } = await supabase
+        .from("trace_logs")
+        .insert(traceLogs)
+
+      if (traceError) {
+        console.error("[更新报修API] 写入溯源记录失败:", traceError)
+        // 溯源记录写入失败不影响报修工单更新，只记录日志
+      } else {
+        console.log("[更新报修API] 资产溯源记录已写入，asset_ids:", asset_ids)
+      }
     }
 
     return NextResponse.json({

@@ -1,9 +1,12 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: Service Role Key (优先)
+// TARGET_KEY: Anon Key + RLS
+// 说明：admin/staff 调用，必须强制 company_id 过滤，后续必须迁移到 Anon Key + RLS
+
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-
-// 从 lib/supabase.ts 获取后备值
-const FALLBACK_SUPABASE_URL = "https://gjlhcpfvjgqabqanvgmu.supabase.co"
-const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkAHQ"
+import { getCurrentCompanyId, enforceCompanyFilter } from "@/lib/multi-tenant"
 
 /**
  * GET: 获取所有设备租赁订单（管理端）
@@ -16,9 +19,22 @@ const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkA
  */
 export async function GET(request: Request) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_SUPABASE_URL
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || (!serviceRoleKey && !anonKey)) {
+      console.error("[设备租赁管理API] Supabase URL 或密钥未配置")
+      return NextResponse.json(
+        {
+          success: false,
+          error: "服务器配置错误",
+          details: "Supabase 密钥未配置。请检查环境变量。",
+          data: [],
+        },
+        { status: 500 }
+      )
+    }
 
     let supabaseClient: any
 
@@ -49,13 +65,14 @@ export async function GET(request: Request) {
           details: "Supabase 密钥未配置。请检查环境变量。",
           data: [],
         },
-        { status: 200 } // 返回 200 避免前端崩溃，但指示失败
+        { status: 500 }
       )
     }
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const restaurantId = searchParams.get("restaurant_id")
+    const companyId = searchParams.get("company_id") || await getCurrentCompanyId(request) // 🔒 多租户隔离：供应商ID
 
     // 首先尝试查询 rental_orders 表，如果不存在则查询 rentals 表
     let query = supabaseClient
@@ -81,6 +98,12 @@ export async function GET(request: Request) {
           name,
           contact_name,
           contact_phone
+        ),
+        companies (
+          id,
+          name,
+          contact_name,
+          contact_phone
         )
       `)
 
@@ -94,13 +117,20 @@ export async function GET(request: Request) {
       query = query.eq("restaurant_id", restaurantId)
     }
 
+    // 🔒 多租户隔离：强制按 provider_id 过滤（如果提供了 company_id）
+    if (companyId) {
+      query = enforceCompanyFilter(query, companyId, "provider_id")
+      console.log("[设备租赁管理API] 应用多租户过滤，company_id:", companyId)
+    }
+
     query = query.order("created_at", { ascending: false })
 
     let { data: orders, error } = await query
 
     // 如果 rental_orders 表不存在，尝试查询 rentals 表作为后备
-    if (error && (error.code === "PGRST116" || error.message?.includes("does not exist") || error.message?.includes("schema cache"))) {
-      console.warn("[设备租赁管理API] rental_orders 表不存在，尝试查询 rentals 表")
+    if (error && (error.code === "PGRST116" || error.code === "42P01" || error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.message?.includes("Could not find the table"))) {
+      console.warn("[设备租赁管理API] rental_orders 表查询失败:", error.message, "错误代码:", error.code)
+      console.warn("[设备租赁管理API] 尝试查询 rentals 表作为后备")
       
       // 查询 rentals 表（简化版本，不包含关联查询）
       let rentalsQuery = supabaseClient

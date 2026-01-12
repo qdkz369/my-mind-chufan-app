@@ -20,7 +20,7 @@ const ProfileContent = dynamic(
 
 export default function ProfilePage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
+    <main className="min-h-screen bg-background pb-20">
       <Header />
       <ProfileContent />
       <BottomNavigation />

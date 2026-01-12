@@ -1,9 +1,13 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: Service Role Key (优先) 或 Anon Key
+// TARGET_KEY: Anon Key + RLS
+// 说明：admin/staff 调用，已接入 getUserContext，必须强制 company_id 过滤，后续必须迁移到 Anon Key + RLS
+
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-
-// 后备值（与 lib/supabase.ts 保持一致）
-const FALLBACK_SUPABASE_URL = "https://gjlhcpfvjgqabqanvgmu.supabase.co"
-const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkAHQ"
+import { enforceCompanyFilter } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * GET: 获取租赁订单列表
@@ -14,15 +18,57 @@ const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkA
  */
 export async function GET(request: Request) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_SUPABASE_URL
+    // 第一步：使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      
+      // 如果 companyId 不存在（非 super_admin），直接返回 403
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // 使用返回的 companyId 作为唯一租户过滤条件
+    // super_admin 允许 companyId 为 undefined，但普通用户必须有 companyId
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     
     // 优先使用 service role key，如果没有则使用 anon key（需要 RLS 策略允许）
     const keyToUse = serviceRoleKey || anonKey
     
-    if (!keyToUse) {
-      console.error("[租赁订单列表API] 未找到有效的 Supabase 密钥")
+    if (!supabaseUrl || !keyToUse) {
+      console.error("[租赁订单列表API] Supabase URL 或密钥未配置")
       return NextResponse.json(
         { 
           success: true, 
@@ -44,6 +90,8 @@ export async function GET(request: Request) {
     const restaurantId = searchParams.get("restaurant_id")
     const userId = searchParams.get("user_id")
     const status = searchParams.get("status")
+    // 使用 userContext 中的 companyId 作为唯一租户过滤条件
+    const companyId = userContext.companyId
 
     if (!restaurantId) {
       return NextResponse.json(
@@ -74,6 +122,25 @@ export async function GET(request: Request) {
         )
       `)
       .eq("restaurant_id", restaurantId)
+
+    // 🔒 多租户隔离：强制按 provider_id 过滤（super_admin 除外）
+    if (companyId) {
+      query = enforceCompanyFilter(query, companyId, "provider_id")
+      console.log("[租赁订单列表API] 应用多租户过滤，company_id:", companyId)
+    } else if (userContext.role === "super_admin") {
+      // super_admin 可以查看所有数据，不应用 company_id 过滤
+      console.log("[租赁订单列表API] 超级管理员，不应用多租户过滤")
+    } else {
+      // 非 super_admin 且没有 companyId，应该已经在前面返回 403
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
 
     // 用户ID筛选（如果提供）
     if (userId) {

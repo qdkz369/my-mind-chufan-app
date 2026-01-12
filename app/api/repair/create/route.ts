@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: STAFF_LEVEL
+// ALLOWED_ROLES: staff
+// CURRENT_KEY: Anon Key 或 Service Role Key (fallback)
+// TARGET_KEY: Anon Key + RLS
+// 说明：只能 staff 调用，必须绑定 worker_id / assigned_to，后续必须使用 RLS 限制只能访问自己数据
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { createClient } from "@supabase/supabase-js"
@@ -34,8 +40,14 @@ export async function POST(request: Request) {
         const token = authHeader.substring(7)
         try {
           // 创建服务端 Supabase 客户端来验证令牌
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gjlhcpfvjgqabqanvgmu.supabase.co"
-          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkAHQ"
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+          
+          if (!supabaseUrl || !supabaseAnonKey) {
+            console.warn("[创建报修API] Supabase URL 或 Anon Key 未配置，无法验证令牌")
+            return
+          }
+          
           const serverClient = createClient(supabaseUrl, supabaseAnonKey, {
             auth: {
               persistSession: false,
@@ -59,8 +71,9 @@ export async function POST(request: Request) {
     let useServiceRole = false
     if (!currentUserId) {
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (serviceRoleKey) {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gjlhcpfvjgqabqanvgmu.supabase.co"
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      
+      if (serviceRoleKey && supabaseUrl) {
         supabaseClient = createClient(supabaseUrl, serviceRoleKey, {
           auth: {
             persistSession: false,
@@ -206,7 +219,7 @@ export async function POST(request: Request) {
     })
     
     let { data: newRepair, error: createError } = await supabaseClient
-      .from("orders")
+      .from("repair_orders")
       .insert(repairData)
       .select("id, restaurant_id, service_type, status, description, created_at, updated_at, amount")
       .single()
@@ -276,7 +289,7 @@ export async function POST(request: Request) {
       // 如果有需要更新的字段，尝试更新
       if (Object.keys(updateData).length > 0) {
         const { error: updateError } = await supabaseClient
-          .from("orders")
+          .from("repair_orders")
           .update(updateData)
           .eq("id", newRepair.id)
         

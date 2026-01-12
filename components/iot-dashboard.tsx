@@ -1,116 +1,372 @@
 "use client"
 
-import { Flame, TrendingDown, TrendingUp, Activity, Zap, Wrench } from "lucide-react"
+import { Flame, TrendingDown, TrendingUp, Activity, Zap, Wrench, Truck } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { supabase } from "@/lib/supabase"
 
-export function IoTDashboard() {
-  const [fuelLevel, setFuelLevel] = useState(68)
-  const [consumption, setConsumption] = useState(12.5)
+interface IoTDashboardProps {
+  onDeviceClick?: () => void
+}
 
-  // 模拟实时数据更新
+export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
+  const router = useRouter()
+  const [fuelLevel, setFuelLevel] = useState<number | null>(null)
+  const [totalRefilled, setTotalRefilled] = useState<number>(0)
+  const [dailyConsumption, setDailyConsumption] = useState<number>(0)
+  const [usageEfficiency, setUsageEfficiency] = useState<number>(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isOnline, setIsOnline] = useState(false)
+  const [deviceId, setDeviceId] = useState<string | null>(null)
+
+  // 从 API 获取初始燃料数据
   useEffect(() => {
-    const interval = setInterval(() => {
-      setFuelLevel((prev) => prev - 0.1)
-      setConsumption((prev) => 12 + Math.random() * 2)
-    }, 3000)
-    return () => clearInterval(interval)
+    const loadFuelData = async () => {
+      try {
+        const restaurantId = typeof window !== "undefined" 
+          ? localStorage.getItem("restaurantId") 
+          : null
+
+        if (!restaurantId || !supabase) {
+          console.warn('[IoT Dashboard] 未找到 restaurantId 或 Supabase 未初始化，无法加载燃料数据')
+          setIsLoading(false)
+          return
+        }
+
+        // 先通过 restaurant_id 查询 devices 表获取 device_id
+        const { data: devices, error: deviceError } = await supabase
+          .from("devices")
+          .select("device_id")
+          .eq("restaurant_id", restaurantId)
+          .limit(1)
+          .maybeSingle()
+
+        if (deviceError || !devices) {
+          console.warn('[IoT Dashboard] 未找到设备，无法加载燃料数据')
+          setIsLoading(false)
+          return
+        }
+
+        const deviceId = devices.device_id
+        setDeviceId(deviceId)
+
+        // 从 API 获取最新燃料数据
+        const response = await fetch(`/api/fuel-sensor?device_id=${deviceId}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.data) {
+            setFuelLevel(data.data.percentage)
+            setIsOnline(true)
+          }
+        }
+
+        // 从 API 获取燃料统计数据
+        const statsResponse = await fetch(`/api/facts/fuel/${deviceId}/stats`)
+        if (statsResponse.ok) {
+          const statsData = await statsResponse.json()
+          if (statsData.success) {
+            setTotalRefilled(statsData.total_refilled || 0)
+            setDailyConsumption(statsData.daily_consumption || 0)
+            setUsageEfficiency(statsData.usage_efficiency || 0)
+          }
+        }
+      } catch (error) {
+        console.error('[IoT Dashboard] 加载燃料数据失败:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadFuelData()
   }, [])
+
+  // 使用 Supabase Realtime 订阅 fuel_level 表（带自动重连机制）
+  useEffect(() => {
+    const restaurantId = typeof window !== "undefined" 
+      ? localStorage.getItem("restaurantId") 
+      : null
+
+    if (!restaurantId || !supabase) {
+      return
+    }
+
+    let channel: any = null
+    let reconnectTimer: NodeJS.Timeout | null = null
+    let isUnmounted = false
+    let reconnectAttempts = 0
+    const MAX_RECONNECT_ATTEMPTS = 5
+    const RECONNECT_DELAY = 3000 // 3秒
+
+    const setupRealtime = async () => {
+      // 如果组件已卸载，不再尝试连接
+      if (isUnmounted) return
+
+      try {
+        // 先查询设备 ID
+        const { data: devices, error: deviceError } = await supabase
+          .from("devices")
+          .select("device_id")
+          .eq("restaurant_id", restaurantId)
+          .limit(1)
+          .maybeSingle()
+
+        if (deviceError || !devices) {
+          console.warn('[IoT Dashboard] 未找到设备，无法订阅实时数据')
+          setIsOnline(false)
+          return
+        }
+
+        const currentDeviceId = devices.device_id
+        setDeviceId(currentDeviceId)
+
+        // 如果已有频道，先清理
+        if (channel) {
+          try {
+            await supabase.removeChannel(channel)
+          } catch (e) {
+            console.warn('[IoT Dashboard] 清理旧频道失败:', e)
+          }
+        }
+
+        // 创建新频道并订阅 fuel_level 表的实时更新
+        channel = supabase
+          .channel(`fuel-level-${currentDeviceId}`, {
+            config: {
+              broadcast: { self: false },
+              presence: { key: currentDeviceId },
+            },
+          })
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "fuel_level",
+              filter: `device_id=eq.${currentDeviceId}`,
+            },
+            (payload) => {
+              console.log('[IoT Dashboard] Realtime 更新:', payload)
+              if (payload.new && 'percentage' in payload.new) {
+                setFuelLevel(payload.new.percentage as number)
+                setIsOnline(true)
+                // 重置重连计数（连接成功）
+                reconnectAttempts = 0
+                // 燃料更新后，刷新统计数据
+                fetch(`/api/facts/fuel/${currentDeviceId}/stats`)
+                  .then(res => res.json())
+                  .then(statsData => {
+                    if (statsData.success) {
+                      setTotalRefilled(statsData.total_refilled || 0)
+                      setDailyConsumption(statsData.daily_consumption || 0)
+                      setUsageEfficiency(statsData.usage_efficiency || 0)
+                    }
+                  })
+                  .catch(err => console.error('[IoT Dashboard] 刷新统计数据失败:', err))
+              }
+            }
+          )
+          .subscribe((status, err) => {
+            console.log('[IoT Dashboard] Realtime 订阅状态:', status, err)
+            if (status === "SUBSCRIBED") {
+              setIsOnline(true)
+              reconnectAttempts = 0 // 重置重连计数
+              console.log('[IoT Dashboard] Realtime 订阅成功')
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+              setIsOnline(false)
+              console.error('[IoT Dashboard] Realtime 订阅失败:', status, err)
+              // 自动重连机制
+              if (!isUnmounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++
+                console.log(`[IoT Dashboard] 尝试重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`)
+                if (reconnectTimer) clearTimeout(reconnectTimer)
+                reconnectTimer = setTimeout(() => {
+                  if (!isUnmounted) {
+                    setupRealtime()
+                  }
+                }, RECONNECT_DELAY)
+              } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.error('[IoT Dashboard] 达到最大重连次数，停止重连')
+              }
+            }
+          })
+      } catch (error) {
+        console.error('[IoT Dashboard] 设置实时订阅失败:', error)
+        setIsOnline(false)
+        // 尝试重连
+        if (!isUnmounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttempts++
+          if (reconnectTimer) clearTimeout(reconnectTimer)
+          reconnectTimer = setTimeout(() => {
+            if (!isUnmounted) {
+              setupRealtime()
+            }
+          }, RECONNECT_DELAY)
+        }
+      }
+    }
+
+    // 初始设置
+    setupRealtime()
+    
+    // 清理函数
+    return () => {
+      isUnmounted = true
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      if (channel) {
+        console.log('[IoT Dashboard] 清理 Realtime 订阅')
+        supabase.removeChannel(channel).catch(err => {
+          console.warn('[IoT Dashboard] 清理频道失败:', err)
+        })
+        channel = null
+      }
+    }
+  }, [])
+
+  // 一键报修处理函数 - 跳转到报修页面
+  const handleQuickRepair = () => {
+    router.push("/repair/create")
+  }
 
   return (
     <div className="space-y-4">
       {/* 主要燃料监控卡片 */}
-      <Card className="bg-gradient-to-br from-blue-950/90 to-slate-900/90 border-blue-800/50 backdrop-blur-sm p-6">
+      <Card className="theme-card p-6" style={{ padding: '1.5rem' }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
               <Flame className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">燃料实时监控</h3>
-              <p className="text-xs text-slate-400">IoT智能传感器</p>
+              <h3 className="text-lg font-semibold text-foreground">燃料实时监控</h3>
+              <p className="text-xs text-muted-foreground">IoT智能传感器</p>
             </div>
           </div>
-          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-            <Activity className="h-3 w-3 mr-1 animate-pulse" />
-            在线
+          <Badge className={isOnline ? "bg-success/20 text-success border-success/30" : "bg-muted/20 text-muted-foreground border-muted/30"}>
+            <Activity className={`h-3 w-3 mr-1 ${isOnline ? "animate-pulse" : ""}`} />
+            {isOnline ? "在线" : "离线"}
           </Badge>
         </div>
 
         {/* 燃料剩余量 */}
         <div className="mb-6">
-          <div className="flex justify-between items-end mb-2">
-            <span className="text-sm text-slate-300">当前剩余量</span>
-            <div className="text-right">
-              <span className="text-4xl font-bold text-white">{fuelLevel.toFixed(1)}</span>
-              <span className="text-xl text-slate-400 ml-1">%</span>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Activity className="w-5 h-5 mr-2 animate-spin" />
+              <span className="text-sm">加载中...</span>
             </div>
-          </div>
-          <Progress value={fuelLevel} className="h-3 bg-slate-800" />
-          <div className="flex justify-between mt-2">
-            <span className="text-xs text-slate-500">约 {(fuelLevel * 5).toFixed(0)} kg</span>
-            <span className="text-xs text-orange-400">预计可用 {Math.floor(fuelLevel / consumption)} 天</span>
-          </div>
+          ) : fuelLevel !== null ? (
+            <>
+              <div className="flex justify-between items-end mb-2">
+                <span className="text-sm text-muted-foreground">当前剩余量</span>
+                <div className="text-right">
+                  <span className="text-4xl font-bold text-foreground data-value">{fuelLevel.toFixed(1)}</span>
+                  <span className="text-xl text-muted-foreground ml-1 data-unit">%</span>
+                </div>
+              </div>
+              <Progress value={fuelLevel} className="h-3 bg-muted" />
+              <div className="flex justify-between mt-2">
+                <span className="text-xs text-muted-foreground">约 {(fuelLevel * 5).toFixed(0)} kg</span>
+                {dailyConsumption > 0 && (
+                  <span className="text-xs text-warning">预计可用 {Math.floor((fuelLevel * 5) / dailyConsumption)} 天</span>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <span className="text-sm">暂无数据</span>
+            </div>
+          )}
         </div>
 
         {/* 数据统计网格 */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800">
+          <div className="theme-card p-3">
             <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className="h-4 w-4 text-blue-400" />
-              <span className="text-xs text-slate-400">累计加注</span>
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <span className="text-xs text-muted-foreground">累计加注</span>
             </div>
-            <div className="text-xl font-bold text-white">2,845</div>
-            <div className="text-xs text-slate-500">kg</div>
+            <div className="text-xl font-bold text-foreground data-value">{totalRefilled.toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground data-unit">kg</div>
           </div>
 
-          <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800">
+          <div className="theme-card p-3">
             <div className="flex items-center gap-2 mb-1">
-              <TrendingDown className="h-4 w-4 text-purple-400" />
-              <span className="text-xs text-slate-400">日均消耗</span>
+              <TrendingDown className="h-4 w-4 text-accent" />
+              <span className="text-xs text-muted-foreground">日均消耗</span>
             </div>
-            <div className="text-xl font-bold text-white">{consumption.toFixed(1)}</div>
-            <div className="text-xs text-slate-500">kg/天</div>
+            <div className="text-xl font-bold text-foreground data-value">{dailyConsumption.toFixed(1)}</div>
+            <div className="text-xs text-muted-foreground data-unit">kg/天</div>
           </div>
 
-          <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800">
+          <div className="theme-card p-3">
             <div className="flex items-center gap-2 mb-1">
-              <Zap className="h-4 w-4 text-yellow-400" />
-              <span className="text-xs text-slate-400">使用效率</span>
+              <Zap className="h-4 w-4 text-warning" />
+              <span className="text-xs text-muted-foreground">使用效率</span>
             </div>
-            <div className="text-xl font-bold text-white">92</div>
-            <div className="text-xs text-slate-500">%</div>
+            <div className="text-xl font-bold text-foreground data-value">{Math.round(usageEfficiency)}</div>
+            <div className="text-xs text-muted-foreground data-unit">%</div>
           </div>
         </div>
       </Card>
 
       {/* 设备状态监控 */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/30 backdrop-blur-sm p-4">
+        <Card 
+          className="theme-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={onDeviceClick}
+        >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">我的设备</span>
-            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">5台在用</Badge>
+            <span className="text-sm text-foreground">我的设备</span>
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">设备监控</Badge>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">100%</div>
-          <div className="text-xs text-green-400 flex items-center gap-1">
+          <div className="text-3xl font-bold text-foreground mb-1">100%</div>
+          <div className="text-xs text-success flex items-center gap-1">
             <TrendingUp className="h-3 w-3" />
             运行正常
           </div>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/30 backdrop-blur-sm p-4">
+        <Card 
+          className="theme-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={handleQuickRepair}
+        >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-slate-300">一键报修</span>
-            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs">快速报修</Badge>
+            <span className="text-sm text-foreground">一键报修</span>
+            <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">快速报修</Badge>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">
+          <div className="text-3xl font-bold text-foreground mb-1">
             <Wrench className="h-8 w-8 inline-block mb-1" />
           </div>
-          <div className="text-xs text-purple-400">点击提交报修</div>
+          <div className="text-xs text-muted-foreground">点击提交报修</div>
         </Card>
       </div>
+
+      {/* 燃料配送卡片 */}
+      <Card className="theme-card p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-warning to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-warning/30">
+            <Truck className="w-5 h-5 text-warning-foreground" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-foreground">燃料配送</h3>
+            <p className="text-xs text-muted-foreground">快速下单，2小时送达</p>
+          </div>
+        </div>
+        <Link href="/payment?service=燃料配送">
+          <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground theme-button">
+            <Truck className="w-4 h-4 mr-2" />
+            立即购买燃料
+          </Button>
+        </Link>
+      </Card>
     </div>
   )
 }

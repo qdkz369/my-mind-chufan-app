@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-01-09T16:25:29.893Z",
+  "tests": [],
+  "summary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "errors": [
+      "缺少 Worker 登录信息"
+    ]
+  }
+}

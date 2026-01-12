@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Header } from "@/components/header"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { loadAMapOnce, isAMapAvailable } from "@/lib/amap-loader"
+import { getCachedAddress, cacheAddress } from "@/lib/geocoding-cache"
 
 export default function AddressesPage() {
   const router = useRouter()
@@ -37,31 +39,43 @@ export default function AddressesPage() {
     longitude: number | null
   } | null>(null)
 
-  // 加载高德地图定位插件
+  // 加载高德地图定位插件（使用全局单例加载器）
   useEffect(() => {
     const loadAMapPlugins = async () => {
       if (typeof window === 'undefined') return
-      if (amapLoaded) return
-
-      const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
-      if (!amapKey) {
-        console.warn('[定位] AMAP_KEY未配置')
+      
+      // 如果已经加载，直接返回
+      if (amapLoaded || isAMapAvailable()) {
+        if (!amapLoaded) {
+          setAmapLoaded(true)
+        }
+        // 初始化插件实例（如果还未初始化）
+        if (!geolocationRef.current || !geocoderRef.current) {
+          const AMap = (window as any).AMap
+          if (AMap) {
+            if (!geolocationRef.current) {
+              geolocationRef.current = new AMap.Geolocation({
+                enableHighAccuracy: true,
+                timeout: 20000,
+                maximumAge: 0,
+                convert: true,
+                showButton: false,
+                zoomToAccuracy: true,
+              })
+            }
+            if (!geocoderRef.current) {
+              geocoderRef.current = new AMap.Geocoder({
+                city: '全国',
+              })
+            }
+          }
+        }
         return
       }
 
-      if (!(window as any)._AMapSecurityConfig) {
-        (window as any)._AMapSecurityConfig = {
-          securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
-        }
-      }
-
       try {
-        const AMapLoader = (await import('@amap/amap-jsapi-loader')).default
-        const AMap = await AMapLoader.load({
-          key: amapKey,
-          version: '2.0',
-          plugins: ['AMap.Geolocation', 'AMap.Geocoder'],
-        })
+        // 使用全局单例加载器，确保只加载一次
+        const AMap = await loadAMapOnce()
 
         geolocationRef.current = new AMap.Geolocation({
           enableHighAccuracy: true,
@@ -77,6 +91,7 @@ export default function AddressesPage() {
         })
 
         setAmapLoaded(true)
+        console.log('[定位] 高德地图插件加载成功（全局单例）')
       } catch (error) {
         console.error('[定位] 加载高德地图插件失败:', error)
         setLocationError('地图服务加载失败，请刷新页面重试')
@@ -84,7 +99,9 @@ export default function AddressesPage() {
     }
 
     loadAMapPlugins()
-  }, [amapLoaded])
+    // 修复：移除 amapLoaded 依赖，确保只执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 加载餐厅地址信息
   useEffect(() => {
@@ -146,6 +163,21 @@ export default function AddressesPage() {
           console.warn(`[定位] 定位精度较低: ${accuracy.toFixed(0)}米`)
         }
 
+        // 首先检查缓存
+        const cachedAddr = getCachedAddress(latitude, longitude)
+        if (cachedAddr) {
+          console.log('[定位] 使用缓存地址:', cachedAddr)
+          setFormData(prev => ({
+            ...prev,
+            latitude,
+            longitude,
+            address: cachedAddr,
+          }))
+          setLocationError("")
+          setIsLocating(false)
+          return
+        }
+
         if (amapLoaded && geocoderRef.current) {
           try {
             const AMap = (window as any).AMap
@@ -172,6 +204,9 @@ export default function AddressesPage() {
                 if (!address || address.trim() === '') {
                   address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
                 }
+
+                // 缓存地址
+                cacheAddress(latitude, longitude, address)
 
                 setFormData(prev => ({
                   ...prev,
@@ -327,45 +362,45 @@ export default function AddressesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
+    <main className="min-h-screen bg-background pb-20">
       <Header />
       <div className="container mx-auto px-4 py-6 space-y-6">
         {/* 返回按钮 */}
         <div className="flex items-center gap-4 mb-6">
           <Link href="/profile">
-            <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-4 w-4 mr-2" />
               返回
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold text-white">地址管理</h1>
+          <h1 className="text-2xl font-bold text-foreground">地址管理</h1>
         </div>
 
         {submitSuccess && (
-          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-green-400" />
-            <span className="text-sm text-green-400">地址保存成功！</span>
+          <div className="mb-4 p-3 bg-success/10 border border-success/30 rounded-lg flex items-center gap-2" style={{ borderRadius: 'var(--radius-card)' }}>
+            <CheckCircle2 className="h-4 w-4 text-success" />
+            <span className="text-sm text-success">地址保存成功！</span>
           </div>
         )}
 
-        <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+        <Card className="theme-card p-6">
           {!isEditing ? (
             <>
               {/* 查看模式 */}
               <div className="space-y-4">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
-                    <MapPin className="h-5 w-5 text-white" />
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center" style={{ borderRadius: 'var(--radius-button)' }}>
+                    <MapPin className="h-5 w-5 text-primary-foreground" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-lg font-bold text-white">当前地址</h2>
-                    <p className="text-xs text-slate-400">管理您的配送地址</p>
+                    <h2 className="text-lg font-bold text-foreground">当前地址</h2>
+                    <p className="text-xs text-muted-foreground">管理您的配送地址</p>
                   </div>
                   <Button
                     onClick={() => setIsEditing(true)}
                     variant="ghost"
                     size="sm"
-                    className="text-blue-400 hover:text-blue-300"
+                    className="text-primary hover:text-primary/80"
                   >
                     <Edit className="h-4 w-4 mr-2" />
                     编辑
@@ -373,13 +408,13 @@ export default function AddressesPage() {
                 </div>
 
                 {restaurantInfo?.address ? (
-                  <div className="p-4 bg-slate-800/50 rounded-lg">
+                  <div className="p-4 theme-card">
                     <div className="flex items-start gap-3">
-                      <MapPin className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                      <MapPin className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
                       <div className="flex-1">
-                        <p className="text-white font-medium mb-1">{restaurantInfo.address}</p>
+                        <p className="text-foreground font-medium mb-1">{restaurantInfo.address}</p>
                         {restaurantInfo.latitude && restaurantInfo.longitude && (
-                          <p className="text-xs text-slate-400">
+                          <p className="text-xs text-muted-foreground">
                             坐标: {restaurantInfo.latitude.toFixed(6)}, {restaurantInfo.longitude.toFixed(6)}
                           </p>
                         )}
@@ -387,9 +422,9 @@ export default function AddressesPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 bg-slate-800/50 rounded-lg text-center">
-                    <p className="text-slate-400 text-sm">暂无地址信息</p>
-                    <p className="text-slate-500 text-xs mt-1">点击"编辑"按钮添加地址</p>
+                  <div className="p-4 theme-card text-center">
+                    <p className="text-muted-foreground text-sm">暂无地址信息</p>
+                    <p className="text-muted-foreground text-xs mt-1 opacity-60">点击"编辑"按钮添加地址</p>
                   </div>
                 )}
               </div>
@@ -399,35 +434,35 @@ export default function AddressesPage() {
               {/* 编辑模式 */}
               <div className="space-y-4">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
-                    <MapPin className="h-5 w-5 text-white" />
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center" style={{ borderRadius: 'var(--radius-button)' }}>
+                    <MapPin className="h-5 w-5 text-primary-foreground" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-lg font-bold text-white">编辑地址</h2>
-                    <p className="text-xs text-slate-400">更新您的配送地址</p>
+                    <h2 className="text-lg font-bold text-foreground">编辑地址</h2>
+                    <p className="text-xs text-muted-foreground">更新您的配送地址</p>
                   </div>
                   <Button
                     onClick={() => setIsEditing(false)}
                     variant="ghost"
                     size="sm"
-                    className="text-slate-400 hover:text-white"
+                    className="text-muted-foreground hover:text-foreground"
                   >
                     取消
                   </Button>
                 </div>
 
                 <div>
-                  <Label htmlFor="address" className="text-slate-300 mb-2 block">
-                    详细地址 <span className="text-slate-500 text-xs">(可选)</span>
+                  <Label htmlFor="address" className="text-foreground mb-2 block">
+                    详细地址 <span className="text-muted-foreground text-xs">(可选)</span>
                   </Label>
                   <div className="relative flex gap-2">
                     <div className="relative flex-1">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="address"
                         value={formData.address}
                         onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                        className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                        className="theme-input pl-10"
                         placeholder="请输入详细地址或点击右侧按钮自动获取"
                       />
                     </div>
@@ -435,7 +470,7 @@ export default function AddressesPage() {
                       type="button"
                       onClick={handleAMapLocation}
                       disabled={isLocating || !amapLoaded}
-                      className="px-4 bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white flex-shrink-0"
+                      className="theme-button px-4 bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0"
                       title="自动获取位置"
                     >
                       {isLocating ? (
@@ -446,20 +481,20 @@ export default function AddressesPage() {
                     </Button>
                   </div>
                   {locationError && (
-                    <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                      <p className="text-xs text-yellow-400 flex items-center gap-1">
+                    <div className="mt-2 p-2 bg-warning/10 border border-warning/30 rounded-lg" style={{ borderRadius: 'var(--radius-card)' }}>
+                      <p className="text-xs text-warning flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
                         {locationError}
                       </p>
                     </div>
                   )}
                   {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
-                    <div className="mt-2 p-3 bg-slate-800/50 rounded-lg">
+                    <div className="mt-2 p-3 theme-card">
                       <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                        <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
-                          <p className="text-sm text-white">{formData.address}</p>
-                          <p className="text-xs text-slate-400 mt-1">
+                          <p className="text-sm text-foreground">{formData.address}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
                             坐标: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
                           </p>
                         </div>
@@ -467,7 +502,7 @@ export default function AddressesPage() {
                     </div>
                   )}
                   {!amapLoaded && (
-                    <p className="mt-2 text-xs text-slate-500">
+                    <p className="mt-2 text-xs text-muted-foreground">
                       正在加载定位服务...
                     </p>
                   )}
@@ -477,7 +512,7 @@ export default function AddressesPage() {
                   <Button
                     onClick={handleSave}
                     disabled={isSubmitting}
-                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white"
+                    className="theme-button flex-1 bg-success hover:bg-success/90 text-success-foreground"
                   >
                     {isSubmitting ? (
                       <>
@@ -494,7 +529,7 @@ export default function AddressesPage() {
                   <Button
                     onClick={() => setIsEditing(false)}
                     variant="ghost"
-                    className="text-slate-400 hover:text-white"
+                    className="text-muted-foreground hover:text-foreground"
                   >
                     取消
                   </Button>

@@ -1,0 +1,145 @@
+/**
+ * 餐厅事实总览 API（Read-Only）
+ * 
+ * GET /api/facts/restaurant/:restaurant_id/overview
+ * 
+ * 核心原则：
+ * - 只 SELECT（只读）
+ * - 不写入
+ * - 不推断
+ * - 不修改 status
+ * 
+ * 返回结构：
+ * {
+ *   "active_orders": number,
+ *   "completed_orders": number,
+ *   "active_assets": number,
+ *   "last_delivery_at": string | null
+ * }
+ * 
+ * 注意：
+ * - 这是事实汇总，不是 KPI
+ * - active_orders: 订单状态为 "accepted" 或 "delivering" 的数量（事实）
+ * - completed_orders: 订单状态为 "completed" 的数量（事实）
+ * - active_assets: 资产状态为 "active" 或 "持有" 的数量（事实）
+ * - last_delivery_at: 最后一次配送完成时间（事实，从 completed 订单的 updated_at 获取）
+ */
+
+import { NextResponse } from "next/server"
+import { supabase } from "@/lib/supabase"
+import { verifyFactAccess } from "@/lib/auth/facts-auth"
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ restaurant_id: string }> }
+) {
+  try {
+    if (!supabase) {
+      // 即使数据库连接失败，也返回合法的 JSON 对象，避免 500 错误
+      return NextResponse.json({
+        success: true,
+        active_orders: 0,
+        completed_orders: 0,
+        active_assets: 0,
+        last_delivery_at: null,
+      })
+    }
+
+    const { restaurant_id } = await params
+
+    if (!restaurant_id) {
+      return NextResponse.json(
+        { error: "缺少必要参数: restaurant_id" },
+        { status: 400 }
+      )
+    }
+
+    // 权限验证：验证用户是否有权限访问指定的 restaurant_id
+    const accessCheck = await verifyFactAccess(request, restaurant_id)
+    if (accessCheck) {
+      return accessCheck
+    }
+
+    // 1. 查询活跃订单数量（订单状态为 "accepted" 或 "delivering"）
+    // 注意：这是事实汇总，只统计实际存在的订单状态
+    // 使用 SELECT 查询所有符合条件的订单，然后在代码中统计（符合"不推断"原则）
+    const { data: activeOrdersData, error: activeOrdersError } = await supabase
+      .from("delivery_orders")
+      .select("id")
+      .eq("restaurant_id", restaurant_id)
+      .in("status", ["accepted", "delivering"])
+
+    if (activeOrdersError) {
+      console.error("[餐厅事实总览API] 查询活跃订单失败:", activeOrdersError)
+      // 查询失败时返回 0，不阻断流程
+    }
+
+    const active_orders = activeOrdersData ? activeOrdersData.length : 0
+
+    // 2. 查询已完成订单数量（订单状态为 "completed"）
+    const { data: completedOrdersData, error: completedOrdersError } = await supabase
+      .from("delivery_orders")
+      .select("id")
+      .eq("restaurant_id", restaurant_id)
+      .eq("status", "completed")
+
+    if (completedOrdersError) {
+      console.error("[餐厅事实总览API] 查询已完成订单失败:", completedOrdersError)
+      // 查询失败时返回 0，不阻断流程
+    }
+
+    const completed_orders = completedOrdersData ? completedOrdersData.length : 0
+
+    // 3. 查询活跃资产数量（资产状态为 "active" 或 "持有"）
+    // 注意：通过 devices 表查询（devices.restaurant_id）
+    // 注意：按照"不推断"原则，只统计实际存在的设备状态
+    const { data: activeAssetsData, error: activeAssetsError } = await supabase
+      .from("devices")
+      .select("device_id")
+      .eq("restaurant_id", restaurant_id)
+      .in("status", ["active", "持有"])
+
+    if (activeAssetsError) {
+      console.error("[餐厅事实总览API] 查询活跃资产失败:", activeAssetsError)
+      // 查询失败时返回 0，不阻断流程
+    }
+
+    const active_assets = activeAssetsData ? activeAssetsData.length : 0
+
+    // 4. 查询最后一次配送完成时间（从 completed 订单的 updated_at 获取）
+    // 注意：这是事实，不是推断
+    const { data: lastDeliveryData, error: lastDeliveryError } = await supabase
+      .from("delivery_orders")
+      .select("updated_at")
+      .eq("restaurant_id", restaurant_id)
+      .eq("status", "completed")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (lastDeliveryError) {
+      console.error("[餐厅事实总览API] 查询最后一次配送时间失败:", lastDeliveryError)
+      // 查询失败时返回 null
+    }
+
+    const last_delivery_at = lastDeliveryData?.updated_at || null
+
+    return NextResponse.json({
+      success: true,
+      active_orders: active_orders,
+      completed_orders: completed_orders,
+      active_assets: active_assets,
+      last_delivery_at: last_delivery_at,
+    })
+  } catch (error) {
+    console.error("[餐厅事实总览API] 处理请求时出错:", error)
+    // 即使出错，也返回合法的 JSON 对象，避免 500 错误
+    return NextResponse.json({
+      success: true,
+      active_orders: 0,
+      completed_orders: 0,
+      active_assets: 0,
+      last_delivery_at: null,
+    })
+  }
+}

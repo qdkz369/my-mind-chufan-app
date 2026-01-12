@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { ThemeSwitcher } from "@/components/theme-switcher"
+import { loadAMapOnce, isAMapAvailable } from "@/lib/amap-loader"
+import { getCachedAddress, cacheAddress } from "@/lib/geocoding-cache"
 
 const menuItems = [
   { icon: Package, label: "我的设备", description: "查看已激活的设备", href: "/devices" },
@@ -62,6 +65,12 @@ export function ProfileContent() {
   // 初始化状态：正在读取 localStorage
   const [isInitializing, setIsInitializing] = useState(true)
 
+  // 统计数据状态
+  const [totalOrders, setTotalOrders] = useState<number>(0)
+  const [totalSpent, setTotalSpent] = useState<number>(0)
+  const [pointsBalance, setPointsBalance] = useState<number>(0)
+  const [isLoadingStats, setIsLoadingStats] = useState(false)
+
   // 从 localStorage 加载餐厅ID（自动登录）
   useEffect(() => {
     // 确保只在客户端执行
@@ -98,6 +107,8 @@ export function ProfileContent() {
         // 有 restaurantId，尝试加载
         console.log('[ProfileContent] 找到restaurantId，自动登录:', restaurantId)
         await loadRestaurantInfo(restaurantId)
+        // 加载统计数据
+        await loadRestaurantStats(restaurantId)
       } catch (error) {
         console.error('[ProfileContent] 加载餐厅信息失败:', error)
         // 发生错误时，清除所有状态
@@ -115,52 +126,65 @@ export function ProfileContent() {
     loadRestaurant()
   }, [])
 
-  // 加载高德地图定位插件
+  // 加载高德地图定位插件（使用全局单例加载器）
   useEffect(() => {
     const loadAMapPlugins = async () => {
       // 确保只在客户端执行
       if (typeof window === 'undefined') return
       
-      if (amapLoaded) return
-
-      const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
-      if (!amapKey) {
-        console.warn('[定位] AMAP_KEY未配置')
+      // 如果已经加载，直接返回
+      if (amapLoaded || isAMapAvailable()) {
+        if (!amapLoaded) {
+          setAmapLoaded(true)
+        }
+        // 初始化插件实例（如果还未初始化）
+        if (!geolocationRef.current || !geocoderRef.current) {
+          const AMap = (window as any).AMap
+          if (AMap) {
+            if (!geolocationRef.current) {
+              geolocationRef.current = new AMap.Geolocation({
+                enableHighAccuracy: true,
+                timeout: 20000,
+                maximumAge: 0,
+                convert: true,
+                showButton: false,
+                buttonOffset: new AMap.Pixel(10, 20),
+                zoomToAccuracy: true,
+                buttonPosition: 'RB',
+                useNative: true,
+                extensions: 'all',
+                noIpLocate: false,
+                noGeoLocation: false,
+              })
+            }
+            if (!geocoderRef.current) {
+              geocoderRef.current = new AMap.Geocoder({
+                city: '全国',
+              })
+            }
+          }
+        }
         return
       }
 
-      // 确保安全密钥已配置
-      if (!(window as any)._AMapSecurityConfig) {
-        (window as any)._AMapSecurityConfig = {
-          securityJsCode: 'ce1bde649b433cf6dbd4343190a6009a'
-        }
-      }
-
       try {
-        // 动态导入 AMapLoader，避免在 SSR 时执行
-        const AMapLoader = (await import('@amap/amap-jsapi-loader')).default
-        const AMap = await AMapLoader.load({
-          key: amapKey,
-          version: '2.0',
-          plugins: ['AMap.Geolocation', 'AMap.Geocoder'],
-        })
+        // 使用全局单例加载器，确保只加载一次
+        const AMap = await loadAMapOnce()
 
-        // 初始化定位插件 - 优化配置以提高精度
+        // 初始化定位插件
         geolocationRef.current = new AMap.Geolocation({
-          enableHighAccuracy: true, // 启用高精度定位
-          timeout: 20000, // 增加超时时间到20秒，给定位更多时间
-          maximumAge: 0, // 不使用缓存，每次都获取最新位置
-          convert: true, // 自动偏移坐标，偏移后的坐标为高德坐标
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+          convert: true,
           showButton: false,
           buttonOffset: new AMap.Pixel(10, 20),
-          zoomToAccuracy: true, // 定位成功后调整地图视野范围使定位位置及精度范围视野内可见
+          zoomToAccuracy: true,
           buttonPosition: 'RB',
-          // 扩展配置：使用GPS定位
-          useNative: true, // 优先使用浏览器原生定位
-          extensions: 'all', // 返回详细信息，包括精度、地址等
-          // 禁用IP定位回退，只使用GPS定位（提高精度）
-          noIpLocate: false, // 允许IP定位作为最后手段
-          noGeoLocation: false, // 允许地理定位
+          useNative: true,
+          extensions: 'all',
+          noIpLocate: false,
+          noGeoLocation: false,
         })
 
         // 添加定位成功事件监听
@@ -179,7 +203,7 @@ export function ProfileContent() {
         })
 
         setAmapLoaded(true)
-        console.log('[定位] 高德地图插件加载成功')
+        console.log('[定位] 高德地图插件加载成功（全局单例）')
       } catch (error) {
         console.error('[定位] 加载高德地图插件失败:', error)
         setLocationError('地图服务加载失败，请刷新页面重试')
@@ -187,7 +211,47 @@ export function ProfileContent() {
     }
 
     loadAMapPlugins()
-  }, [amapLoaded])
+    // 修复：移除 amapLoaded 依赖，确保只执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 加载餐厅统计数据
+  const loadRestaurantStats = async (restaurantId: string) => {
+    if (!supabase || !isSupabaseConfigured || !restaurantId) {
+      return
+    }
+
+    setIsLoadingStats(true)
+    try {
+      const response = await fetch(`/api/facts/restaurant/${restaurantId}/stats`, {
+        headers: {
+          "x-restaurant-id": restaurantId,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setTotalOrders(data.total_orders || 0)
+          setTotalSpent(data.total_spent || 0)
+          setPointsBalance(data.points_balance || 0)
+        }
+      } else {
+        console.warn('[ProfileContent] 加载统计数据失败:', response.status)
+        // 失败时显示 0，不阻断流程
+        setTotalOrders(0)
+        setTotalSpent(0)
+        setPointsBalance(0)
+      }
+    } catch (error) {
+      console.error('[ProfileContent] 加载统计数据异常:', error)
+      setTotalOrders(0)
+      setTotalSpent(0)
+      setPointsBalance(0)
+    } finally {
+      setIsLoadingStats(false)
+    }
+  }
 
   // 加载餐厅信息
   const loadRestaurantInfo = async (restaurantId: string) => {
@@ -327,6 +391,21 @@ export function ProfileContent() {
           console.log(`[定位] 定位精度良好: ${accuracy.toFixed(0)}米`)
         }
 
+        // 首先检查缓存
+        const cachedAddr = getCachedAddress(latitude, longitude)
+        if (cachedAddr) {
+          console.log('[定位] 使用缓存地址:', cachedAddr)
+          setFormData(prev => ({
+            ...prev,
+            latitude,
+            longitude,
+            address: cachedAddr,
+          }))
+          setLocationError("")
+          setIsLocating(false)
+          return
+        }
+
         // 如果高德地图已加载，使用高德逆地理编码获取地址
         if (amapLoaded && geocoderRef.current) {
           try {
@@ -358,6 +437,9 @@ export function ProfileContent() {
                 if (!address || address.trim() === '') {
                   address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
                 }
+
+                // 缓存地址
+                cacheAddress(latitude, longitude, address)
 
                 setFormData(prev => ({
                   ...prev,
@@ -512,6 +594,25 @@ export function ProfileContent() {
 
           console.log('[定位] 获取到坐标:', { latitude, longitude, accuracy })
 
+          // 首先检查缓存
+          const cachedAddr = getCachedAddress(latitude, longitude)
+          if (cachedAddr) {
+            console.log('[定位] 使用缓存地址:', cachedAddr)
+            setFormData(prev => ({
+              ...prev,
+              latitude,
+              longitude,
+              address: cachedAddr,
+            }))
+            setLocationError("")
+            setIsLocating(false)
+            if (geolocationRef.current) {
+              geolocationRef.current.off('complete', handleComplete)
+              geolocationRef.current.off('error', handleError)
+            }
+            return
+          }
+
           // 使用逆地理编码将坐标转换为地址
           // 高德地图的 getAddress 方法需要传入 LngLat 对象
           try {
@@ -545,6 +646,9 @@ export function ProfileContent() {
                   if (!address || address.trim() === '') {
                     address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
                   }
+
+                  // 缓存地址
+                  cacheAddress(latitude, longitude, address)
 
                   console.log('[定位] 地址解析成功:', address)
 
@@ -832,10 +936,13 @@ export function ProfileContent() {
             if (updatedRestaurantId && typeof window !== 'undefined') {
               localStorage.setItem(`restaurant_${updatedRestaurantId}`, JSON.stringify(result.data))
             }
+            // 刷新统计数据
+            await loadRestaurantStats(updatedRestaurantId)
           } else {
             // 如果没有返回数据，重新加载
             if (restaurantId) {
-              loadRestaurantInfo(restaurantId)
+              await loadRestaurantInfo(restaurantId)
+              await loadRestaurantStats(restaurantId)
             }
           }
           // 强制清除缓存并刷新
@@ -905,6 +1012,8 @@ export function ProfileContent() {
             }
             
             console.log('[注册表单] 注册成功，已保存餐厅信息:', newRestaurantInfo)
+            // 加载统计数据
+            await loadRestaurantStats(restaurantId)
           } else {
             // 即使没有返回完整数据，也尝试保存基本信息
             console.warn('[注册表单] API返回数据不完整，但操作可能已成功')
@@ -912,7 +1021,8 @@ export function ProfileContent() {
             const existingId = typeof window !== 'undefined' ? localStorage.getItem("restaurantId") : null
             if (existingId) {
               // 重新加载数据
-              loadRestaurantInfo(existingId)
+              await loadRestaurantInfo(existingId)
+              await loadRestaurantStats(existingId)
             }
           }
           setSubmitSuccess(true)
@@ -979,25 +1089,28 @@ export function ProfileContent() {
           status: result.data.status || "unactivated",
         }
         
-        setRestaurantInfo(loginRestaurantInfo)
-        setFormData({
-          name: loginRestaurantInfo.contact_name || "",
-          phone: loginRestaurantInfo.contact_phone || "",
-          restaurant_name: loginRestaurantInfo.name || "",
-          latitude: loginRestaurantInfo.latitude || 0,
-          longitude: loginRestaurantInfo.longitude || 0,
-          address: loginRestaurantInfo.address || "",
-        })
-        
-        // 缓存到localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(loginRestaurantInfo))
-        }
-        
-        setIsLoginMode(false)
-        setSubmitSuccess(true)
-        setTimeout(() => setSubmitSuccess(false), 3000)
-        router.refresh()
+            setRestaurantInfo(loginRestaurantInfo)
+            setFormData({
+              name: loginRestaurantInfo.contact_name || "",
+              phone: loginRestaurantInfo.contact_phone || "",
+              restaurant_name: loginRestaurantInfo.name || "",
+              latitude: loginRestaurantInfo.latitude || 0,
+              longitude: loginRestaurantInfo.longitude || 0,
+              address: loginRestaurantInfo.address || "",
+            })
+            
+            // 缓存到localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`restaurant_${restaurantId}`, JSON.stringify(loginRestaurantInfo))
+            }
+            
+            // 加载统计数据
+            await loadRestaurantStats(restaurantId)
+            
+            setIsLoginMode(false)
+            setSubmitSuccess(true)
+            setTimeout(() => setSubmitSuccess(false), 3000)
+            router.refresh()
       }
     } catch (error: any) {
       console.error("登录失败:", error)
@@ -1040,7 +1153,7 @@ export function ProfileContent() {
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin text-blue-400 mx-auto mb-4" />
-            <p className="text-slate-400">加载中...</p>
+            <p className="text-muted-foreground">加载中...</p>
           </div>
         </div>
       </div>
@@ -1051,16 +1164,16 @@ export function ProfileContent() {
   if (!isRegistered && !isEditing) {
     return (
       <div className="container mx-auto px-4 py-6 space-y-6">
-        <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+        <Card className="theme-card p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
-              <User className="h-5 w-5 text-white" />
+            <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center">
+              <User className="h-5 w-5 text-primary-foreground" />
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-bold text-white">
+              <h2 className="text-lg font-bold text-foreground">
                 {isLoginMode ? "登录" : "注册信息"}
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 {isLoginMode ? "使用手机号登录" : "填写信息以激活服务"}
               </p>
             </div>
@@ -1097,11 +1210,11 @@ export function ProfileContent() {
           <div className="space-y-4">
             {/* 手机号（登录和注册都需要） */}
             <div>
-              <Label htmlFor="phone" className="text-slate-300 mb-2 block">
+              <Label htmlFor="phone" className="text-foreground mb-2 block">
                 手机号 <span className="text-red-400">*</span>
               </Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="phone"
                   type="tel"
@@ -1110,7 +1223,7 @@ export function ProfileContent() {
                     setFormData(prev => ({ ...prev, phone: e.target.value }))
                     setLoginError("")
                   }}
-                  className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                   placeholder="请输入手机号"
                 />
               </div>
@@ -1122,7 +1235,7 @@ export function ProfileContent() {
                 <Button
                   onClick={handleLogin}
                   disabled={isLoggingIn || !formData.phone.trim()}
-                  className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-blue-500/30"
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-semibold theme-button"
                 >
                   {isLoggingIn ? (
                     <>
@@ -1144,16 +1257,16 @@ export function ProfileContent() {
               <>
                 {/* 姓名 */}
                 <div>
-                  <Label htmlFor="name" className="text-slate-300 mb-2 block">
+                  <Label htmlFor="name" className="text-foreground mb-2 block">
                     姓名 <span className="text-red-400">*</span>
                   </Label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="name"
                       value={formData.name}
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                      className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                      className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                       placeholder="请输入您的姓名"
                     />
                   </div>
@@ -1161,16 +1274,16 @@ export function ProfileContent() {
 
                 {/* 餐厅名称 */}
                 <div>
-                  <Label htmlFor="restaurant_name" className="text-slate-300 mb-2 block">
+                  <Label htmlFor="restaurant_name" className="text-foreground mb-2 block">
                     餐厅名称 <span className="text-red-400">*</span>
                   </Label>
                   <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="restaurant_name"
                       value={formData.restaurant_name}
                       onChange={(e) => setFormData(prev => ({ ...prev, restaurant_name: e.target.value }))}
-                      className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                      className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                       placeholder="请输入餐厅名称"
                     />
                   </div>
@@ -1178,17 +1291,17 @@ export function ProfileContent() {
 
                 {/* 详细地址（仅注册模式显示） */}
                 <div>
-                  <Label htmlFor="address" className="text-slate-300 mb-2 block">
-                    详细地址 <span className="text-slate-500 text-xs">(可选)</span>
+                  <Label htmlFor="address" className="text-foreground mb-2 block">
+                    详细地址 <span className="text-muted-foreground text-xs">(可选)</span>
                   </Label>
                   <div className="relative flex gap-2">
                     <div className="relative flex-1">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="address"
                         value={formData.address}
                         onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                        className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                        className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                         placeholder="请输入详细地址或点击右侧按钮自动获取"
                       />
                     </div>
@@ -1196,7 +1309,7 @@ export function ProfileContent() {
                       type="button"
                       onClick={handleAMapLocation}
                       disabled={isLocating || !amapLoaded}
-                      className="px-4 bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white flex-shrink-0"
+                      className="px-4 bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0 theme-button"
                       title="自动获取位置"
                     >
                       {isLocating ? (
@@ -1212,18 +1325,18 @@ export function ProfileContent() {
                         <AlertCircle className="h-3 w-3" />
                         {locationError}
                       </p>
-                      <p className="text-xs text-slate-400 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         提示：地理位置为可选信息，您可以跳过此步骤继续完成注册
                       </p>
                     </div>
                   )}
                   {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
-                    <div className="mt-2 p-3 bg-slate-800/50 rounded-lg">
+                    <div className="mt-2 p-3 bg-muted/50 rounded-lg theme-card">
                       <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                        <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
-                          <p className="text-sm text-white">{formData.address}</p>
-                          <p className="text-xs text-slate-400 mt-1">
+                          <p className="text-sm text-foreground">{formData.address}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
                             坐标: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
                           </p>
                         </div>
@@ -1231,7 +1344,7 @@ export function ProfileContent() {
                     </div>
                   )}
                   {!amapLoaded && (
-                    <p className="mt-2 text-xs text-slate-500">
+                    <p className="mt-2 text-xs text-muted-foreground">
                       正在加载定位服务...
                     </p>
                   )}
@@ -1241,7 +1354,7 @@ export function ProfileContent() {
                 <Button
                   onClick={handleSubmit}
                   disabled={isSubmitting || !formData.name.trim() || !formData.phone.trim() || !formData.restaurant_name.trim()}
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
+                  className="w-full bg-success hover:bg-success/90 text-success-foreground h-12 text-lg font-semibold theme-button"
                 >
                   {isSubmitting ? (
                     <>
@@ -1267,20 +1380,20 @@ export function ProfileContent() {
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* 登录/注册/编辑表单 */}
       {isEditing ? (
-        <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+        <Card className="theme-card p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
-              <User className="h-5 w-5 text-white" />
+              <User className="h-5 w-5 text-primary-foreground" />
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-bold text-white">编辑资料</h2>
-              <p className="text-xs text-slate-400">更新您的餐厅信息</p>
+                <h2 className="text-lg font-bold text-foreground">编辑资料</h2>
+              <p className="text-xs text-muted-foreground">更新您的餐厅信息</p>
             </div>
             <Button
               onClick={() => setIsEditing(false)}
               variant="ghost"
               size="sm"
-              className="text-slate-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
             >
               取消
             </Button>
@@ -1303,11 +1416,11 @@ export function ProfileContent() {
           <div className="space-y-4">
             {/* 手机号（登录和注册都需要） */}
             <div>
-              <Label htmlFor="phone" className="text-slate-300 mb-2 block">
+              <Label htmlFor="phone" className="text-foreground mb-2 block">
                 手机号 <span className="text-red-400">*</span>
               </Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="phone"
                   type="tel"
@@ -1316,7 +1429,7 @@ export function ProfileContent() {
                     setFormData(prev => ({ ...prev, phone: e.target.value }))
                     setLoginError("")
                   }}
-                  className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                   placeholder="请输入手机号"
                 />
               </div>
@@ -1326,16 +1439,16 @@ export function ProfileContent() {
             <>
               {/* 姓名 */}
               <div>
-                <Label htmlFor="name" className="text-slate-300 mb-2 block">
+                <Label htmlFor="name" className="text-foreground mb-2 block">
                   姓名 <span className="text-red-400">*</span>
                 </Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                    className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                     placeholder="请输入您的姓名"
                   />
                 </div>
@@ -1343,16 +1456,16 @@ export function ProfileContent() {
 
               {/* 餐厅名称 */}
               <div>
-                <Label htmlFor="restaurant_name" className="text-slate-300 mb-2 block">
+                <Label htmlFor="restaurant_name" className="text-foreground mb-2 block">
                   餐厅名称 <span className="text-red-400">*</span>
                 </Label>
                 <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="restaurant_name"
                     value={formData.restaurant_name}
                     onChange={(e) => setFormData(prev => ({ ...prev, restaurant_name: e.target.value }))}
-                    className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                    className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                     placeholder="请输入餐厅名称"
                   />
                 </div>
@@ -1360,17 +1473,17 @@ export function ProfileContent() {
 
               {/* 详细地址 */}
               <div>
-                <Label htmlFor="address" className="text-slate-300 mb-2 block">
-                  详细地址 <span className="text-slate-500 text-xs">(可选)</span>
+                <Label htmlFor="address" className="text-foreground mb-2 block">
+                  详细地址 <span className="text-muted-foreground text-xs">(可选)</span>
                 </Label>
               <div className="relative flex gap-2">
                 <div className="relative flex-1">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="address"
                     value={formData.address}
                     onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                    className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                    className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
                     placeholder="请输入详细地址或点击右侧按钮自动获取"
                   />
                 </div>
@@ -1378,7 +1491,7 @@ export function ProfileContent() {
                   type="button"
                   onClick={handleAMapLocation}
                   disabled={isLocating || !amapLoaded}
-                  className="px-4 bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white flex-shrink-0"
+                  className="px-4 bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0 theme-button"
                   title="自动获取位置"
                 >
                   {isLocating ? (
@@ -1394,18 +1507,18 @@ export function ProfileContent() {
                     <AlertCircle className="h-3 w-3" />
                     {locationError}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     提示：地理位置为可选信息，您可以跳过此步骤继续完成注册
                   </p>
                 </div>
               )}
               {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
-                <div className="mt-2 p-3 bg-slate-800/50 rounded-lg">
+                <div className="mt-2 p-3 bg-secondary800/50 rounded-lg">
                   <div className="flex items-start gap-2">
                     <MapPin className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <p className="text-sm text-white">{formData.address}</p>
-                      <p className="text-xs text-slate-400 mt-1">
+                      <p className="text-sm text-foreground">{formData.address}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
                         坐标: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
                       </p>
                     </div>
@@ -1413,7 +1526,7 @@ export function ProfileContent() {
                 </div>
               )}
                 {!amapLoaded && (
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     正在加载定位服务...
                   </p>
                 )}
@@ -1425,7 +1538,7 @@ export function ProfileContent() {
               <Button
                 onClick={handleSubmit}
                 disabled={isSubmitting || !formData.name.trim() || !formData.phone.trim() || !formData.restaurant_name.trim()}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-white h-12 text-lg font-semibold shadow-lg shadow-green-500/30"
+                className="w-full bg-success hover:bg-success/90 text-success-foreground h-12 text-lg font-semibold theme-button"
               >
                 {isSubmitting ? (
                   <>
@@ -1443,7 +1556,7 @@ export function ProfileContent() {
               <Button
                 onClick={() => setIsEditing(false)}
                 variant="ghost"
-                className="w-full text-slate-400 hover:text-white"
+                className="w-full text-muted-foreground hover:text-foreground"
               >
                 取消
               </Button>
@@ -1453,31 +1566,31 @@ export function ProfileContent() {
       ) : isRegistered ? (
         /* 已注册信息展示 */
         <>
-          <Card className="p-6 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+          <Card className="theme-card p-6">
             <div className="flex items-center gap-4">
               <Avatar className="w-16 h-16">
                 <AvatarImage src="/placeholder.svg?height=64&width=64" />
-                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-cyan-600 text-white">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-primary-foreground">
                   {restaurantInfo.contact_name?.[0] || "用"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <h2 className="text-xl font-bold text-white">{restaurantInfo.contact_name || "未设置"}</h2>
+                  <h2 className="text-xl font-bold text-foreground">{restaurantInfo.contact_name || "未设置"}</h2>
                   {isUnactivated ? (
                     <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
                       待激活
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white border-0">
+                    <Badge variant="secondary" className="bg-linear-to-r from-warning to-orange-600 text-warning-foreground border-0">
                       已激活
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-slate-400">{restaurantInfo.name}</p>
-                <p className="text-sm text-slate-400">手机: {restaurantInfo.contact_phone || "未设置"}</p>
+                <p className="text-sm text-muted-foreground">{restaurantInfo.name}</p>
+                <p className="text-sm text-muted-foreground">手机: {restaurantInfo.contact_phone || "未设置"}</p>
                 {restaurantInfo.address && (
-                  <p className="text-sm text-slate-400 flex items-center gap-1 mt-1">
+                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                     <MapPin className="h-3 w-3" />
                     {restaurantInfo.address}
                   </p>
@@ -1487,7 +1600,7 @@ export function ProfileContent() {
                 onClick={() => setIsEditing(true)}
                 variant="ghost"
                 size="sm"
-                className="text-blue-400 hover:text-blue-300"
+                className="text-primary hover:text-primary/80"
               >
                 编辑
               </Button>
@@ -1495,43 +1608,63 @@ export function ProfileContent() {
           </Card>
 
           <div className="grid grid-cols-3 gap-4">
-            <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-              <div className="text-2xl font-bold mb-1 text-white">106</div>
-              <div className="text-xs text-slate-400">累计订单</div>
+            <Card className="p-4 text-center theme-card">
+              <div className="text-2xl font-bold mb-1 text-foreground data-value">
+                {isLoadingStats ? "..." : totalOrders.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground data-unit">累计订单</div>
             </Card>
-            <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-              <div className="text-2xl font-bold mb-1 text-white">¥28.6k</div>
-              <div className="text-xs text-slate-400">累计消费</div>
+            <Card className="p-4 text-center theme-card">
+              <div className="text-2xl font-bold mb-1 text-foreground data-value">
+                {isLoadingStats ? "..." : totalSpent >= 1000 
+                  ? `¥${(totalSpent / 1000).toFixed(1)}k` 
+                  : `¥${totalSpent.toLocaleString()}`}
+              </div>
+              <div className="text-xs text-muted-foreground data-unit">累计消费</div>
             </Card>
-            <Card className="p-4 text-center bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
-              <div className="text-2xl font-bold mb-1 text-white">320</div>
-              <div className="text-xs text-slate-400">积分余额</div>
+            <Card className="p-4 text-center theme-card">
+              <div className="text-2xl font-bold mb-1 text-foreground data-value">
+                {isLoadingStats ? "..." : pointsBalance.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground data-unit">积分余额</div>
             </Card>
           </div>
 
-          <Card className="divide-y divide-slate-800 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+          {/* 主题切换器 */}
+          <Card className="theme-card p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-foreground mb-1">主题切换</h3>
+                <p className="text-sm text-muted-foreground">选择您喜欢的界面风格</p>
+              </div>
+              <ThemeSwitcher />
+            </div>
+          </Card>
+
+          <Card className="theme-card divide-y divide-border/50">
             {menuItems.map((item) => (
               <Link
                 key={item.label}
                 href={item.href}
-                className="w-full flex items-center gap-3 p-4 hover:bg-slate-800/50 transition-colors text-left"
+                className="theme-button w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-all text-left"
+                style={{ borderRadius: 0 }}
               >
-                <div className="w-10 h-10 bg-slate-800/50 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <item.icon className="h-5 w-5 text-slate-300" />
+                <div className="w-10 h-10 bg-secondary/50 flex items-center justify-center flex-shrink-0" style={{ borderRadius: 'var(--radius-button)' }}>
+                  <item.icon className="h-5 w-5 text-secondary-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium mb-0.5 text-white">{item.label}</h3>
-                  <p className="text-sm text-slate-400">{item.description}</p>
+                  <h3 className="font-medium mb-0.5 text-foreground">{item.label}</h3>
+                  <p className="text-sm text-muted-foreground">{item.description}</p>
                 </div>
-                <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+                <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               </Link>
             ))}
           </Card>
 
-          <Card className="p-4 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm">
+          <Card className="p-4 theme-card">
             <button 
               onClick={handleLogout}
-              className="w-full text-red-400 font-medium hover:text-red-300 transition-colors"
+              className="w-full text-destructive font-medium hover:text-destructive/80 transition-colors"
             >
               退出登录
             </button>

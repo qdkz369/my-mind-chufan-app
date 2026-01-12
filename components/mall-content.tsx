@@ -103,19 +103,19 @@ export function MallContent() {
       <div className="mb-6">
         <div className="flex gap-3 mb-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="搜索商品、品牌、分类..."
-              className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-400"
+              className="pl-10 theme-input text-foreground placeholder:text-muted-foreground"
             />
           </div>
-          <Button variant="outline" size="icon" className="border-slate-700 bg-slate-800/50">
+          <Button variant="outline" size="icon" className="theme-button">
             <Filter className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="icon" className="border-slate-700 bg-slate-800/50 relative">
+          <Button variant="outline" size="icon" className="theme-button relative">
             <ShoppingCart className="h-4 w-4" />
             {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
                 {cartCount}
               </span>
             )}
@@ -124,9 +124,9 @@ export function MallContent() {
 
         {/* 热门搜索 */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-slate-400">热门：</span>
+          <span className="text-xs text-muted-foreground">热门：</span>
           {hotKeywords.map((keyword) => (
-            <Badge key={keyword} variant="secondary" className="bg-slate-800/50 text-slate-300 hover:bg-slate-700/50">
+            <Badge key={keyword} variant="secondary" className="bg-secondary text-secondary-foreground hover:bg-secondary/80">
               {keyword}
             </Badge>
           ))}
@@ -134,7 +134,7 @@ export function MallContent() {
       </div>
 
       {/* 数据看板 */}
-      <Card className="bg-gradient-to-br from-blue-600 to-blue-700 border-0 p-4 mb-6 text-white">
+      <Card className="theme-card bg-gradient-to-br from-primary to-accent border-0 p-4 mb-6 text-primary-foreground">
         <div className="grid grid-cols-3 gap-4">
           <div>
             <div className="text-xs opacity-90 mb-1">本月采购</div>
@@ -159,15 +159,15 @@ export function MallContent() {
 
       {/* 分类和商品 */}
       <Tabs defaultValue="fresh" className="w-full">
-        <TabsList className="w-full justify-start overflow-x-auto bg-slate-800/30 mb-4 flex-nowrap">
+        <TabsList className="w-full justify-start overflow-x-auto theme-card mb-4 flex-nowrap">
           {categories.map((cat) => (
             <TabsTrigger
               key={cat.id}
               value={cat.id}
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white whitespace-nowrap"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap"
             >
               {cat.name}
-              <Badge variant="secondary" className="ml-2 bg-slate-700/50 text-xs">
+              <Badge variant="secondary" className="ml-2 bg-secondary text-secondary-foreground text-xs">
                 {cat.count}
               </Badge>
             </TabsTrigger>
@@ -182,7 +182,7 @@ export function MallContent() {
                 .map((product) => (
                   <Card
                     key={product.id}
-                    className="bg-slate-800/50 border-slate-700/50 overflow-hidden hover:border-blue-500/50 transition-all cursor-pointer group"
+                    className="theme-card overflow-hidden hover:border-primary/50 transition-all cursor-pointer group"
                   >
                     <div className="relative">
                       <img
@@ -191,25 +191,25 @@ export function MallContent() {
                         className="w-full h-40 object-cover group-hover:scale-105 transition-transform"
                       />
                       {product.tag && (
-                        <Badge className="absolute top-2 left-2 bg-red-500 text-white border-0">{product.tag}</Badge>
+                        <Badge className="absolute top-2 left-2 bg-destructive text-destructive-foreground border-0">{product.tag}</Badge>
                       )}
                     </div>
                     <div className="p-3">
-                      <h3 className="font-semibold text-white text-sm mb-1 line-clamp-1">{product.name}</h3>
-                      <p className="text-xs text-slate-400 mb-2">{product.spec}</p>
+                      <h3 className="font-semibold text-foreground text-sm mb-1 line-clamp-1">{product.name}</h3>
+                      <p className="text-xs text-muted-foreground mb-2">{product.spec}</p>
                       <div className="flex items-end justify-between mb-3">
                         <div>
                           <div className="text-red-500 font-bold text-lg">
                             ¥{product.price}
                             <span className="text-xs font-normal">/{product.unit}</span>
                           </div>
-                          <div className="text-xs text-slate-500 line-through">¥{product.originalPrice}</div>
+                          <div className="text-xs text-muted-foreground line-through">¥{product.originalPrice}</div>
                         </div>
-                        <div className="text-xs text-slate-400">已售{product.sales}</div>
+                        <div className="text-xs text-muted-foreground">已售{product.sales}</div>
                       </div>
                       <Button
                         size="sm"
-                        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground theme-button"
                         onClick={() => setCartCount(cartCount + 1)}
                       >
                         <Package className="h-4 w-4 mr-1" />

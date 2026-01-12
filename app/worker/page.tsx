@@ -31,6 +31,8 @@ import {
   LogOut,
   Wifi,
   WifiOff,
+  Building2,
+  Phone,
 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
@@ -1596,11 +1598,15 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
         return
       }
 
+      if (!workerId) {
+        setError("请先登录配送员账号")
+        return
+      }
+
       setIsSubmitting(true)
       setError("")
 
       try {
-        // 调用完成配送API
         const headers: HeadersInit = {
           "Content-Type": "application/json",
         }
@@ -1610,6 +1616,59 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
           headers["x-worker-id"] = workerId
         }
 
+        // 检查订单当前状态，如果状态不是 delivering，需要先执行接单和派单
+        const orderStatus = (selectedOrder.status || "").toLowerCase()
+        
+        // 如果订单状态是 pending，先接单
+        if (orderStatus === "pending") {
+          console.log("[配送流程] 订单状态为 pending，先执行接单操作，订单ID:", selectedOrder.id)
+          const acceptResponse = await fetch("/api/orders/accept", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              order_id: selectedOrder.id,
+              worker_id: workerId,
+            }),
+          })
+          
+          const acceptResult = await acceptResponse.json()
+          console.log("[配送流程] 接单API响应:", {
+            status: acceptResponse.status,
+            ok: acceptResponse.ok,
+            result: acceptResult
+          })
+          
+          if (!acceptResponse.ok || acceptResult.error) {
+            const errorMsg = acceptResult.error || acceptResult.details || "接单失败，请重试"
+            console.error("[配送流程] 接单失败:", errorMsg, "完整响应:", acceptResult)
+            throw new Error(errorMsg)
+          }
+          console.log("[配送流程] 接单成功，订单状态:", acceptResult.data?.status)
+        }
+
+        // 如果订单状态是 accepted 或刚接单成功，需要派单
+        const currentStatus = orderStatus === "pending" ? "accepted" : orderStatus
+        if (currentStatus === "accepted") {
+          console.log("[配送流程] 订单状态为 accepted，执行派单操作")
+          const dispatchResponse = await fetch("/api/orders/dispatch", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              id: selectedOrder.id,
+              order_id: selectedOrder.id,
+              worker_id: workerId,
+            }),
+          })
+          
+          const dispatchResult = await dispatchResponse.json()
+          if (!dispatchResponse.ok || dispatchResult.error) {
+            throw new Error(dispatchResult.error || "派单失败，请重试")
+          }
+          console.log("[配送流程] 派单成功，订单状态:", dispatchResult.data?.status)
+        }
+
+        // 现在订单状态应该是 delivering，可以完成配送
+        console.log("[配送流程] 开始完成配送操作")
         const response = await fetch("/api/orders/complete", {
           method: "POST",
           headers,
@@ -1617,7 +1676,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
             order_id: selectedOrder.id,
             tracking_code: trackingCode.trim(),
             proof_image: proofImageUrl,
-            worker_id: workerId || undefined, // 也添加到请求体，兼容性考虑
+            worker_id: workerId,
           }),
         })
 
@@ -1641,6 +1700,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
           setSubmitSuccess(false)
         }, 3000)
       } catch (err: any) {
+        console.error("[配送流程] 操作失败:", err)
         setError(err.message || "提交失败，请检查网络连接")
       } finally {
         setIsSubmitting(false)
@@ -1857,8 +1917,13 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
             workerId={localStorage.getItem("workerId") || "worker_001"}
             onSelectOrder={(order) => {
               // 选择订单后，进入配送证明步骤
+              // 注意：如果订单状态是 pending，会在完成配送时自动接单和派单
               setSelectedOrder(order)
               setStep("delivery_proof")
+            }}
+            onAcceptOrder={async (orderId) => {
+              // 接单成功后的回调，刷新订单列表
+              console.log("[订单列表] 接单成功，订单ID:", orderId)
             }}
           />
           <Button
@@ -1887,9 +1952,47 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
           <div className="space-y-4">
             {/* 订单信息 */}
-            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700 space-y-3">
               <div className="text-xs text-slate-400 mb-2">订单信息</div>
               <div className="text-sm font-medium text-white">订单号: {selectedOrder.id}</div>
+              
+              {selectedOrder.restaurants && (
+                <div className="space-y-2 pt-2 border-t border-slate-700">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Building2 className="h-4 w-4 text-slate-400" />
+                    <span className="text-white font-medium">{selectedOrder.restaurants.name}</span>
+                  </div>
+                  {selectedOrder.restaurants.address && (
+                    <div className="flex items-start gap-2 text-xs text-slate-400">
+                      <MapPin className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                      <span>{selectedOrder.restaurants.address}</span>
+                    </div>
+                  )}
+                  {selectedOrder.restaurants.contact_phone && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <Phone className="h-3 w-3" />
+                      <span>{selectedOrder.restaurants.contact_phone}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              <div className="flex items-center justify-between pt-2 border-t border-slate-700">
+                <span className="text-xs text-slate-400">订单金额</span>
+                <span className="text-sm font-semibold text-white">¥{selectedOrder.amount?.toFixed(2) || "0.00"}</span>
+              </div>
+              
+              {selectedOrder.product_type && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-700">
+                  <span className="text-xs text-slate-400">产品类型</span>
+                  <span className="text-xs text-slate-300">
+                    {selectedOrder.product_type === "lpg" && "液化气"}
+                    {selectedOrder.product_type === "methanol" && "甲醇"}
+                    {selectedOrder.product_type === "clean_fuel" && "热能清洁燃料"}
+                    {selectedOrder.product_type === "outdoor_fuel" && "户外环保燃料"}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 扫描瓶身溯源二维码 */}
@@ -2502,8 +2605,14 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
         console.warn("[设备交付] rentals 表查询失败，尝试使用 service role key:", error.message)
         
         // 使用 service role key 创建新的客户端
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gjlhcpfvjgqabqanvgmu.supabase.co"
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
         const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        
+        if (!supabaseUrl || !serviceRoleKey) {
+          console.error("[设备交付] Supabase URL 或 Service Role Key 未配置")
+          setError("服务器配置错误：Supabase 密钥未配置")
+          return
+        }
         
         if (serviceRoleKey) {
           const { createClient } = await import("@supabase/supabase-js")
@@ -3082,10 +3191,11 @@ export default function WorkerPage() {
         setWorkerId(savedWorkerId)
         setWorkerInfo(info)
         setIsLoggedIn(true)
-        // 如果是配送员且有产品类型，设置默认产品类型
-        if (info.worker_types?.includes("delivery") && info.product_types?.length > 0) {
-          setProductType(info.product_types[0])
-        }
+        // 注意：不自动设置产品类型筛选，让用户自己选择
+        // 配送员应该能看到所有类型的待接单订单
+        // if (info.worker_types?.includes("delivery") && info.product_types?.length > 0) {
+        //   setProductType(info.product_types[0])
+        // }
       } catch (error) {
         console.error("[工人端] 解析保存的工人信息失败:", error)
         localStorage.removeItem("workerId")
@@ -3196,10 +3306,12 @@ export default function WorkerPage() {
       localStorage.setItem("workerId", workerData.id)
       localStorage.setItem("workerInfo", JSON.stringify(workerData))
 
-      // 如果是配送员且有产品类型，设置默认产品类型
-      if (workerData.worker_types?.includes("delivery") && workerData.product_types?.length > 0) {
-        setProductType(workerData.product_types[0])
-      }
+      // 注意：不自动设置产品类型筛选，让用户自己选择
+      // 配送员应该能看到所有类型的待接单订单，而不是只看到自己产品类型的订单
+      // 如果需要，可以在UI中提供产品类型筛选器让用户手动选择
+      // if (workerData.worker_types?.includes("delivery") && workerData.product_types?.length > 0) {
+      //   setProductType(workerData.product_types[0])
+      // }
 
       // 清空登录表单
       setLoginWorkerId("")
@@ -3625,6 +3737,64 @@ export default function WorkerPage() {
                   <div>
                     <h2 className="text-xl font-bold text-white">待接单订单</h2>
                     <p className="text-sm text-slate-400">根据产品类型筛选订单</p>
+                  </div>
+                </div>
+                {/* 产品类型筛选器 */}
+                <div className="mb-4 p-3 bg-slate-800/50 border border-slate-700/50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-slate-300">产品类型筛选：</span>
+                    {productType && (
+                      <Button
+                        onClick={() => setProductType(null)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-slate-400 hover:text-white h-6"
+                      >
+                        清除筛选
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => setProductType(null)}
+                      variant={!productType ? "default" : "outline"}
+                      size="sm"
+                      className={!productType ? "bg-blue-500 text-white" : "border-slate-700 text-slate-300"}
+                    >
+                      全部
+                    </Button>
+                    <Button
+                      onClick={() => setProductType("lpg")}
+                      variant={productType === "lpg" ? "default" : "outline"}
+                      size="sm"
+                      className={productType === "lpg" ? "bg-blue-500 text-white" : "border-slate-700 text-slate-300"}
+                    >
+                      液化气
+                    </Button>
+                    <Button
+                      onClick={() => setProductType("clean")}
+                      variant={productType === "clean" ? "default" : "outline"}
+                      size="sm"
+                      className={productType === "clean" ? "bg-blue-500 text-white" : "border-slate-700 text-slate-300"}
+                    >
+                      热能清洁燃料
+                    </Button>
+                    <Button
+                      onClick={() => setProductType("alcohol")}
+                      variant={productType === "alcohol" ? "default" : "outline"}
+                      size="sm"
+                      className={productType === "alcohol" ? "bg-blue-500 text-white" : "border-slate-700 text-slate-300"}
+                    >
+                      甲醇
+                    </Button>
+                    <Button
+                      onClick={() => setProductType("outdoor")}
+                      variant={productType === "outdoor" ? "default" : "outline"}
+                      size="sm"
+                      className={productType === "outdoor" ? "bg-blue-500 text-white" : "border-slate-700 text-slate-300"}
+                    >
+                      户外环保燃料
+                    </Button>
                   </div>
                 </div>
                 <WorkerOrderList

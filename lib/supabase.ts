@@ -1,12 +1,24 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js"
 
-// 设置后备值：如果 process.env 为空，直接使用字符串初始化
-const FALLBACK_SUPABASE_URL = "https://gjlhcpfvjgqabqanvgmu.supabase.co"
-const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkAHQ"
+// 从环境变量读取配置，如果未配置则抛出错误
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-// 优先使用环境变量，如果为空则使用后备值
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY
+if (!supabaseUrl || !supabaseAnonKey) {
+  const missingVars = []
+  if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL")
+  if (!supabaseAnonKey) missingVars.push("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  
+  const errorMsg = `[Supabase 配置错误] 缺少必需的环境变量: ${missingVars.join(", ")}\n请在 .env.local 文件中配置这些变量。`
+  
+  if (typeof window === 'undefined') {
+    // 服务器端：抛出错误
+    throw new Error(errorMsg)
+  } else {
+    // 客户端：记录错误但不抛出（避免页面崩溃）
+    console.error(errorMsg)
+  }
+}
 
 // 检查配置是否有效
 const isSupabaseConfigured = !!(
@@ -16,65 +28,44 @@ const isSupabaseConfigured = !!(
   supabaseAnonKey.trim() !== ""
 )
 
-// 调试日志（仅在开发环境或服务器端输出）
-if (typeof window === 'undefined') {
-  console.log('[Supabase 配置] 使用环境变量 URL:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
-  console.log('[Supabase 配置] 使用环境变量 Key:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-  console.log('[Supabase 配置] Supabase URL:', supabaseUrl.substring(0, 30) + '...')
-  console.log('[Supabase 配置] Supabase Key 前10字符:', supabaseAnonKey.substring(0, 10) + '...')
-  console.log('[Supabase 配置] 配置有效:', isSupabaseConfigured)
-} else {
-  // 客户端也输出部分信息（用于调试）
-  console.log('[Supabase 配置] Supabase URL:', supabaseUrl.substring(0, 30) + '...')
-  console.log('[Supabase 配置] Supabase Key 前10字符:', supabaseAnonKey.substring(0, 10) + '...')
-}
-
 // 创建客户端函数（确保在服务器端和客户端都能正确初始化）
 function createSupabaseClient(): SupabaseClient | null {
   if (!isSupabaseConfigured) {
+    const errorMsg = '[Supabase] 配置无效：缺少必需的环境变量'
     if (typeof window === 'undefined') {
-      // 服务器端：记录警告但不抛出错误
-      console.warn('[Supabase] 服务器端：配置无效，使用后备值')
-    }
-    // 即使配置无效，也尝试使用后备值创建客户端
-    try {
-      return createClient(FALLBACK_SUPABASE_URL, FALLBACK_SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        },
-      })
-    } catch (error) {
-      console.error('[Supabase] 创建客户端失败:', error)
+      // 服务器端：抛出错误
+      throw new Error(errorMsg)
+    } else {
+      // 客户端：记录错误并返回 null
+      console.error(errorMsg)
       return null
     }
   }
 
   try {
-    return createClient(supabaseUrl, supabaseAnonKey, {
+    return createClient(supabaseUrl!, supabaseAnonKey!, {
       // 确保在 SSR 环境中不会访问浏览器 API
       auth: {
         persistSession: typeof window !== 'undefined',
         autoRefreshToken: typeof window !== 'undefined',
         detectSessionInUrl: typeof window !== 'undefined',
       },
+      // 启用 Realtime（WebSocket）支持
+      realtime: {
+        params: {
+          eventsPerSecond: 10, // 限制每秒事件数，避免过载
+        },
+      },
+      // 全局配置
+      global: {
+        headers: {
+          'x-client-info': 'my-mind-chufan-app',
+        },
+      },
     })
   } catch (error) {
     console.error('[Supabase] 创建客户端失败:', error)
-    // 如果创建失败，尝试使用后备值
-    try {
-      return createClient(FALLBACK_SUPABASE_URL, FALLBACK_SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        },
-      })
-    } catch (fallbackError) {
-      console.error('[Supabase] 使用后备值创建客户端也失败:', fallbackError)
-      return null
-    }
+    return null
   }
 }
 

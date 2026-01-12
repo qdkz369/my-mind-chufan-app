@@ -1,0 +1,30 @@
+<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 头部（黄色圆形） -->
+  <circle cx="50" cy="35" r="15" fill="#FFC107"/>
+  
+  <!-- 眼睛 -->
+  <circle cx="43" cy="30" r="3" fill="#1D1D1F"/>
+  <circle cx="57" cy="30" r="3" fill="#1D1D1F"/>
+  
+  <!-- 嘴巴（微笑） -->
+  <path d="M45 40 Q50 45 55 40" stroke="#1D1D1F" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- 帽子 -->
+  <path d="M35 25 Q50 15 65 25 L60 30 H40 Z" fill="#FFFFFF"/>
+  
+  <!-- 身体（燃料存储舱 - 蓝色） -->
+  <path d="M40 50 H60 Q65 65 60 80 H40 Q35 65 40 50 Z" fill="#64B5F6"/>
+  
+  <!-- 身体装饰线 -->
+  <path d="M50 55 C45 60 55 60 50 65" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 2"/>
+  
+  <!-- 翅膀 -->
+  <path d="M65 40 Q75 30 75 20 Q65 15 60 25 Z" fill="#FFFFFF" opacity="0.6"/>
+  <path d="M35 40 Q25 30 25 20 Q35 15 40 25 Z" fill="#FFFFFF" opacity="0.6"/>
+  
+  <!-- 触角 -->
+  <path d="M45 15 L40 5" stroke="#1D1D1F" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="40" cy="5" r="3" fill="#00E5FF"/>
+  <path d="M55 15 L60 5" stroke="#1D1D1F" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="60" cy="5" r="3" fill="#00E5FF"/>
+</svg>

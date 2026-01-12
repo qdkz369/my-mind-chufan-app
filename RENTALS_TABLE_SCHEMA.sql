@@ -134,3 +134,5 @@ COMMENT ON COLUMN public.rentals.notes IS '备注信息';
 --   AND table_name = 'rentals'
 -- ORDER BY ordinal_position;
 
+
+

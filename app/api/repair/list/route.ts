@@ -1,7 +1,12 @@
+// ACCESS_LEVEL: STAFF_LEVEL
+// ALLOWED_ROLES: staff
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：只能 staff 调用，必须绑定 worker_id / assigned_to，后续必须使用 RLS 限制只能访问自己数据
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
-// 暂时注释掉权限验证，避免服务器崩溃
-// import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
+import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 
 /**
  * GET: 获取服务工单列表（维修服务、清洁服务、工程改造）
@@ -27,26 +32,27 @@ export async function GET(request: Request) {
     const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
     const serviceTypeFilter = searchParams.get("service_type") // 服务类型筛选：repair, cleaning, renovation, all
 
-    // 构建查询 - 重要：优先检查 audio_url 不为空，或者 service_type 包含"维修"
-    // 注意：Supabase 不支持 OR 条件在 where 中，所以先查询所有订单，然后在客户端过滤
-    // 暂时移除 restaurants 关联查询，先确保能返回基础数据
-    // 注意：如果数据库没有 worker_id 字段，请从 select 中删除它
+    // 构建查询 - 直接查询 repair_orders 表（已分离，无需过滤 service_type）
     let query = supabase
-      .from("orders")
+      .from("repair_orders")
       .select(
-        "id, restaurant_id, service_type, status, description, amount, contact_phone, created_at, updated_at, assigned_to, audio_url, device_id"
+        "id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to, audio_url, device_id"
       )
       .order("created_at", { ascending: false })
       .limit(500) // 限制查询最近500条订单
     
     // 调试：记录查询条件
-    console.log("[报修列表API] 开始查询所有订单（将在客户端过滤）", status ? `status=${status}` : "", restaurantId ? `restaurant_id=${restaurantId}` : "")
+    console.log("[报修列表API] 开始查询", status ? `status=${status}` : "", restaurantId ? `restaurant_id=${restaurantId}` : "")
 
-    // 暂时完全跳过权限验证，避免服务器崩溃
-    // 如果请求头中包含worker_id，仅用于后续筛选，不进行权限验证
+    // 权限验证：如果请求头中包含 worker_id，验证工人权限
     const workerId = request.headers.get("x-worker-id")
     if (workerId) {
-      console.log("[报修列表API] 检测到 workerId，将用于筛选（跳过权限验证）:", workerId)
+      const authResult = await verifyWorkerPermission(request, "repair")
+      if (authResult instanceof NextResponse) {
+        // 权限验证失败，返回错误响应
+        return authResult
+      }
+      console.log("[报修列表API] 工人权限验证通过:", authResult.worker.name)
     }
 
     // 执行查询（先获取所有订单，然后在客户端过滤）
@@ -71,67 +77,10 @@ export async function GET(request: Request) {
       )
     }
 
-    // 在客户端过滤服务订单（重要：优先检查 audio_url 不为空）
-    // 支持的服务类型：维修服务、清洁服务、工程改造
-    console.log("[报修列表API] 原始订单数量:", allOrders?.length || 0)
+    // 表已分离，repair_orders 表中所有记录都是报修工单，无需过滤 service_type
+    console.log("[报修列表API] 查询到的报修工单数量:", allOrders?.length || 0)
     
-    // 辅助函数：判断是否为服务订单（维修、清洁、工程改造）
-    const isServiceOrder = (order: any): boolean => {
-      if (!order) return false
-      
-      try {
-        // 重要：只要 audio_url 不为空，就必须显示在服务列表里（语音报修/报修单）
-        const audioUrl = order?.audio_url
-        const hasAudio = audioUrl && typeof audioUrl === 'string' && audioUrl.trim() !== ""
-        if (hasAudio) {
-          console.log("[报修列表API] 匹配到语音服务单:", order?.id, "audio_url: 有")
-          return true
-        }
-        
-        // 如果没有音频，则按 service_type 判断（强化容错）
-        const serviceType = (order?.service_type || "").toString()
-        if (!serviceType) return false // 如果 service_type 为空，直接返回 false
-        
-        const normalizedType = serviceType?.toLowerCase() || ""
-        
-        // 匹配维修服务
-        const isRepair = 
-          serviceType === "维修服务" ||
-          (serviceType?.includes && serviceType.includes("维修")) ||
-          (normalizedType?.includes && normalizedType.includes("repair"))
-        
-        // 匹配清洁服务
-        const isCleaning = 
-          serviceType === "清洁服务" ||
-          (serviceType?.includes && serviceType.includes("清洁")) ||
-          (serviceType?.includes && serviceType.includes("清洗")) ||
-          (normalizedType?.includes && normalizedType.includes("clean"))
-        
-        // 匹配工程改造
-        const isRenovation = 
-          serviceType === "工程改造" ||
-          (serviceType?.includes && serviceType.includes("改造")) ||
-          (serviceType?.includes && serviceType.includes("工程")) ||
-          (normalizedType?.includes && normalizedType.includes("renovation")) ||
-          (normalizedType?.includes && normalizedType.includes("construction"))
-        
-        const isService = isRepair || isCleaning || isRenovation
-        
-        if (isService) {
-          console.log("[报修列表API] 匹配到服务订单:", order?.id, "service_type:", serviceType, 
-            isRepair ? "(维修)" : isCleaning ? "(清洁)" : "(工程改造)")
-        }
-        
-        return isService
-      } catch (filterError) {
-        // 如果过滤过程中出错，记录错误但不崩溃
-        console.warn("[报修列表API] 过滤订单时出错:", filterError, "订单ID:", order?.id)
-        return false
-      }
-    }
-    
-    let repairs = (allOrders || []).filter(isServiceOrder)
-    console.log("[报修列表API] 过滤后的维修订单数量:", repairs.length)
+    let repairs = allOrders || []
 
     // 应用状态筛选（强化容错）
     if (status) {
@@ -157,32 +106,19 @@ export async function GET(request: Request) {
       console.log("[报修列表API] 餐厅筛选后数量:", repairs.length)
     }
 
-    // 应用服务类型筛选（强化容错）
+    // 应用服务类型筛选（表已分离，直接按 service_type 字段筛选）
     if (serviceTypeFilter && serviceTypeFilter !== "all") {
       const beforeFilterCount = repairs.length
       repairs = repairs.filter((order: any) => {
         try {
           const serviceType = (order?.service_type || "").toString()
-          const normalizedType = serviceType?.toLowerCase() || ""
           
           if (serviceTypeFilter === "repair") {
-            // 维修服务
-            return serviceType === "维修服务" ||
-              (serviceType?.includes && serviceType.includes("维修")) ||
-              (normalizedType?.includes && normalizedType.includes("repair"))
+            return serviceType === "维修服务"
           } else if (serviceTypeFilter === "cleaning") {
-            // 清洁服务
-            return serviceType === "清洁服务" ||
-              (serviceType?.includes && serviceType.includes("清洁")) ||
-              (serviceType?.includes && serviceType.includes("清洗")) ||
-              (normalizedType?.includes && normalizedType.includes("clean"))
+            return serviceType === "清洁服务"
           } else if (serviceTypeFilter === "renovation") {
-            // 工程改造
-            return serviceType === "工程改造" ||
-              (serviceType?.includes && serviceType.includes("改造")) ||
-              (serviceType?.includes && serviceType.includes("工程")) ||
-              (normalizedType?.includes && normalizedType.includes("renovation")) ||
-              (normalizedType?.includes && normalizedType.includes("construction"))
+            return serviceType === "工程改造"
           }
           
           return true

@@ -175,3 +175,5 @@ CREATE POLICY "Authenticated users can view equipment"
   TO authenticated
   USING (true);
 
+
+

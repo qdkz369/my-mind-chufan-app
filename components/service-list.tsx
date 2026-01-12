@@ -94,16 +94,16 @@ export function ServiceList() {
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2 text-white">全部服务</h1>
-        <p className="text-sm text-slate-400">专业餐饮后市场一站式解决方案</p>
+        <h1 className="text-2xl font-bold mb-2 text-foreground">全部服务</h1>
+        <p className="text-sm text-muted-foreground">专业餐饮后市场一站式解决方案</p>
       </div>
 
       <div className="space-y-6">
         {["前期", "中期", "后期"].map((phase) => (
           <div key={phase}>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 text-white">
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 text-foreground">
               <span>{phase}服务</span>
-              <Badge variant="secondary" className="text-xs bg-slate-800/50 text-slate-300 border-slate-700">
+              <Badge variant="secondary" className="text-xs bg-muted/50 text-muted-foreground border-border/50">
                 {services.filter((s) => s.phase === phase).length}项
               </Badge>
             </h2>
@@ -111,7 +111,7 @@ export function ServiceList() {
               {services
                 .filter((service) => service.phase === phase)
                 .map((service) => (
-                  <Card key={service.title} className="p-4 bg-slate-900/90 border-slate-700/50 backdrop-blur-sm hover:border-slate-600/50 transition-all">
+                  <Card key={service.title} className="p-4 theme-card hover:border-primary/50 transition-all">
                     <div className="flex items-start gap-3">
                       <div
                         className={`w-12 h-12 ${service.iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}
@@ -120,17 +120,21 @@ export function ServiceList() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-white">{service.title}</h3>
-                          <Badge variant="secondary" className="text-xs bg-slate-800/50 text-slate-300 border-slate-700">
+                          <h3 className="font-semibold text-foreground">{service.title}</h3>
+                          <Badge variant="secondary" className="text-xs bg-muted/50 text-muted-foreground border-border/50">
                             {service.tag}
                           </Badge>
                         </div>
-                        <p className="text-sm text-slate-400 mb-3">{service.description}</p>
+                        <p className="text-sm text-muted-foreground mb-3">{service.description}</p>
                         <div className="flex items-center justify-between">
-                          <span className="text-blue-400 font-semibold">{service.price}</span>
+                          <span className="text-primary font-semibold">{service.price}</span>
                           {service.link ? (
                             <Link href={service.link}>
                               <Button size="sm">进入商城</Button>
+                            </Link>
+                          ) : service.title === "燃料配送" ? (
+                            <Link href="/payment?service=燃料配送">
+                              <Button size="sm">立即购买</Button>
                             </Link>
                           ) : (
                             <Button size="sm">立即预约</Button>

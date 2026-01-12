@@ -1,25 +1,27 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: Service Role Key (优先)
+// TARGET_KEY: Anon Key + RLS
+// 说明：admin/staff 调用，必须强制 company_id 过滤，后续必须迁移到 Anon Key + RLS
+
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-
-// 后备值（与 lib/supabase.ts 保持一致）
-const FALLBACK_SUPABASE_URL = "https://gjlhcpfvjgqabqanvgmu.supabase.co"
-const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_OQSB-t8qr1xO0WRcpVSIZA_O4RFkAHQ"
 
 /**
  * GET: 获取设备分类列表
  */
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_SUPABASE_URL
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     
     // 优先使用 service role key，如果没有则使用 anon key（需要 RLS 策略允许）
     const keyToUse = serviceRoleKey || anonKey
     const useServiceRole = !!serviceRoleKey
     
-    if (!keyToUse) {
-      console.error("[设备分类API] 未找到有效的 Supabase 密钥")
+    if (!supabaseUrl || !keyToUse) {
+      console.error("[设备分类API] Supabase URL 或密钥未配置")
       return NextResponse.json(
         { 
           success: true, 

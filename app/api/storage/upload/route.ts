@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：admin/staff 调用，必须强制 company_id 过滤，已使用 Anon Key，需完善 RLS
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 
@@ -15,8 +21,32 @@ export async function POST(request: Request) {
 
     const formData = await request.formData()
     const file = formData.get("file") as File
-    const folder = formData.get("folder") || "proofs" // 默认文件夹（在桶内的子文件夹）
+    const companyId = formData.get("company_id") as string | null // 供应商ID（必需）
+    const subFolder = formData.get("folder") || "proofs" // 子文件夹
+    
+    // 多租户隔离：使用 company_id 组织文件夹结构
+    // 格式：companies/{company_id}/{sub_folder}/{filename}
+    const folder = companyId 
+      ? `companies/${companyId}/${subFolder}`
+      : subFolder // 如果没有 company_id，使用旧格式（向后兼容）
+    
     const BUCKET_NAME = "delivery-proofs" // Storage bucket 名称（固定）
+    
+    // 如果提供了 company_id，验证其有效性
+    if (companyId) {
+      // TODO: 验证 company_id 是否存在且有效
+      // const { data: company } = await supabase
+      //   .from("companies")
+      //   .select("id")
+      //   .eq("id", companyId)
+      //   .single()
+      // if (!company) {
+      //   return NextResponse.json(
+      //     { error: "无效的 company_id" },
+      //     { status: 400 }
+      //   )
+      // }
+    }
 
     if (!file) {
       return NextResponse.json(

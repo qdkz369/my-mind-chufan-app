@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: STAFF_LEVEL
+// ALLOWED_ROLES: staff
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：只能 staff 调用，必须绑定 worker_id / assigned_to，后续必须使用 RLS 限制只能访问自己数据
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"

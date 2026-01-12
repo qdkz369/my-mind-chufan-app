@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：admin/staff 调用，必须强制 company_id 过滤，已使用 Anon Key，需完善 RLS
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 

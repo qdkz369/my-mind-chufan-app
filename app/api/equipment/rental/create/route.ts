@@ -1,6 +1,13 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：admin/staff 调用，必须强制 company_id 过滤，已使用 Anon Key，需完善 RLS
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { createClient } from "@supabase/supabase-js"
+import { getCurrentCompanyId, getCurrentUserId } from "@/lib/multi-tenant"
 
 /**
  * POST: 创建租赁订单
@@ -26,6 +33,8 @@ export async function POST(request: Request) {
       contact_phone,
       notes,
       payment_method = "cash", // 支付方式：cash, alipay, wechat, bank_transfer, finance_api
+      provider_id, // 供应商ID
+      funding_type = "direct", // 财务模式：direct(直租)、third_party(第三方融资)
     } = body
 
     // 验证必需字段
@@ -36,32 +45,24 @@ export async function POST(request: Request) {
       )
     }
 
-    // 获取当前认证用户ID
-    let currentUserId: string | null = user_id || null
+    // 🔒 多租户隔离：获取当前用户的 company_id
+    const currentUserId = user_id || await getCurrentUserId(request)
+    const currentCompanyId = provider_id || await getCurrentCompanyId(request)
     
-    if (!currentUserId) {
-      const authHeader = request.headers.get("authorization")
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        const token = authHeader.substring(7)
-        try {
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-          const serverClient = createClient(supabaseUrl, supabaseAnonKey, {
-            auth: {
-              persistSession: false,
-              autoRefreshToken: false,
-            },
-          })
-          
-          const { data: { user }, error: authError } = await serverClient.auth.getUser(token)
-          if (!authError && user) {
-            currentUserId = user.id
-          }
-        } catch (authErr) {
-          console.warn("[租赁订单API] 无法从请求头获取用户ID:", authErr)
-        }
+    // 如果提供了 provider_id，验证用户是否有权限
+    if (provider_id && currentUserId) {
+      const { verifyCompanyAccess } = await import("@/lib/multi-tenant")
+      const hasAccess = await verifyCompanyAccess(currentUserId, provider_id)
+      if (!hasAccess) {
+        return NextResponse.json(
+          { error: "无权为此供应商创建订单" },
+          { status: 403 }
+        )
       }
     }
+    
+    // 如果没有提供 provider_id，使用当前用户的 company_id
+    const finalProviderId = provider_id || currentCompanyId
 
     // 获取设备信息
     const { data: equipment, error: equipmentError } = await supabase
@@ -133,6 +134,10 @@ export async function POST(request: Request) {
       delivery_address: delivery_address || null,
       contact_phone: contact_phone || null,
       notes: notes || null,
+      provider_id: finalProviderId || null, // 供应商ID（多租户隔离）
+      funding_type: funding_type || "direct", // 财务模式
+      is_signed: false, // 默认未签收
+      setup_photo: [], // 默认无安装照片
     }
 
     // 如果使用第三方金融机构API，预留接口
@@ -175,4 +180,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
 

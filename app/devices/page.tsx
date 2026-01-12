@@ -37,6 +37,35 @@ export default function DevicesPage() {
   const [isInitializing, setIsInitializing] = useState(true) // 初始化状态：正在读取 localStorage
   const [error, setError] = useState("")
   const [restaurantId, setRestaurantId] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
+
+  // 路由保护：检查登录状态
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (!supabase) {
+        setIsLoggedIn(false)
+        router.push('/')
+        return
+      }
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          // 游客访问，重定向到首页
+          setIsLoggedIn(false)
+          router.push('/')
+          return
+        }
+        setIsLoggedIn(true)
+      } catch (error) {
+        console.error("[设备页面] 检查登录状态失败:", error)
+        setIsLoggedIn(false)
+        router.push('/')
+      }
+    }
+
+    checkAuth()
+  }, [router])
 
   // 首先读取 localStorage 中的 restaurantId
   useEffect(() => {
@@ -115,7 +144,7 @@ export default function DevicesPage() {
         )
       case "offline":
         return (
-          <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">
+          <Badge className="bg-muted text-muted-foreground border-border">
             <AlertCircle className="h-3 w-3 mr-1" />
             离线
           </Badge>
@@ -130,21 +159,42 @@ export default function DevicesPage() {
     }
   }
 
+  // 如果未登录，不渲染页面内容（等待重定向）
+  if (isLoggedIn === false) {
+    return (
+      <main className="min-h-screen bg-background pb-20 flex items-center justify-center">
+        <div className="text-foreground">正在跳转...</div>
+      </main>
+    )
+  }
+
+  // 如果登录状态还在检查中，显示加载中
+  if (isLoggedIn === null) {
+    return (
+      <main className="min-h-screen bg-background pb-20 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">检查权限中...</p>
+        </div>
+      </main>
+    )
+  }
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
+    <main className="min-h-screen bg-background pb-20">
       <Header />
 
       {/* 页面标题 */}
       <div className="container mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-6">
           <Link href="/profile">
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+            <Button variant="ghost" size="icon" className="text-foreground hover:bg-muted/50">
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-white">我的设备</h1>
-            <p className="text-sm text-slate-400">查看已激活的设备列表</p>
+            <h1 className="text-2xl font-bold text-foreground">我的设备</h1>
+            <p className="text-sm text-muted-foreground">查看已激活的设备列表</p>
           </div>
         </div>
 
@@ -152,20 +202,20 @@ export default function DevicesPage() {
         {(isLoading || isInitializing) && (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-400 mx-auto mb-4" />
-              <p className="text-slate-400">加载中...</p>
+              <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+              <p className="text-muted-foreground">加载中...</p>
             </div>
           </div>
         )}
 
         {/* 错误提示 */}
         {error && !isLoading && !isInitializing && (
-          <Card className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-6 mb-6">
+          <Card className="theme-card p-6 mb-6 border-destructive/30 bg-destructive/10">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-6 w-6 text-red-400" />
+              <AlertCircle className="h-6 w-6 text-destructive" />
               <div>
-                <h3 className="text-lg font-bold text-red-400 mb-1">加载失败</h3>
-                <p className="text-sm text-red-300">{error}</p>
+                <h3 className="text-lg font-bold text-destructive mb-1">加载失败</h3>
+                <p className="text-sm text-destructive/80">{error}</p>
               </div>
             </div>
           </Card>
@@ -175,17 +225,17 @@ export default function DevicesPage() {
         {!isLoading && !isInitializing && !error && (
           <>
             {devices.length === 0 ? (
-              <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-8">
+              <Card className="theme-card p-8">
                 <div className="text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-slate-500/20 to-slate-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-500/30">
-                    <Package className="h-8 w-8 text-slate-400" />
+                  <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4 border border-border" style={{ borderRadius: 'var(--radius-card)' }}>
+                    <Package className="h-8 w-8 text-muted-foreground" />
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2">暂无设备</h3>
-                  <p className="text-sm text-slate-400 mb-4">
+                  <h3 className="text-lg font-bold text-foreground mb-2">暂无设备</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
                     您还没有已激活的设备
                   </p>
                   <Link href="/customer/confirm">
-                    <Button className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white">
+                    <Button className="theme-button bg-primary hover:bg-primary/90 text-primary-foreground">
                       前往确认验收
                     </Button>
                   </Link>
@@ -194,7 +244,7 @@ export default function DevicesPage() {
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-muted-foreground">
                     共 {devices.length} 台设备
                   </p>
                 </div>
@@ -202,22 +252,22 @@ export default function DevicesPage() {
                 {devices.map((device) => (
                   <Card
                     key={device.device_id}
-                    className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6 hover:bg-slate-800/70 transition-colors"
+                    className="theme-card p-6 hover:bg-muted/30 transition-colors"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-start gap-4 flex-1">
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500/30 to-cyan-500/30 rounded-xl flex items-center justify-center border border-blue-500/30 flex-shrink-0">
-                          <Package className="h-6 w-6 text-blue-400" />
+                        <div className="w-12 h-12 bg-primary/20 flex items-center justify-center border border-primary/30 flex-shrink-0" style={{ borderRadius: 'var(--radius-button)' }}>
+                          <Package className="h-6 w-6 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="text-lg font-bold text-white">
+                            <h3 className="text-lg font-bold text-foreground">
                               {device.device_id}
                             </h3>
                             {getStatusBadge(device.status)}
                           </div>
                           {device.model && (
-                            <p className="text-sm text-slate-400 mb-1">
+                            <p className="text-sm text-muted-foreground mb-1">
                               型号: {device.model}
                             </p>
                           )}
@@ -225,33 +275,33 @@ export default function DevicesPage() {
                       </div>
                     </div>
 
-                    <div className="space-y-2 pt-4 border-t border-slate-700/50">
+                    <div className="space-y-2 pt-4 border-t border-border/50">
                       {device.address && (
                         <div className="flex items-start gap-3">
-                          <MapPin className="h-4 w-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs text-slate-500 mb-0.5">安装地址</p>
-                            <p className="text-sm text-slate-300">{device.address}</p>
+                            <p className="text-xs text-muted-foreground mb-0.5">安装地址</p>
+                            <p className="text-sm text-foreground">{device.address}</p>
                           </div>
                         </div>
                       )}
 
                       {device.installer && (
                         <div className="flex items-center gap-3">
-                          <User className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                          <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs text-slate-500 mb-0.5">安装人</p>
-                            <p className="text-sm text-slate-300">{device.installer}</p>
+                            <p className="text-xs text-muted-foreground mb-0.5">安装人</p>
+                            <p className="text-sm text-foreground">{device.installer}</p>
                           </div>
                         </div>
                       )}
 
                       {device.install_date && (
                         <div className="flex items-center gap-3">
-                          <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                          <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs text-slate-500 mb-0.5">安装日期</p>
-                            <p className="text-sm text-slate-300">
+                            <p className="text-xs text-muted-foreground mb-0.5">安装日期</p>
+                            <p className="text-sm text-foreground">
                               {new Date(device.install_date).toLocaleString("zh-CN")}
                             </p>
                           </div>

@@ -3,92 +3,135 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/**
+ * 全局主题变量定义
+ * 
+ * 两套互斥主题：
+ * - Industrial Blue（工业蓝/默认）：深工业蓝背景，硬朗直线，小圆角(4px)，高对比度
+ * - Apple White（苹果白）：#F2F2F7背景，24px圆角，SF Pro感，柔和阴影
+ * 
+ * 注意：实际主题值由 ThemeProvider 通过 data-theme 属性动态设置
+ * 这里只定义默认值（Industrial Blue）
+ */
+
 :root {
-  /* 更新为深色科技感配色 */
-  --background: oklch(0.12 0.015 240);
-  --foreground: oklch(0.95 0.01 240);
-  --card: oklch(0.15 0.015 240);
-  --card-foreground: oklch(0.95 0.01 240);
-  --popover: oklch(0.15 0.015 240);
-  --popover-foreground: oklch(0.95 0.01 240);
-  --primary: oklch(0.55 0.18 250);
-  --primary-foreground: oklch(0.99 0.002 240);
-  --secondary: oklch(0.6 0.2 30);
-  --secondary-foreground: oklch(0.99 0.002 240);
-  --muted: oklch(0.2 0.015 240);
-  --muted-foreground: oklch(0.6 0.01 240);
-  --accent: oklch(0.55 0.18 250);
-  --accent-foreground: oklch(0.99 0.002 240);
-  --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.99 0.002 240);
-  --border: oklch(0.25 0.015 240);
-  --input: oklch(0.25 0.015 240);
-  --ring: oklch(0.55 0.18 250);
-  --chart-1: oklch(0.55 0.18 250);
-  --chart-2: oklch(0.6 0.2 30);
-  --chart-3: oklch(0.55 0.15 150);
-  --chart-4: oklch(0.6 0.15 280);
-  --chart-5: oklch(0.65 0.12 340);
-  --radius: 0.75rem;
-  --success: oklch(0.55 0.15 150);
-  --success-foreground: oklch(0.99 0.002 240);
-  --warning: oklch(0.7 0.18 60);
-  --warning-foreground: oklch(0.15 0.015 240);
-  --sidebar: oklch(0.15 0.015 240);
-  --sidebar-foreground: oklch(0.95 0.01 240);
-  --sidebar-primary: oklch(0.55 0.18 250);
-  --sidebar-primary-foreground: oklch(0.99 0.002 240);
-  --sidebar-accent: oklch(0.2 0.015 240);
-  --sidebar-accent-foreground: oklch(0.95 0.01 240);
-  --sidebar-border: oklch(0.25 0.015 240);
-  --sidebar-ring: oklch(0.55 0.18 250);
+  /* 默认主题：Industrial Blue（工业蓝） */
+  --background: #0A1628;
+  --background-secondary: #0F1B2E;
+  --foreground: #E5E8ED;
+  --foreground-secondary: #8B94A6;
+  --card: #141F35;
+  --card-foreground: #E5E8ED;
+  --popover: #141F35;
+  --popover-foreground: #E5E8ED;
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1E293B;
+  --secondary-foreground: #E5E8ED;
+  --accent: #60A5FA;
+  --accent-foreground: #FFFFFF;
+  --muted: #1E293B;
+  --muted-foreground: #8B94A6;
+  --border: #1E293B;
+  --input: #1E293B;
+  --ring: #3B82F6;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --success: #10B981;
+  --success-foreground: #FFFFFF;
+  --warning: #F59E0B;
+  --warning-foreground: #FFFFFF;
+  --glass: rgba(20, 31, 53, 0.7);
+  --glass-border: rgba(59, 130, 246, 0.2);
+  
+  /* 圆角规范：Industrial Blue 使用小圆角 */
+  --radius-card: 0.25rem; /* 4px */
+  --radius-button: 0.25rem;
+  --radius-input: 0.25rem;
+  --radius-small: 0.25rem;
+  --radius: 0.25rem;
+  
+  /* 图表颜色 */
+  --chart-1: #3B82F6;
+  --chart-2: #60A5FA;
+  --chart-3: #10B981;
+  --chart-4: #F59E0B;
+  --chart-5: #EF4444;
+  
+  /* 侧边栏 */
+  --sidebar: #141F35;
+  --sidebar-foreground: #E5E8ED;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1E293B;
+  --sidebar-accent-foreground: #E5E8ED;
+  --sidebar-border: #1E293B;
+  --sidebar-ring: #3B82F6;
 }
 
-.dark {
-  --background: oklch(0.15 0.01 240);
-  --foreground: oklch(0.95 0.01 240);
-  --card: oklch(0.18 0.01 240);
-  --card-foreground: oklch(0.95 0.01 240);
-  --popover: oklch(0.18 0.01 240);
-  --popover-foreground: oklch(0.95 0.01 240);
-  --primary: oklch(0.52 0.14 250);
-  --primary-foreground: oklch(0.99 0.002 240);
-  --secondary: oklch(0.7 0.16 40);
-  --secondary-foreground: oklch(0.99 0.002 240);
-  --muted: oklch(0.22 0.01 240);
-  --muted-foreground: oklch(0.65 0.01 240);
-  --accent: oklch(0.55 0.14 250);
-  --accent-foreground: oklch(0.99 0.002 240);
-  --destructive: oklch(0.5 0.2 25);
-  --destructive-foreground: oklch(0.99 0.002 240);
-  --border: oklch(0.28 0.01 240);
-  --input: oklch(0.28 0.01 240);
-  --ring: oklch(0.52 0.14 250);
-  --chart-1: oklch(0.52 0.14 250);
-  --chart-2: oklch(0.7 0.16 40);
-  --chart-3: oklch(0.6 0.14 150);
-  --chart-4: oklch(0.65 0.12 60);
-  --chart-5: oklch(0.55 0.1 280);
-  --success: oklch(0.6 0.14 150);
-  --success-foreground: oklch(0.99 0.002 240);
-  --warning: oklch(0.75 0.15 60);
-  --warning-foreground: oklch(0.15 0.01 240);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+/* Apple White 主题（通过 data-theme="apple-white" 应用） */
+[data-theme="apple-white"] {
+  --background: #F2F2F7;
+  --background-secondary: #FFFFFF;
+  --foreground: #1D1D1F; /* 纯深黑，增强压重感 */
+  --foreground-secondary: #86868B; /* 增强对比度 */
+  --card: #FFFFFF;
+  --card-foreground: #1D1D1F;
+  --popover: #FFFFFF;
+  --popover-foreground: #1D1D1F;
+  --primary: #007AFF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5F5F7;
+  --secondary-foreground: #1D1D1F;
+  --accent: #007AFF;
+  --accent-foreground: #FFFFFF;
+  --muted: #F5F5F7;
+  --muted-foreground: #86868B; /* 增强对比度，从 #6E6E73 改为 #86868B */
+  --border: #E5E5EA;
+  --input: #E5E5EA;
+  --ring: #007AFF;
+  --destructive: #FF3B30;
+  --destructive-foreground: #FFFFFF;
+  --success: #34C759;
+  --success-foreground: #FFFFFF;
+  --warning: #FF9500;
+  --warning-foreground: #FFFFFF;
+  --glass: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  
+  /* 圆角规范：Apple White 使用大圆角（24px） */
+  --radius-card: 1.5rem; /* 24px */
+  --radius-button: 1.5rem;
+  --radius-input: 1.5rem;
+  --radius-small: 1rem;
+  --radius: 1.5rem;
+  
+  /* 图表颜色 */
+  --chart-1: #007AFF;
+  --chart-2: #5AC8FA;
+  --chart-3: #34C759;
+  --chart-4: #FF9500;
+  --chart-5: #FF3B30;
+  
+  /* 侧边栏 */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1D1D1F;
+  --sidebar-primary: #007AFF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F5F5F7;
+  --sidebar-accent-foreground: #1D1D1F;
+  --sidebar-border: #E5E5EA;
+  --sidebar-ring: #007AFF;
 }
 
 @theme inline {
   /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "SF Pro Text", sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --color-background: var(--background);
+  --color-background-secondary: var(--background-secondary);
   --color-foreground: var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -115,10 +158,10 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: var(--radius-small);
+  --radius-md: calc(var(--radius) * 0.5);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) * 1.5);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -135,6 +178,178 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* 全局主题切换平滑过渡（像 iOS 切换深色模式一样顺滑） */
+    transition: background-color 0.4s ease, color 0.4s ease, background 0.4s ease;
+  }
+  
+  /* 工业蓝主题：应用从 #0A1628 到 #060E1A 的深邃渐变背景 */
+  :root:not([data-theme="apple-white"]) body {
+    background: linear-gradient(135deg, #0A1628 0%, #060E1A 100%);
+    background-attachment: fixed;
+  }
+  
+  /* 苹果白主题：应用从 #F2F2F7 到 #FFFFFF 的极淡渐变背景 */
+  [data-theme="apple-white"] body {
+    background: linear-gradient(to bottom, #F2F2F7, #FFFFFF);
+    background-attachment: fixed;
+  }
+  
+  /* 主题化卡片 - 使用主题变量 */
+  .theme-card {
+    border-radius: var(--radius-card);
+    background-color: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    /* 阴影：所有模式都使用阴影，让卡片有'浮动'的高级感 */
+    box-shadow: var(--theme-shadow, none);
+  }
+  
+  /* 工业蓝主题：微妙渐变背景、半透明蓝色边框和阴影 */
+  :root:not([data-theme="apple-white"]) .theme-card {
+    /* 极其微妙的背景渐变（基于 --card 颜色） */
+    background: linear-gradient(135deg, var(--card) 0%, rgba(15, 23, 42, 0.95) 100%);
+    background-color: var(--card); /* 回退色 */
+    /* 0.5px 半透明蓝色边框，找回工业精密感 */
+    border: 0.5px solid rgba(59, 130, 246, 0.2);
+    /* 微妙阴影 */
+    --theme-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--theme-shadow);
+  }
+  
+  /* 苹果白主题：柔和长阴影，让卡片从背景中'浮'起来 */
+  [data-theme="apple-white"] .theme-card {
+    --theme-shadow: 0 8px 40px -10px rgba(0, 0, 0, 0.08);
+    --shadow-theme-lg: 0 8px 40px -10px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--theme-shadow);
+    /* 层级隔离：极细的浅灰色描边 */
+    border: 0.5px solid rgba(0, 0, 0, 0.05);
+  }
+  
+  /* 主题化按钮 - 使用主题变量 */
+  .theme-button {
+    border-radius: var(--radius-button);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .theme-button:active {
+    transform: scale(0.95);
+  }
+  
+  /* Apple White 模式下的按钮样式 */
+  [data-theme="apple-white"] .theme-button {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  
+  /* Apple White 模式下：按钮应为浅色底+深色字，或品牌蓝底+白字 */
+  [data-theme="apple-white"] button:not([class*="bg-primary"]):not([class*="bg-success"]):not([class*="bg-destructive"]):not([class*="bg-warning"]) {
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+  }
+  
+  [data-theme="apple-white"] button[class*="bg-primary"],
+  [data-theme="apple-white"] button[class*="bg-success"],
+  [data-theme="apple-white"] button[class*="bg-destructive"],
+  [data-theme="apple-white"] button[class*="bg-warning"] {
+    color: var(--primary-foreground);
+  }
+  
+  /* 毛玻璃效果 - 主题化 */
+  .theme-glass {
+    background-color: var(--glass);
+    border: 1px solid var(--glass-border);
+  }
+  
+  /* Apple White 模式：必须使用 backdrop-blur: 20px */
+  [data-theme="apple-white"] .theme-glass {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  
+  /* Industrial Blue 模式：使用 backdrop-blur: 16px */
+  [data-theme="industrial-blue"] .theme-glass,
+  :root:not([data-theme]) .theme-glass {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  
+  /* 移动端降级处理：如果浏览器不支持backdrop-filter，使用纯色背景 */
+  @supports not (backdrop-filter: blur(16px)) {
+    .theme-glass {
+      background-color: var(--glass);
+    }
+  }
+  
+  /* 性能优化：在低性能设备上降低模糊程度 */
+  @media (prefers-reduced-motion: reduce) {
+    .theme-glass {
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+  }
+  
+  /* 主题化输入框 */
+  .theme-input {
+    border-radius: var(--radius-input);
+    background-color: var(--input);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+    transition: all 0.2s ease;
+  }
+  
+  /* 点击项交互动效 */
+  .ios-interactive {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+  }
+  
+  .ios-interactive:active {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  
+  /* 全局平滑过渡动画 - 主题切换时生效 */
+  * {
+    transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform, border-radius;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 0.4s;
+  }
+  
+  /* 交互元素快速响应 */
+  button, a, [role="button"] {
+    transition-duration: 0.2s;
+  }
+  
+  /* 启动动画性能优化 */
+  .splash-screen {
+    will-change: opacity, transform;
+    transform: translateZ(0); /* 启用硬件加速 */
+  }
+  
+  /* 补丁 2：数据显示板精修 - Apple White 模式 */
+  [data-theme="apple-white"] .data-value {
+    font-weight: 700; /* 加粗 */
+    font-size: 1.5rem; /* 放大字号（从 text-xl 到 text-2xl） */
+    line-height: 1.2;
+  }
+  
+  [data-theme="apple-white"] .data-unit {
+    font-size: 0.75rem; /* 缩小字号 */
+    color: var(--muted-foreground);
+    opacity: 0.6; /* 颜色变淡 */
+    margin-left: 0.25rem; /* 4px 间距 */
+  }
+  
+  /* Industrial Blue 模式保持原样 */
+  [data-theme="industrial-blue"] .data-value,
+  :root:not([data-theme]) .data-value {
+    font-weight: 700;
+    font-size: 1.25rem; /* text-xl */
+  }
+  
+  [data-theme="industrial-blue"] .data-unit,
+  :root:not([data-theme]) .data-unit {
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
   }
 }
 

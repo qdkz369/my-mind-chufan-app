@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: PUBLIC (公开API)
+// ALLOWED_ROLES: 无（公开访问，由支付宝调用）
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：公开API，用于接收支付宝支付回调，无需权限验证（但需要验证签名）
+
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
@@ -12,12 +18,14 @@ import { supabase } from '@/lib/supabase'
  */
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData()
+    // 确保Body只被读取一次：先读取为文本并存储到变量
+    const bodyText = await request.text()
     const params: Record<string, string> = {}
     
-    // 解析支付宝回调参数
-    formData.forEach((value, key) => {
-      params[key] = value.toString()
+    // 解析URL编码的表单数据（支付宝回调使用URL编码格式）
+    const urlParams = new URLSearchParams(bodyText)
+    urlParams.forEach((value, key) => {
+      params[key] = value
     })
 
     console.log('[Alipay Notify] 收到支付回调:', params)
@@ -28,15 +36,27 @@ export async function POST(request: NextRequest) {
       const tradeStatus = params.trade_status || 'TRADE_SUCCESS'
       
       if (tradeStatus === 'TRADE_SUCCESS' && orderId) {
-        // 更新订单状态
+        // 更新订单状态（需要判断订单类型）
         if (supabase) {
-          await supabase
-            .from('orders')
+          // 先尝试更新 delivery_orders（燃料配送订单）
+          const { error: deliveryError } = await supabase
+            .from('delivery_orders')
             .update({ 
               status: 'paid',
               updated_at: new Date().toISOString(),
             })
             .eq('id', orderId)
+          
+          // 如果 delivery_orders 中不存在，尝试更新 repair_orders（报修工单）
+          if (deliveryError) {
+            await supabase
+              .from('repair_orders')
+              .update({ 
+                status: 'paid',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', orderId)
+          }
         }
         
         console.log('[Alipay Notify] 沙箱环境：订单支付成功', orderId)
@@ -57,15 +77,27 @@ export async function POST(request: NextRequest) {
     const tradeStatus = params.trade_status
 
     if (tradeStatus === 'TRADE_SUCCESS' && orderId) {
-      // 更新订单状态
+      // 更新订单状态（需要判断订单类型）
       if (supabase) {
-        await supabase
-          .from('orders')
+        // 先尝试更新 delivery_orders（燃料配送订单）
+        const { error: deliveryError } = await supabase
+          .from('delivery_orders')
           .update({ 
             status: 'paid',
             updated_at: new Date().toISOString(),
           })
           .eq('id', orderId)
+        
+        // 如果 delivery_orders 中不存在，尝试更新 repair_orders（报修工单）
+        if (deliveryError) {
+          await supabase
+            .from('repair_orders')
+            .update({ 
+              status: 'paid',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', orderId)
+        }
       }
       
       console.log('[Alipay Notify] 订单支付成功', orderId)

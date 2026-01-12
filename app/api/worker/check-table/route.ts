@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: TEST (测试/工具API)
+// ALLOWED_ROLES: 无（测试用途）
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: 无需迁移（测试API）
+// 说明：测试API，用于检查数据库表是否存在，无需权限验证
+
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 

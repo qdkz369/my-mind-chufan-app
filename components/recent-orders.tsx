@@ -43,7 +43,7 @@ export function RecentOrders() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">最近订单</h2>
+        <h2 className="text-lg font-semibold text-foreground">最近订单</h2>
         <Link href="/orders">
           <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300">
             全部订单
@@ -65,16 +65,16 @@ export function RecentOrders() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-medium text-white">{order.type}</h4>
+                    <h4 className="font-medium text-foreground">{order.type}</h4>
                     <Badge className={`${order.bgColor} ${order.color} border ${order.borderColor} text-xs`}>
                       {order.status}
                     </Badge>
                   </div>
-                  <p className="text-xs text-slate-400">{order.id}</p>
+                  <p className="text-xs text-muted-foreground">{order.id}</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-xs text-slate-400">{order.time}</p>
+                <p className="text-xs text-muted-foreground">{order.time}</p>
               </div>
             </div>
           </Card>

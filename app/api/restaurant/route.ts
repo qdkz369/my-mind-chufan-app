@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: PUBLIC (公开API)
+// ALLOWED_ROLES: 无（公开访问）
+// CURRENT_KEY: Anon Key (supabase)
+// TARGET_KEY: Anon Key + RLS
+// 说明：公开API，用于根据qr_token获取餐厅信息，无需权限验证
+
 import { NextResponse } from "next/server"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
@@ -14,21 +20,29 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const qrToken = searchParams.get("qr_token")
+    const restaurantId = searchParams.get("id")
 
-    if (!qrToken) {
+    // 支持通过 qr_token 或 id 查询
+    if (!qrToken && !restaurantId) {
       return NextResponse.json(
-        { error: "缺少必要参数: qr_token" },
+        { error: "缺少必要参数: qr_token 或 id" },
         { status: 400 }
       )
     }
 
-    // 根据 qr_token 查询餐厅信息
+    // 根据 qr_token 或 id 查询餐厅信息
     // 注意：新结构使用 id (UUID) 作为主键，而不是 restaurant_id (TEXT)
-    const { data: restaurantData, error: restaurantError } = await supabase
+    let query = supabase
       .from("restaurants")
       .select("id, name, address, qr_token, total_refilled, status, contact_name, contact_phone")
-      .eq("qr_token", qrToken)
-      .single()
+    
+    if (restaurantId) {
+      query = query.eq("id", restaurantId)
+    } else if (qrToken) {
+      query = query.eq("qr_token", qrToken)
+    }
+    
+    const { data: restaurantData, error: restaurantError } = await query.single()
 
     if (restaurantError || !restaurantData) {
       // 提供更详细的错误信息，帮助用户排查问题

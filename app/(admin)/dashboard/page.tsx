@@ -81,6 +81,8 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
+import { ProductApproval } from "./product-approval"
+import { SupplierManagement } from "./supplier-management"
 import {
   Line,
   LineChart,
@@ -170,6 +172,8 @@ const menuItems = [
   { icon: Wrench, label: "报修管理", key: "repairs" },
   { icon: Package, label: "设备租赁管理", key: "equipmentRental" },
   { icon: DollarSign, label: "租赁工作台", key: "rentals" },
+  { icon: CheckCircle2, label: "产品审核", key: "productApproval" },
+  { icon: Building2, label: "供应商管理", key: "supplierManagement" },
   { icon: Wrench, label: "设备监控", key: "devices" },
   { icon: Truck, label: "工人管理", key: "workers" },
   { icon: DollarSign, label: "燃料实时价格监控", key: "fuelPricing" },
@@ -192,6 +196,7 @@ export default function AdminDashboard() {
   const [apiConfigs, setApiConfigs] = useState<ApiConfig[]>([])
   const [servicePoints, setServicePoints] = useState<ServicePoint[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentUser, setCurrentUser] = useState<{ email?: string } | null>(null)
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
@@ -283,6 +288,26 @@ export default function AdminDashboard() {
   const [rentalOrderStatusFilter, setRentalOrderStatusFilter] = useState<string>("all")
   const [selectedRentalOrder, setSelectedRentalOrder] = useState<any | null>(null)
   const [isRentalOrderDetailDialogOpen, setIsRentalOrderDetailDialogOpen] = useState(false)
+  const [rentalOrderSearchQuery, setRentalOrderSearchQuery] = useState<string>("")
+  const [selectedRentalOrderIds, setSelectedRentalOrderIds] = useState<string[]>([])
+  const [isAddRentalOrderDialogOpen, setIsAddRentalOrderDialogOpen] = useState(false)
+  const [isUpdatingRentalOrder, setIsUpdatingRentalOrder] = useState(false)
+  const [newRentalOrder, setNewRentalOrder] = useState({
+    restaurant_id: "",
+    equipment_id: "",
+    quantity: 1,
+    rental_period: 1,
+    start_date: new Date().toISOString().split("T")[0],
+    delivery_address: "",
+    contact_phone: "",
+    notes: "",
+    payment_method: "cash",
+    provider_id: "",
+    funding_type: "direct",
+  })
+  const [equipmentList, setEquipmentList] = useState<any[]>([])
+  const [restaurantList, setRestaurantList] = useState<any[]>([])
+  const [companyList, setCompanyList] = useState<any[]>([])
   
   // 租赁工作台相关状态（使用 rentals 表）
   const [rentals, setRentals] = useState<any[]>([])
@@ -791,13 +816,31 @@ export default function AdminDashboard() {
     try {
       setIsLoadingOrders(true)
       
-      const { data: ordersData, error: ordersError } = await retryOnNetworkError(async () => {
-        return await supabase
-          .from("orders")
-          .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, worker_id")
-          .order("created_at", { ascending: false })
-          .limit(20)
-      })
+      // 表已分离，需要分别查询两个表然后合并
+      const [repairResult, deliveryResult] = await Promise.all([
+        retryOnNetworkError(async () => 
+          await supabase
+            .from("repair_orders")
+            .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
+            .order("created_at", { ascending: false })
+            .limit(20)
+        ),
+        retryOnNetworkError(async () => 
+          await supabase
+            .from("delivery_orders")
+            .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
+            .order("created_at", { ascending: false })
+            .limit(20)
+        )
+      ])
+      
+      const repairData = repairResult.data || []
+      const deliveryData = deliveryResult.data || []
+      const ordersData = [...repairData, ...deliveryData]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 20)
+      
+      const ordersError = repairResult.error || deliveryResult.error
 
       if (ordersError) {
         console.error("[Admin Dashboard] 加载订单失败:", ordersError)
@@ -831,7 +874,7 @@ export default function AdminDashboard() {
           amount: order.amount || 0,
           created_at: order.created_at,
           updated_at: order.updated_at,
-          worker_id: order.worker_id,
+          worker_id: order.assigned_to || order.worker_id, // 使用 assigned_to 或 worker_id
         }))
         setRecentOrders(formattedOrders)
       }
@@ -849,28 +892,54 @@ export default function AdminDashboard() {
     try {
       setIsLoadingOrders(true)
       
-      let query = supabase
-        .from("orders")
-        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, worker_id, assigned_to, description")
+      // 表已分离，需要根据筛选条件决定查询哪个表
+      let repairQuery = supabase
+        .from("repair_orders")
+        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to, description")
+        .order("created_at", { ascending: false })
+      
+      let deliveryQuery = supabase
+        .from("delivery_orders")
+        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
         .order("created_at", { ascending: false })
 
       // 服务类型筛选
       if (orderServiceTypeFilter !== "all") {
-        query = query.eq("service_type", orderServiceTypeFilter)
+        if (orderServiceTypeFilter === "燃料配送") {
+          repairQuery = repairQuery.eq("service_type", "never_match") // 不匹配任何记录
+        } else {
+          repairQuery = repairQuery.eq("service_type", orderServiceTypeFilter)
+          deliveryQuery = deliveryQuery.eq("service_type", "never_match") // 不匹配任何记录
+        }
       }
 
       // 状态筛选
       if (orderStatusFilter !== "all") {
-        query = query.eq("status", orderStatusFilter)
+        repairQuery = repairQuery.eq("status", orderStatusFilter)
+        deliveryQuery = deliveryQuery.eq("status", orderStatusFilter)
       }
 
-      const { data: ordersData, error: ordersError } = await retryOnNetworkError(async () => {
-        const result = await query
-        if (result.error) {
-          throw result.error
-        }
-        return result
-      })
+      // 并行查询两个表
+      const [repairResult, deliveryResult] = await Promise.all([
+        retryOnNetworkError(async () => {
+          const result = await repairQuery
+          if (result.error) throw result.error
+          return result
+        }),
+        retryOnNetworkError(async () => {
+          const result = await deliveryQuery
+          if (result.error) throw result.error
+          return result
+        })
+      ])
+      
+      // 合并结果
+      const repairData = repairResult.data || []
+      const deliveryData = deliveryResult.data || []
+      const ordersData = [...repairData, ...deliveryData]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      
+      const ordersError = repairResult.error || deliveryResult.error
 
       if (ordersError) {
         console.error("[Admin Dashboard] 加载所有订单失败:", ordersError)
@@ -905,7 +974,7 @@ export default function AdminDashboard() {
           amount: order.amount || 0,
           created_at: order.created_at,
           updated_at: order.updated_at,
-          worker_id: order.worker_id || order.assigned_to,
+          worker_id: order.assigned_to || order.worker_id, // 优先使用 assigned_to
         }))
         setOrders(formattedOrders)
         // 移除频繁的调试日志，避免控制台刷屏
@@ -1038,13 +1107,13 @@ export default function AdminDashboard() {
         updateData.worker_id = null
       }
 
-      // 直接使用 Supabase 更新 orders 表
+      // 直接使用 Supabase 更新 repair_orders 表（报修工单）
       const { data: updatedRepair, error: updateError } = await retryOnNetworkError(
         async () => await supabase
-          .from("orders")
+          .from("repair_orders")
           .update(updateData)
           .eq("id", repairId)
-          .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to, worker_id")
+          .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to")
           .single()
       )
 
@@ -1163,8 +1232,151 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (activeMenu === "equipmentRental") {
       loadRentalOrders()
+      // 加载设备和餐厅列表
+      loadEquipmentAndRestaurants()
     }
   }, [activeMenu, rentalOrderStatusFilter, loadRentalOrders])
+
+  // 加载设备和餐厅列表（用于新增订单）
+  const loadEquipmentAndRestaurants = useCallback(async () => {
+    if (!supabase) return
+    try {
+      // 加载设备列表
+      const { data: equipmentData } = await supabase
+        .from("equipment")
+        .select("*")
+        .eq("status", "active")
+        .order("name")
+      if (equipmentData) setEquipmentList(equipmentData)
+
+      // 加载餐厅列表
+      const { data: restaurantData } = await supabase
+        .from("restaurants")
+        .select("id, name")
+        .order("name")
+      if (restaurantData) setRestaurantList(restaurantData)
+
+      // 加载公司列表（供应商）
+      const { data: companyData } = await supabase
+        .from("companies")
+        .select("id, name")
+        .eq("status", "active")
+        .order("name")
+      if (companyData) setCompanyList(companyData)
+    } catch (err) {
+      console.error("[设备租赁管理] 加载设备和餐厅列表失败:", err)
+    }
+  }, [supabase])
+
+  // 更新订单状态
+  const handleUpdateRentalOrderStatus = useCallback(async (orderId: string, newStatus: string) => {
+    setIsUpdatingRentalOrder(true)
+    try {
+      const response = await fetch("/api/equipment/rental/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, order_status: newStatus }),
+      })
+      const result = await response.json()
+      if (result.success) {
+        await loadRentalOrders()
+        setSelectedRentalOrder({ ...selectedRentalOrder!, order_status: newStatus })
+      } else {
+        alert(`更新失败: ${result.error}`)
+      }
+    } catch (err: any) {
+      alert(`更新失败: ${err.message}`)
+    } finally {
+      setIsUpdatingRentalOrder(false)
+    }
+  }, [selectedRentalOrder, loadRentalOrders])
+
+  // 更新支付状态
+  const handleUpdateRentalOrderPaymentStatus = useCallback(async (orderId: string, newStatus: string) => {
+    setIsUpdatingRentalOrder(true)
+    try {
+      const response = await fetch("/api/equipment/rental/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, payment_status: newStatus }),
+      })
+      const result = await response.json()
+      if (result.success) {
+        await loadRentalOrders()
+        setSelectedRentalOrder({ ...selectedRentalOrder!, payment_status: newStatus })
+      } else {
+        alert(`更新失败: ${result.error}`)
+      }
+    } catch (err: any) {
+      alert(`更新失败: ${err.message}`)
+    } finally {
+      setIsUpdatingRentalOrder(false)
+    }
+  }, [selectedRentalOrder, loadRentalOrders])
+
+  // 创建新订单
+  const handleCreateRentalOrder = useCallback(async () => {
+    if (!newRentalOrder.restaurant_id || !newRentalOrder.equipment_id || !newRentalOrder.start_date) {
+      alert("请填写必填字段（餐厅、设备、开始日期）")
+      return
+    }
+    setIsUpdatingRentalOrder(true)
+    try {
+      const response = await fetch("/api/equipment/rental/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newRentalOrder),
+      })
+      const result = await response.json()
+      if (result.success) {
+        setIsAddRentalOrderDialogOpen(false)
+        setNewRentalOrder({
+          restaurant_id: "",
+          equipment_id: "",
+          quantity: 1,
+          rental_period: 1,
+          start_date: new Date().toISOString().split("T")[0],
+          delivery_address: "",
+          contact_phone: "",
+          notes: "",
+          payment_method: "cash",
+        })
+        await loadRentalOrders()
+        alert("订单创建成功！")
+      } else {
+        alert(`创建失败: ${result.error}`)
+      }
+    } catch (err: any) {
+      alert(`创建失败: ${err.message}`)
+    } finally {
+      setIsUpdatingRentalOrder(false)
+    }
+  }, [newRentalOrder, loadRentalOrders])
+
+  // 批量更新状态
+  const handleBatchUpdateStatus = useCallback(async () => {
+    if (selectedRentalOrderIds.length === 0) return
+    if (!confirm(`确定要将选中的 ${selectedRentalOrderIds.length} 个订单状态改为"已确认"吗？`)) return
+    
+    setIsUpdatingRentalOrder(true)
+    try {
+      const promises = selectedRentalOrderIds.map((id) =>
+        fetch("/api/equipment/rental/update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, order_status: "confirmed" }),
+        })
+      )
+      await Promise.all(promises)
+      setSelectedRentalOrderIds([])
+      await loadRentalOrders()
+      alert("批量更新成功！")
+    } catch (err: any) {
+      alert(`批量更新失败: ${err.message}`)
+    } finally {
+      setIsUpdatingRentalOrder(false)
+    }
+  }, [selectedRentalOrderIds, loadRentalOrders])
 
   // 加载租赁工作台数据（使用 rentals 表，直接连接 Supabase）
   const loadRentals = useCallback(async () => {
@@ -1637,6 +1849,21 @@ export default function AdminDashboard() {
     }
   }
 
+  // 处理登出
+  const handleLogout = async () => {
+    try {
+      if (supabase) {
+        await supabase.auth.signOut()
+      }
+      // 跳转到登录页
+      window.location.href = "/login"
+    } catch (error) {
+      console.error("[Dashboard] 登出失败:", error)
+      // 即使出错也跳转到登录页
+      window.location.href = "/login"
+    }
+  }
+
   // 加载设备数据
   const loadDevices = useCallback(async () => {
     if (!supabase) return
@@ -1757,6 +1984,143 @@ export default function AdminDashboard() {
         },
       ])
     }
+  }, [supabase])
+
+  // 身份验证状态
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+  const isRedirectingRef = useRef(false) // 防止重复重定向
+
+  // 获取当前用户信息并验证身份
+  useEffect(() => {
+    const getUser = async () => {
+      // 防止重复执行
+      if (isRedirectingRef.current) {
+        console.log("[Dashboard] 正在重定向中，跳过验证")
+        return
+      }
+
+      if (!supabase) {
+        console.error("[Dashboard] Supabase未初始化")
+        setIsAuthenticated(false)
+        setIsLoading(false)
+        // 使用 window.location 进行完整跳转，避免React路由冲突
+        if (!isRedirectingRef.current) {
+          isRedirectingRef.current = true
+          window.location.href = "/login"
+        }
+        return
+      }
+
+      // 等待一段时间，确保从登录页面跳转过来时，认证状态已完全同步
+      // 这对于解决 "Multiple GoTrueClient instances" 警告导致的状态不同步问题很重要
+      // 从登录页面跳转到 dashboard 时，需要给足够时间让认证状态同步
+      console.log("[Dashboard] 等待认证状态同步...")
+      await new Promise(resolve => setTimeout(resolve, 1500))
+
+      // 重试机制：最多重试5次，每次间隔800ms
+      // 增加重试次数和间隔，确保在状态同步较慢时也能成功
+      let retryCount = 0
+      const maxRetries = 5
+
+      while (retryCount < maxRetries && !isRedirectingRef.current) {
+        try {
+          const { data: { user }, error: userError } = await supabase.auth.getUser()
+          
+          if (userError || !user) {
+            if (retryCount < maxRetries - 1) {
+              console.log(`[Dashboard] 获取用户信息失败，重试中... (${retryCount + 1}/${maxRetries})`)
+              console.log("[Dashboard] 错误详情:", userError?.message || "用户为空")
+              // 等待更长时间，确保认证状态完全同步
+              await new Promise(resolve => setTimeout(resolve, 800))
+              retryCount++
+              continue
+            }
+            console.error("[Dashboard] 未登录，已重试", maxRetries, "次，重定向到登录页面")
+            console.error("[Dashboard] 最后错误:", userError)
+            setIsAuthenticated(false)
+            setIsLoading(false)
+            if (!isRedirectingRef.current) {
+              isRedirectingRef.current = true
+              window.location.href = "/login"
+            }
+            return
+          }
+
+          // 检查用户角色
+          const { data: roleData, error: roleError } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", user.id)
+            .maybeSingle()
+
+          if (roleError) {
+            if (retryCount < maxRetries - 1) {
+              console.log(`[Dashboard] 查询角色失败，重试中... (${retryCount + 1}/${maxRetries})`)
+              console.log("[Dashboard] 角色查询错误:", roleError.message)
+              await new Promise(resolve => setTimeout(resolve, 800))
+              retryCount++
+              continue
+            }
+            console.error("[Dashboard] 查询角色失败，已重试", maxRetries, "次:", roleError)
+            setIsAuthenticated(false)
+            setIsLoading(false)
+            if (!isRedirectingRef.current) {
+              isRedirectingRef.current = true
+              window.location.href = "/login"
+            }
+            return
+          }
+
+          if (!roleData) {
+            console.error("[Dashboard] 用户没有角色记录")
+            setIsAuthenticated(false)
+            setIsLoading(false)
+            if (!isRedirectingRef.current) {
+              isRedirectingRef.current = true
+              window.location.href = "/login"
+            }
+            return
+          }
+
+          const actualRole = Array.isArray(roleData) ? roleData[0]?.role : roleData.role
+
+          if (actualRole !== "super_admin" && actualRole !== "admin") {
+            console.error("[Dashboard] 用户没有管理员权限，当前角色:", actualRole)
+            setIsAuthenticated(false)
+            setIsLoading(false)
+            if (!isRedirectingRef.current) {
+              isRedirectingRef.current = true
+              window.location.href = "/login"
+            }
+            return
+          }
+
+          // 用户验证通过，设置用户信息
+          console.log("[Dashboard] 身份验证成功，用户:", user.email, "角色:", actualRole)
+          setCurrentUser({ email: user.email })
+          setIsAuthenticated(true)
+          setIsLoading(false)
+          return // 成功，退出重试循环
+        } catch (error) {
+          if (retryCount < maxRetries - 1) {
+            console.log(`[Dashboard] 验证失败，重试中... (${retryCount + 1}/${maxRetries})`)
+            console.log("[Dashboard] 错误详情:", error)
+            await new Promise(resolve => setTimeout(resolve, 800))
+            retryCount++
+            continue
+          }
+          console.error("[Dashboard] 获取用户信息失败，已重试", maxRetries, "次:", error)
+          setIsAuthenticated(false)
+          setIsLoading(false)
+          if (!isRedirectingRef.current) {
+            isRedirectingRef.current = true
+            window.location.href = "/login"
+          }
+          return
+        }
+      }
+    }
+    getUser()
   }, [supabase])
 
   // 实时订阅
@@ -3889,9 +4253,23 @@ export default function AdminDashboard() {
     const completedOrders = rentalOrders.filter((o) => o.order_status === "completed")
     const cancelledOrders = rentalOrders.filter((o) => o.order_status === "cancelled")
 
+    // 搜索和筛选
     const filteredOrders = rentalOrders.filter((order) => {
-      if (rentalOrderStatusFilter === "all") return true
-      return order.order_status === rentalOrderStatusFilter
+      // 状态筛选
+      if (rentalOrderStatusFilter !== "all" && order.order_status !== rentalOrderStatusFilter) {
+        return false
+      }
+      // 搜索筛选
+      if (rentalOrderSearchQuery) {
+        const query = rentalOrderSearchQuery.toLowerCase()
+        return (
+          order.order_number?.toLowerCase().includes(query) ||
+          order.equipment?.name?.toLowerCase().includes(query) ||
+          order.restaurants?.name?.toLowerCase().includes(query) ||
+          order.contact_phone?.includes(query)
+        )
+      }
+      return true
     })
 
     const getStatusColor = (status: string) => {
@@ -3999,6 +4377,55 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
+        {/* 搜索和操作栏 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+              {/* 搜索框 */}
+              <div className="flex-1 w-full md:w-auto">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="搜索订单号、设备名称、餐厅名称或联系电话..."
+                    value={rentalOrderSearchQuery}
+                    onChange={(e) => setRentalOrderSearchQuery(e.target.value)}
+                    className="pl-10 bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-500"
+                  />
+                </div>
+              </div>
+              {/* 操作按钮 */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setIsAddRentalOrderDialogOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  新增订单
+                </Button>
+                {selectedRentalOrderIds.length > 0 && (
+                  <>
+                    <Button
+                      onClick={handleBatchUpdateStatus}
+                      variant="outline"
+                      className="border-green-500/50 text-green-400 hover:bg-green-500/10"
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      批量确认 ({selectedRentalOrderIds.length})
+                    </Button>
+                    <Button
+                      onClick={() => setSelectedRentalOrderIds([])}
+                      variant="outline"
+                      className="border-slate-600/50 text-slate-400 hover:bg-slate-800/50"
+                    >
+                      取消选择
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* 筛选器 */}
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader className="pb-4">
@@ -4050,12 +4477,12 @@ export default function AdminDashboard() {
 
         {/* 订单列表 */}
         {isLoadingRentalOrders ? (
-          <div className="flex items-center justify-center py-12" key="loading">
+          <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-blue-400 mr-2" />
             <span className="text-slate-400">加载中...</span>
           </div>
         ) : filteredOrders.length === 0 ? (
-          <Card key="empty" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
             <CardContent className="p-8 text-center">
               <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
               <p className="text-slate-400">
@@ -4064,22 +4491,44 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         ) : (
-          <div key="orders-list" className="space-y-4">
-            {filteredOrders.map((order, index) => {
-              // 确保每个订单都有唯一的 key，使用稳定的标识符
-              const orderKey = order.id || order.order_number || `order-${index}-${order.created_at || Date.now()}`
+          <div className="space-y-4">
+            {filteredOrders.map((order) => {
+              // 确保每个订单都有唯一的 key，只使用稳定的 id
+              const orderId = order.id || order.order_number
+              if (!orderId) return null // 如果没有 id，跳过渲染
+              const isSelected = selectedRentalOrderIds.includes(order.id)
               return (
               <Card
-                key={orderKey}
-                className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all cursor-pointer"
-                onClick={() => {
-                  setSelectedRentalOrder(order)
-                  setIsRentalOrderDetailDialogOpen(true)
-                }}
+                key={orderId}
+                className={`bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all ${
+                  isSelected ? "border-blue-500 ring-2 ring-blue-500/50" : ""
+                }`}
               >
                 <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start justify-between gap-4">
+                    {/* 复选框 */}
+                    <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          if (e.target.checked) {
+                            setSelectedRentalOrderIds((prev) => [...prev, order.id])
+                          } else {
+                            setSelectedRentalOrderIds((prev) => prev.filter((id) => id !== order.id))
+                          }
+                        }}
+                        className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </div>
+                    <div 
+                      className="flex-1 cursor-pointer"
+                      onClick={() => {
+                        setSelectedRentalOrder(order)
+                        setIsRentalOrderDetailDialogOpen(true)
+                      }}
+                    >
                       <div className="flex items-center gap-3 mb-3">
                         <h3 className="text-lg font-bold text-white">
                           {order.equipment?.name || "未知设备"}
@@ -6232,6 +6681,21 @@ export default function AdminDashboard() {
     )
   }
 
+  // 如果正在验证身份或未通过验证，显示加载状态
+  // 避免在身份验证完成前渲染内容，防止DOM操作冲突
+  if (isLoading || isAuthenticated === null || isAuthenticated === false) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-400 mx-auto" />
+          <p className="text-slate-400 text-sm">
+            {isAuthenticated === false ? "验证失败，正在跳转..." : "正在验证身份..."}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex">
       {/* 侧边栏 */}
@@ -6275,22 +6739,45 @@ export default function AdminDashboard() {
         <div className="p-4 border-t border-blue-800/50">
           <Button
             variant="ghost"
-            className="w-full justify-start text-slate-400 hover:text-white"
+            className={`w-full ${sidebarOpen ? 'justify-start' : 'justify-center'} text-slate-400 hover:text-white hover:bg-red-500/10 hover:text-red-400 transition-colors`}
+            onClick={handleLogout}
+            title="退出登录"
           >
-            <LogOut className="h-5 w-5 mr-3" />
-            {sidebarOpen && <span>退出登录</span>}
+            <LogOut className="h-5 w-5" />
+            {sidebarOpen && <span className="ml-3">退出登录</span>}
           </Button>
         </div>
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 overflow-auto">
-        <div className="p-6">
+      <div className="flex-1 overflow-auto flex flex-col">
+        {/* 顶部用户信息栏 */}
+        <div className="bg-slate-900/50 border-b border-blue-800/50 px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <User className="h-5 w-5 text-slate-400" />
+            <span className="text-sm text-slate-300">
+              {currentUser?.email || '加载中...'}
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            退出登录
+          </Button>
+        </div>
+        
+        <div className="p-6 flex-1">
           {activeMenu === "dashboard" && renderDashboard()}
           {activeMenu === "restaurants" && renderRestaurants()}
           {activeMenu === "orders" && renderOrders()}
           {activeMenu === "repairs" && renderRepairs()}
           {activeMenu === "equipmentRental" && renderEquipmentRental()}
+          {activeMenu === "productApproval" && <ProductApproval />}
+          {activeMenu === "supplierManagement" && <SupplierManagement />}
           {activeMenu === "rentals" && renderRentals()}
           {activeMenu === "devices" && renderDevices()}
           {activeMenu === "workers" && renderWorkers()}

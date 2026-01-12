@@ -1,3 +1,9 @@
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: admin, staff
+// CURRENT_KEY: 无（不直接访问数据库）
+// TARGET_KEY: Anon Key + RLS（如需要）
+// 说明：admin/staff 调用，创建支付订单，必须强制 company_id 过滤
+
 import { NextRequest, NextResponse } from 'next/server'
 
 // 环境配置
