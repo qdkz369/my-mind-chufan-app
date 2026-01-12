@@ -20,7 +20,7 @@ export function GuestHeader() {
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg shadow-red-500/30">
-              <Zap className="h-6 w-6 text-white" />
+              <Zap className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
               <h1 className="text-lg font-bold leading-tight text-white">智慧餐饮服务平台</h1>

@@ -27,7 +27,7 @@ import { supabase } from "@/lib/supabase"
 import { OrderFact, AssetFact, TraceFact } from "@/lib/facts/types"
 import { OrderFactContract, TraceFactContract, AssetFactContract, validateOrderFactContract } from "@/lib/facts/contracts/order.fact"
 import { verifyFactAccess, verifyOrderOwnership } from "@/lib/auth/facts-auth"
-import { OrderFactGuard } from "@/lib/facts/governance/order.fact.guard"
+import { OrderFactGuard, calculateFactHealth } from "@/lib/facts/governance/order.fact.guard"
 
 export async function GET(
   request: Request,
@@ -327,15 +327,38 @@ export async function GET(
       })),
     })
 
-    return NextResponse.json({
+    // 计算事实健康度汇总（纯只读聚合函数）
+    const healthSummary = calculateFactHealth(governanceResult.fact_warnings_structured)
+
+    // 构建响应对象
+    const response: any = {
       success: true,
       order: orderFact,
       assets: assets,
       traces: traces,
-      fact_warnings: governanceResult.fact_warnings.length > 0 
-        ? governanceResult.fact_warnings 
-        : undefined, // 如果没有警告，则不返回该字段
-    })
+    }
+
+    // 如果有警告，添加警告字段
+    if (governanceResult.fact_warnings.length > 0) {
+      // 向后兼容：保留原有的 fact_warnings 字段
+      response.fact_warnings = governanceResult.fact_warnings
+      // 新格式：人类可读格式
+      response.fact_warnings_human = governanceResult.fact_warnings
+      // 新格式：结构化格式（用于管理端治理列表、自动修复任务、事实健康度可视化）
+      response.fact_warnings_structured = governanceResult.fact_warnings_structured
+    }
+
+    // 添加事实健康度汇总（无论是否有警告都返回）
+    response.fact_health = {
+      score: healthSummary.health_score,
+      summary: {
+        high: healthSummary.by_level.high,
+        medium: healthSummary.by_level.medium,
+        low: healthSummary.by_level.low,
+      },
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error("[订单事实API] 处理请求时出错:", error)
     return NextResponse.json(

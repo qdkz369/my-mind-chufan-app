@@ -242,7 +242,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
-              <Flame className="h-6 w-6 text-white" />
+              <Flame className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-foreground">燃料实时监控</h3>

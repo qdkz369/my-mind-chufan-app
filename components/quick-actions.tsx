@@ -52,21 +52,22 @@ const actions = [
 export function QuickActions() {
   return (
     <div className="space-y-3">
-      <h2 className="text-lg font-semibold text-white">快速服务</h2>
-      <Card className="bg-slate-900/50 border-slate-800/50 backdrop-blur-sm p-4">
+      <h2 className="text-lg font-semibold text-foreground">快速服务</h2>
+      <Card className="theme-card backdrop-blur-sm p-4">
         <div className="grid grid-cols-3 gap-4">
           {actions.map((action) => (
             <Link
               key={action.label}
               href={action.href}
-              className="flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-slate-800/50 transition-all hover:scale-105"
+              className="flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-muted/50 transition-all hover:scale-105"
             >
               <div
                 className={`w-12 h-12 bg-gradient-to-br ${action.color} rounded-xl flex items-center justify-center shadow-lg ${action.shadowColor}`}
+                style={{ borderRadius: 'var(--radius-button)' }}
               >
-                <action.icon className="h-6 w-6 text-white" />
+                <action.icon className="h-6 w-6 text-primary-foreground" />
               </div>
-              <span className="text-xs font-medium text-center text-slate-200">{action.label}</span>
+              <span className="text-xs font-medium text-center text-foreground">{action.label}</span>
             </Link>
           ))}
         </div>

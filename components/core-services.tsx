@@ -40,9 +40,9 @@ export function CoreServices() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">核心服务</h2>
+        <h2 className="text-lg font-semibold text-foreground">核心服务</h2>
         <Link href="/services">
-          <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300">
+          <Button variant="ghost" size="sm" className="text-primary hover:text-primary/80">
             全部服务
             <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
@@ -53,31 +53,32 @@ export function CoreServices() {
         {services.map((service) => (
           <Card
             key={service.title}
-            className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6 hover:scale-[1.02] transition-transform cursor-pointer"
+            className="theme-card backdrop-blur-sm p-6 hover:scale-[1.02] transition-transform cursor-pointer"
           >
             <div className="flex items-start gap-4 mb-4">
               <div
                 className={`w-12 h-12 bg-gradient-to-br ${service.color} rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor}`}
+                style={{ borderRadius: 'var(--radius-button)' }}
               >
-                <service.icon className="h-6 w-6 text-white" />
+                <service.icon className="h-6 w-6 text-primary-foreground" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-white mb-1">{service.title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{service.description}</p>
+                <h3 className="text-lg font-semibold text-foreground mb-1">{service.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{service.description}</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-4">
               {service.stats.map((stat) => (
-                <div key={stat.label} className="bg-slate-800/50 rounded-lg p-3">
-                  <div className="text-xs text-slate-400 mb-1">{stat.label}</div>
-                  <div className="text-lg font-bold text-white">{stat.value}</div>
+                <div key={stat.label} className="bg-muted/50 rounded-lg p-3" style={{ borderRadius: 'var(--radius-small)' }}>
+                  <div className="text-xs text-muted-foreground mb-1">{stat.label}</div>
+                  <div className="text-lg font-bold text-foreground">{stat.value}</div>
                 </div>
               ))}
             </div>
 
             <Link href={service.href || "/services"}>
-              <Button className={`w-full bg-gradient-to-r ${service.color} hover:opacity-90 text-white`}>
+              <Button className={`w-full bg-gradient-to-r ${service.color} hover:opacity-90 text-primary-foreground`}>
                 立即下单
                 <ArrowRight className="h-4 w-4 ml-2" />
               </Button>

@@ -16,13 +16,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeName>(defaultTheme)
   const [mounted, setMounted] = useState(false)
 
-  // 从localStorage加载主题
+  // 从localStorage加载主题（防止白闪/黑闪）
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      // 立即应用主题，防止闪烁
       const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeName
-      if (savedTheme && themes[savedTheme]) {
-        setThemeState(savedTheme)
-      }
+      const themeToApply = (savedTheme && themes[savedTheme]) ? savedTheme : defaultTheme
+      
+      // 立即应用主题到DOM（在React渲染之前）
+      const themeConfig = themes[themeToApply]
+      const root = document.documentElement
+      const cssVars = getThemeCSSVariables(themeConfig)
+      root.setAttribute('style', cssVars)
+      root.setAttribute('data-theme', themeToApply)
+      
+      // 设置状态
+      setThemeState(themeToApply)
       setMounted(true)
     }
   }, [])

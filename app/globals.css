@@ -177,21 +177,32 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
     /* 全局主题切换平滑过渡（像 iOS 切换深色模式一样顺滑） */
     transition: background-color 0.4s ease, color 0.4s ease, background 0.4s ease;
+    min-height: 100vh;
   }
   
   /* 工业蓝主题：应用从 #0A1628 到 #060E1A 的深邃渐变背景 */
-  :root:not([data-theme="apple-white"]) body {
-    background: linear-gradient(135deg, #0A1628 0%, #060E1A 100%);
+  :root:not([data-theme="apple-white"]) body,
+  [data-theme="industrial-blue"] body {
+    background: linear-gradient(135deg, var(--background) 0%, #060E1A 100%);
     background-attachment: fixed;
+    background-color: var(--background); /* 回退色 */
   }
   
   /* 苹果白主题：应用从 #F2F2F7 到 #FFFFFF 的极淡渐变背景 */
   [data-theme="apple-white"] body {
-    background: linear-gradient(to bottom, #F2F2F7, #FFFFFF);
+    background: linear-gradient(to bottom, var(--background) 0%, #FFFFFF 100%);
     background-attachment: fixed;
+    background-color: var(--background); /* 回退色 */
+  }
+  
+  /* 确保所有页面容器继承背景 */
+  #__next,
+  [data-nextjs-scroll-focus-boundary] {
+    min-height: 100vh;
+    background: inherit;
   }
   
   /* 主题化卡片 - 使用主题变量 */
@@ -350,6 +361,48 @@
   :root:not([data-theme]) .data-unit {
     font-size: 0.75rem;
     margin-left: 0.25rem;
+  }
+  
+  /* ========== 全站主题自愈：确保所有文字和图标自动适配 ========== */
+  
+  /* 苹果白模式：所有正文文字自动变为深灰色 */
+  [data-theme="apple-white"] p,
+  [data-theme="apple-white"] span,
+  [data-theme="apple-white"] div:not([class*="text-"]):not([class*="bg-"]):not([class*="border-"]),
+  [data-theme="apple-white"] h1:not([class*="text-"]),
+  [data-theme="apple-white"] h2:not([class*="text-"]),
+  [data-theme="apple-white"] h3:not([class*="text-"]),
+  [data-theme="apple-white"] h4:not([class*="text-"]),
+  [data-theme="apple-white"] h5:not([class*="text-"]),
+  [data-theme="apple-white"] h6:not([class*="text-"]),
+  [data-theme="apple-white"] label:not([class*="text-"]) {
+    color: var(--foreground) !important;
+  }
+  
+  /* 苹果白模式：所有图标自动变为深灰色（除非明确指定了其他颜色） */
+  [data-theme="apple-white"] svg:not([class*="text-primary"]):not([class*="text-destructive"]):not([class*="text-success"]):not([class*="text-warning"]):not([class*="text-accent"]):not([class*="text-muted"]):not([class*="text-white"]):not([class*="text-black"]) {
+    color: var(--foreground);
+    stroke: var(--foreground);
+    fill: var(--foreground);
+  }
+  
+  /* 确保所有卡片文字使用主题变量 */
+  [data-theme="apple-white"] .theme-card,
+  [data-theme="apple-white"] [class*="card"]:not([class*="bg-"]):not([class*="text-"]) {
+    color: var(--card-foreground);
+  }
+  
+  /* 确保所有按钮文字使用主题变量 */
+  [data-theme="apple-white"] button:not([class*="text-primary"]):not([class*="text-destructive"]):not([class*="text-success"]):not([class*="text-warning"]) {
+    color: var(--foreground);
+  }
+  
+  /* 工业蓝模式：保持原有样式（使用浅色文字） */
+  [data-theme="industrial-blue"] svg:not([class*="text-"]),
+  :root:not([data-theme]) svg:not([class*="text-"]) {
+    color: var(--foreground);
+    stroke: var(--foreground);
+    fill: var(--foreground);
   }
 }
 

@@ -88,7 +88,7 @@ export function Header() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg shadow-red-500/30" style={{ borderRadius: 'var(--radius-button)' }}>
-                <Zap className="h-6 w-6 text-white" />
+                <Zap className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight text-foreground">我的智能餐厅</h1>
@@ -112,7 +112,7 @@ export function Header() {
               </Button>
               <Button variant="ghost" size="icon" className="text-foreground hover:bg-muted/50 relative">
                 <Bell className="h-5 w-5" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-gradient-to-r from-red-500 to-red-600 text-white text-xs border-0">
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-destructive text-destructive-foreground text-xs border-0">
                   3
                 </Badge>
               </Button>

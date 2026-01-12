@@ -56,7 +56,7 @@ export function RecentOrders() {
         {orders.map((order) => (
           <Card
             key={order.id}
-            className="bg-slate-900/50 border-slate-800/50 backdrop-blur-sm p-4 hover:bg-slate-800/50 transition-colors cursor-pointer"
+            className="theme-card backdrop-blur-sm p-4 hover:opacity-90 transition-all cursor-pointer"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1">

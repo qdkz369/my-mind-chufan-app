@@ -255,9 +255,10 @@ export default function HomePage() {
   }
 
   // 如果显示启动动画，优先显示启动动画
-  if (showSplash) {
-    return <SplashScreen onComplete={handleSplashComplete} />
-  }
+  // 已关闭灶小蜂启动动画
+  // if (showSplash) {
+  //   return <SplashScreen onComplete={handleSplashComplete} />
+  // }
 
   // 最小化加载UI（仅用于身份判定期间的占位）
   // 使用灶小蜂微缩版动态 Logo，与启动动画视觉统一

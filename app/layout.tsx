@@ -40,6 +40,32 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        {/* 防止主题闪烁：在服务端渲染时立即设置默认主题 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var theme = localStorage.getItem('ios-theme-preference') || 'industrial-blue';
+                  var root = document.documentElement;
+                  if (theme === 'industrial-blue') {
+                    root.setAttribute('data-theme', 'industrial-blue');
+                    root.style.setProperty('--background', '#0A1628');
+                    root.style.setProperty('--background-secondary', '#0F1B2E');
+                    root.style.setProperty('--foreground', '#E5E8ED');
+                  } else if (theme === 'apple-white') {
+                    root.setAttribute('data-theme', 'apple-white');
+                    root.style.setProperty('--background', '#F2F2F7');
+                    root.style.setProperty('--background-secondary', '#FFFFFF');
+                    root.style.setProperty('--foreground', '#1D1D1F');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={`${inter.className} antialiased`}>
         <ErrorBoundary>
           <ThemeProvider>
