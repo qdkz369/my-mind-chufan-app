@@ -1632,7 +1632,7 @@ export function ProfileContent() {
 
           {/* 主题切换器 */}
           <Card className="theme-card p-4">
-            <div className="flex items-center justify-between">
+            <div className="space-y-4">
               <div>
                 <h3 className="font-medium text-foreground mb-1">主题切换</h3>
                 <p className="text-sm text-muted-foreground">选择您喜欢的界面风格</p>

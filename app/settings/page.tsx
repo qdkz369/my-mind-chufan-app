@@ -28,7 +28,7 @@ export default function SettingsPage() {
 
         {/* 主题切换器 */}
         <Card className="theme-card p-6 mb-6">
-          <div className="flex items-center justify-between">
+          <div className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-foreground mb-1">主题切换</h2>
               <p className="text-sm text-muted-foreground">选择您喜欢的界面风格</p>

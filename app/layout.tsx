@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/lib/styles/theme-context"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { ThemeDebug } from "@/components/theme-debug"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -50,19 +51,30 @@ export default function RootLayout({
                   var root = document.documentElement;
                   
                   // 规则：
-                  // - Base Theme 不设置 data-theme 属性，完全使用 globals.css 的 :root 样式
+                  // - DefaultTheme（Base Theme）不设置 data-theme 属性，完全使用 globals.css 的 :root 样式
                   // - 仅当有可切换主题时，才设置 data-theme 和 CSS 变量
+                  // - 首次进入系统时，强制使用 DefaultTheme（不设置 data-theme）
                   
-                  // 检查是否有可切换的 Visual Theme（仅非 Base Theme）
+                  // 检查是否有可切换的 Visual Theme（仅非 DefaultTheme）
                   var savedTheme = localStorage.getItem('ios-theme-preference');
-                  if (savedTheme === 'apple-white') {
-                    // 如果保存的是可切换主题，则应用它（设置 data-theme 和 CSS 变量）
+                  var isFirstVisit = savedTheme === null;
+                  
+                  if (isFirstVisit) {
+                    // 首次进入系统：强制使用 DefaultTheme（不设置 data-theme，完全依赖 globals.css 的 :root）
+                    root.removeAttribute('data-theme');
+                    root.removeAttribute('style');
+                  } else if (savedTheme === 'apple-white') {
+                    // 如果保存的是 Apple White 主题，则应用它（设置 data-theme 和 CSS 变量）
                     root.setAttribute('data-theme', 'apple-white');
                     root.style.setProperty('--background', '#F2F2F7');
                     root.style.setProperty('--background-secondary', '#FFFFFF');
                     root.style.setProperty('--foreground', '#1D1D1F');
+                  } else if (savedTheme === 'industrial-dark') {
+                    // 如果保存的是 Industrial Dark 主题，则应用它（设置 data-theme）
+                    root.setAttribute('data-theme', 'industrial-dark');
+                    // CSS 变量由 globals.css 的 [data-theme="industrial-dark"] 选择器定义
                   } else {
-                    // 否则使用 Base Theme（不设置 data-theme，完全依赖 globals.css 的 :root）
+                    // 否则使用 DefaultTheme（不设置 data-theme，完全依赖 globals.css 的 :root）
                     root.removeAttribute('data-theme');
                     root.removeAttribute('style');
                   }
@@ -78,6 +90,7 @@ export default function RootLayout({
             {children}
             <Toaster />
             <Analytics />
+            <ThemeDebug />
           </ThemeProvider>
         </ErrorBoundary>
       </body>

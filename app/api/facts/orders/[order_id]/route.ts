@@ -66,10 +66,14 @@ export async function GET(
 ) {
   try {
     if (!supabase) {
-      return NextResponse.json(
-        { error: "数据库连接失败" },
-        { status: 500 }
-      )
+      // 即使数据库连接失败，也返回合法的 JSON 对象，避免 500 错误
+      return NextResponse.json({
+        success: false,
+        error: "数据库连接失败",
+        order: null,
+        assets: [],
+        traces: [],
+      })
     }
 
     const { order_id } = await params
@@ -368,14 +372,16 @@ export async function GET(
     const validation = validateOrderFactContract(orderFact)
     if (!validation.valid) {
       console.error("[订单事实API] 订单事实不符合契约:", validation.errors)
-      return NextResponse.json(
-        {
-          success: false,
-          error: "订单事实不符合契约",
-          details: validation.errors,
-        },
-        { status: 500 }
-      )
+      // 即使验证失败，也返回合法的 JSON 对象，避免 500 错误
+      // 前端可以根据 success: false 判断数据不可用
+      return NextResponse.json({
+        success: false,
+        error: "订单事实不符合契约",
+        details: validation.errors,
+        order: null,
+        assets: [],
+        traces: [],
+      })
     }
 
     // 事实治理层：在返回前检查事实契约违反情况
@@ -424,12 +430,15 @@ export async function GET(
     return NextResponse.json(response)
   } catch (error) {
     console.error("[订单事实API] 处理请求时出错:", error)
-    return NextResponse.json(
-      {
-        error: "服务器内部错误",
-        details: error instanceof Error ? error.message : "未知错误",
-      },
-      { status: 500 }
-    )
+    // 即使出错，也返回合法的 JSON 对象，避免 500 错误
+    // 前端可以根据 success: false 判断数据不可用
+    return NextResponse.json({
+      success: false,
+      error: "服务器内部错误",
+      details: error instanceof Error ? error.message : "未知错误",
+      order: null,
+      assets: [],
+      traces: [],
+    })
   }
 }

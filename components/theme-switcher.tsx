@@ -2,76 +2,52 @@
 
 import { useTheme } from "@/lib/styles/theme-context"
 import { BASE_THEME_NAME, SWITCHABLE_VISUAL_THEMES, VisualThemeName } from "@/lib/styles/themes"
-import { Moon, Sun } from "lucide-react"
+import { Palette, ChevronRight } from "lucide-react"
+import Link from "next/link"
 
 /**
- * 主题切换器组件
+ * 更多主题按钮组件
  * 
- * 胶囊形切换开关，用于在 Base Theme 和 Visual Themes 之间切换
- * 
- * 核心原则：
- * - Base Theme 不受切换器控制（始终作为基础，不允许被切换）
- * - 只能在 Base Theme 和 Visual Themes 之间切换
- * - 切换到 Base Theme 时，从 localStorage 删除保存的主题
- * 
- * ⛔ 严格禁止：
- * - Visual Themes 严禁修改 spacing、layout、组件结构
- * - Visual Themes 只能覆盖颜色、圆角、阴影、字体
+ * 点击后跳转到主题选择页面，用户可以在那里选择所有可用的主题
  */
 export function ThemeSwitcher() {
-  const { theme, setTheme } = useTheme()
-
-  const toggleTheme = () => {
-    // 如果当前是 Base Theme，切换到第一个 Visual Theme
-    // 如果当前是 Visual Theme，切换回 Base Theme
-    const newTheme = theme === BASE_THEME_NAME 
-      ? SWITCHABLE_VISUAL_THEMES[0]
-      : BASE_THEME_NAME
-    setTheme(newTheme)
-  }
+  const { theme } = useTheme()
 
   // 判断当前是否是可切换的 Visual Theme（非 Base Theme）
   const isSwitchableTheme = theme !== BASE_THEME_NAME && SWITCHABLE_VISUAL_THEMES.includes(theme as VisualThemeName)
 
+  // 获取当前主题显示名称
+  const getCurrentThemeName = () => {
+    if (theme === BASE_THEME_NAME) {
+      return '默认主题'
+    }
+    if (theme === 'apple-white') {
+      return 'Apple White'
+    }
+    return '默认主题'
+  }
+
   return (
-    <button
-      onClick={toggleTheme}
-      className={`
-        relative flex items-center gap-2 px-4 py-2 rounded-full
-        transition-all duration-400 ease-in-out
-        ${isSwitchableTheme 
-          ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)]' 
-          : 'bg-slate-800/90 border border-slate-700/50'
-        }
-        hover:scale-105 active:scale-95
-      `}
-      aria-label={`切换到${isSwitchableTheme ? '基础主题' : '可切换主题'}`}
-    >
-      {/* 图标 */}
-      <div className="flex items-center gap-2">
-        {isSwitchableTheme ? (
-          <>
-            <Sun className="w-4 h-4 text-amber-500" />
-            <span className="text-sm font-medium text-gray-900">Apple</span>
-          </>
-        ) : (
-          <>
-            <Moon className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-medium text-slate-200">Industrial</span>
-          </>
-        )}
-      </div>
-      
-      {/* 切换指示器 */}
-      <div className={`
-        absolute right-1 top-1/2 -translate-y-1/2
-        w-6 h-6 rounded-full
-        transition-all duration-400 ease-in-out
-        ${isSwitchableTheme 
-          ? 'bg-blue-500 translate-x-0' 
-          : 'bg-slate-600 -translate-x-8'
-        }
-      `} />
-    </button>
+    <Link href="/themes">
+      <button
+        className="
+          w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg
+          bg-secondary/50 hover:bg-secondary transition-colors
+          border border-border
+        "
+        aria-label="更多主题"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
+            <Palette className="w-4 h-4 text-primary" />
+          </div>
+          <div className="text-left">
+            <div className="text-sm font-medium text-foreground">更多主题</div>
+            <div className="text-xs text-muted-foreground">当前：{getCurrentThemeName()}</div>
+          </div>
+        </div>
+        <ChevronRight className="w-5 h-5 text-muted-foreground" />
+      </button>
+    </Link>
   )
 }

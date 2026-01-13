@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import {
   BASE_THEME_NAME,
+  DEFAULT_THEME_NAME,
+  DEFAULT_THEME_CONFIG,
   VisualThemeName,
   VISUAL_THEMES,
   SWITCHABLE_VISUAL_THEMES,
@@ -44,46 +46,66 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
  * 3. Base Theme 不允许被切换、不参与主题选择、不保存到 localStorage
  * 4. 仅 Visual Themes 才能被动态切换和保存到 localStorage
  * 
- * ⛔ 严格禁止：
- * - Visual Themes 严禁修改 spacing、layout、组件结构
- * - Visual Themes 只能覆盖颜色、圆角、阴影、字体
+ * ✅ Theme 系统只控制：
+ * - 颜色（colors）
+ * - 字体（font-family，不是 font-size）
+ * - 阴影（shadows）
+ * - 圆角（border-radius）
+ * 
+ * ⛔ Theme 系统严禁控制：
+ * - 布局结构（Grid / Flex 方向）→ 已迁移到 BaseLayout / DashboardLayout 组件
+ * - 卡片信息层级（标题 / 主数值 / 辅助说明）→ 已迁移到 CardSkeleton 组件
+ * - 组件密度（padding / gap）→ 已迁移到 density.css（data-density 属性）
+ * - 信息显示顺序 → 已迁移到 CardSkeleton 组件
+ * - 字体大小（font-size）→ 设计系统基础变量（不属于 Theme）
+ * - 行高（line-height）→ 设计系统基础变量（不属于 Theme）
+ * - 间距（spacing）→ 设计系统基础变量（不属于 Theme）
+ * - 层级（z-index）→ 设计系统基础变量（不属于 Theme）
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // 初始状态：Base Theme 作为默认值（Base Theme 通过 globals.css 的 :root 自动加载）
   const [theme, setThemeState] = useState<ThemeName>(BASE_THEME_NAME)
 
-  // 初始化：Base Theme 永远先加载，然后检查是否有 Visual Theme 需要叠加
+  // 初始化：仅在"无本地缓存主题"时才设置 default，否则应用保存的主题
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     const root = document.documentElement
 
-    // 步骤 1：确保 Base Theme 先加载（通过 globals.css 的 :root）
-    // ⚠️ 重要：Base Theme 只在 CSS 中定义（@layer base-theme），不被 JavaScript 动态注入
-    // ⚠️ 重要：Base Theme 通过 globals.css 的 :root 自动应用，不需要任何 JavaScript 操作
-    // 我们只需要确保没有残留的 data-theme 或内联样式干扰 Base Theme
-    root.removeAttribute('data-theme')
-    root.removeAttribute('style')
-
-    // 步骤 2：检查是否有可切换的 Visual Theme 需要叠加
+    // 检查是否有保存的主题
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as VisualThemeName | null
+    const isFirstVisit = savedTheme === null
 
-    if (savedTheme && SWITCHABLE_VISUAL_THEMES.includes(savedTheme) && VISUAL_THEMES[savedTheme]) {
-      // Visual Theme 作为覆盖层叠加在 Base Theme 之上
+    if (isFirstVisit) {
+      // 仅在"无本地缓存主题"时才设置 default
+      // DefaultTheme 已经通过 globals.css 的 :root 加载
+      // 必须清除 data-theme 和 style，确保完全使用 DefaultTheme（避免内联脚本设置的不完整变量残留）
+      console.log('[ThemeProvider] 无本地缓存主题，使用 DefaultTheme')
+      root.removeAttribute('data-theme')
+      root.removeAttribute('style')
+      setThemeState(BASE_THEME_NAME)
+      // 不保存到 localStorage，确保 DefaultTheme 始终作为默认值
+    } else if (savedTheme && SWITCHABLE_VISUAL_THEMES.includes(savedTheme) && VISUAL_THEMES[savedTheme]) {
+      // 有保存的主题：应用保存的 Visual Theme（作为覆盖层叠加在 DefaultTheme 之上）
       const visualThemeConfig = VISUAL_THEMES[savedTheme]
       const visualCssVars = getVisualThemeCSSVariables(visualThemeConfig)
       
       // 设置 data-theme 属性（用于 CSS 选择器）
       root.setAttribute('data-theme', savedTheme)
       
-      // 注入 Visual Theme 的 CSS 变量（覆盖 Base Theme 的对应变量）
+      // 注入 Visual Theme 的 CSS 变量（覆盖 DefaultTheme 的对应变量）
       // ⚠️ 重要：只注入视觉相关的 CSS 变量，不包含结构变量（--spacing-*, --layout-*, --font-size-*, --line-height-*, --z-index-*）
-      // ⚠️ 重要：Visual Theme 作为覆盖层叠加在 Base Theme 之上（CSS @layer visual-theme）
+      // ⚠️ 重要：Visual Theme 作为覆盖层叠加在 DefaultTheme 之上（CSS @layer visual-theme）
+      // ⚠️ 重要：使用完整的 CSS 变量覆盖内联脚本可能设置的不完整变量
       root.setAttribute('style', visualCssVars)
       
       setThemeState(savedTheme)
     } else {
-      // 没有 Visual Theme，使用 Base Theme（已经通过 globals.css 的 :root 加载）
+      // 保存的主题无效：清除无效主题，使用 DefaultTheme
+      console.log('[ThemeProvider] 保存的主题无效，清除并使用 DefaultTheme')
+      localStorage.removeItem(THEME_STORAGE_KEY)
+      root.removeAttribute('data-theme')
+      root.removeAttribute('style')
       setThemeState(BASE_THEME_NAME)
     }
   }, [])
@@ -128,19 +150,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // 主题变化时应用
   useEffect(() => {
-    if (theme === BASE_THEME_NAME) {
-      // Base Theme：移除 Visual Theme 覆盖层
+    if (theme === BASE_THEME_NAME || theme === DEFAULT_THEME_NAME) {
+      // DefaultTheme（Base Theme）：移除 Visual Theme 覆盖层，回到 DefaultTheme
+      // DefaultTheme 已经通过 globals.css 的 :root 加载，只需要移除覆盖层
       removeVisualTheme()
     } else {
-      // Visual Theme：作为覆盖层叠加
+      // Visual Theme：作为覆盖层叠加在 DefaultTheme 之上
       applyVisualTheme(theme as VisualThemeName)
     }
   }, [theme, applyVisualTheme, removeVisualTheme])
 
   const setTheme = useCallback((themeName: ThemeName) => {
-    // ⛔ 禁止切换 Base Theme
-    if (themeName === BASE_THEME_NAME) {
-      console.warn('[ThemeProvider] Base Theme 不允许被切换，已忽略')
+    // 允许切换回 DefaultTheme（Base Theme）
+    if (themeName === BASE_THEME_NAME || themeName === DEFAULT_THEME_NAME) {
+      // 切换回 DefaultTheme：移除 Visual Theme 覆盖层
+      setThemeState(BASE_THEME_NAME)
       return
     }
     

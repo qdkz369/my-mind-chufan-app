@@ -2,23 +2,42 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-function Card({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div
-      data-slot="card"
-      className={cn(
-        'bg-card text-card-foreground flex flex-col border shadow-sm',
-        className,
-      )}
-      style={{
-        borderRadius: 'var(--radius-card)',
-        padding: 'var(--space-card-padding-y, 1rem) var(--space-card-padding-x, 1rem)',
-        gap: 'var(--space-gap-card, 0.75rem)',
-      }}
-      {...props}
-    />
-  )
+interface CardProps extends React.ComponentProps<'div'> {
+  /**
+   * 卡片效果类型
+   * - 'glow-soft': 柔和霓虹底光感（蓝色渐变 + 模糊）
+   * - 不设置则不显示效果
+   * 
+   * ⚠️ 重要：
+   * - 此属性不属于 Theme 系统
+   * - 通过 data-card-effect 属性控制
+   * - 使用 ::after 伪元素实现，不影响布局
+   */
+  cardEffect?: 'glow-soft' | null
 }
+
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, cardEffect, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        data-slot="card"
+        data-card-effect={cardEffect || undefined}
+        className={cn(
+          'bg-card text-card-foreground flex flex-col border shadow-sm',
+          className,
+        )}
+        style={{
+          borderRadius: 'var(--radius-card)',
+          padding: 'var(--space-card-padding-y, 1rem) var(--space-card-padding-x, 1rem)',
+          gap: 'var(--space-gap-card, 0.75rem)',
+        }}
+        {...props}
+      />
+    )
+  }
+)
+Card.displayName = 'Card'
 
 function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (

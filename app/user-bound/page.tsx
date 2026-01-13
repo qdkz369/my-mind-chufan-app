@@ -128,8 +128,15 @@ export default function UserBoundPage() {
             const assetsData = await assetsResponse.json()
             if (assetsData.success && assetsData.assets && Array.isArray(assetsData.assets)) {
               // Facts → ViewModel 转换（在 page 层完成）
-              const assetViewModels = assetsData.assets.map(convertAssetFactToCardViewModel)
-              setAssetsList(assetViewModels)
+              // 确保每个资产数据有效，避免转换函数出错
+              try {
+                const assetViewModels = assetsData.assets
+                  .filter((asset: any) => asset && typeof asset === 'object' && asset.asset_id)
+                  .map(convertAssetFactToCardViewModel)
+                setAssetsList(assetViewModels)
+              } catch (error) {
+                console.error('[User Bound Page] 转换资产卡片 ViewModel 失败:', error)
+              }
             }
           } else if (assetsResponse.status === 401 || assetsResponse.status === 403) {
             console.error('[User Bound Page] 权限验证失败，请确保已登录')
@@ -159,7 +166,8 @@ export default function UserBoundPage() {
               })
               if (orderFactResponse.ok) {
                 const orderFactData = await orderFactResponse.json()
-                if (orderFactData.success) {
+                // 确保响应数据有效，避免 null/undefined 导致渲染错误
+                if (orderFactData.success && orderFactData.order) {
                   // 调试日志：验证前端是否真实接收到这些事实字段
                   console.log("ORDER_FACT_FROM_API", orderFactData.order)
                   console.log("ORDER_FACT_FIELDS_CHECK", {
@@ -187,23 +195,37 @@ export default function UserBoundPage() {
                   }
                   
                   // Facts → ViewModel 转换（在 page 层完成）
-                  const timelineViewModel = convertOrderFactsToTimelineViewModel(
-                    orderFactData.order,
-                    orderFactData.traces || []
-                  )
-                  setLatestOrderTimeline(timelineViewModel)
+                  // 确保 order 和 traces 数据有效，避免转换函数出错
+                  if (orderFactData.order && typeof orderFactData.order === 'object') {
+                    try {
+                      const timelineViewModel = convertOrderFactsToTimelineViewModel(
+                        orderFactData.order,
+                        Array.isArray(orderFactData.traces) ? orderFactData.traces : []
+                      )
+                      setLatestOrderTimeline(timelineViewModel)
+                    } catch (error) {
+                      console.error('[User Bound Page] 转换订单时间线 ViewModel 失败:', error)
+                    }
+                  }
                   
                   // 将订单关联的资产与现有资产列表合并（去重）
                   if (orderFactData.assets && Array.isArray(orderFactData.assets) && orderFactData.assets.length > 0) {
                     // Facts → ViewModel 转换（在 page 层完成）
-                    const newAssetViewModels = orderFactData.assets.map(convertAssetFactToCardViewModel)
-                    setAssetsList((prev) => {
-                      const existingIds = new Set(prev.map((a) => a.assetId))
-                      const newAssets = newAssetViewModels.filter(
-                        (a) => !existingIds.has(a.assetId)
-                      )
-                      return [...prev, ...newAssets]
-                    })
+                    // 确保每个资产数据有效，避免转换函数出错
+                    try {
+                      const newAssetViewModels = orderFactData.assets
+                        .filter((asset: any) => asset && typeof asset === 'object' && asset.asset_id)
+                        .map(convertAssetFactToCardViewModel)
+                      setAssetsList((prev) => {
+                        const existingIds = new Set(prev.map((a) => a.assetId))
+                        const newAssets = newAssetViewModels.filter(
+                          (a) => !existingIds.has(a.assetId)
+                        )
+                        return [...prev, ...newAssets]
+                      })
+                    } catch (error) {
+                      console.error('[User Bound Page] 转换订单关联资产 ViewModel 失败:', error)
+                    }
                   }
                 }
               } else if (orderFactResponse.status === 401 || orderFactResponse.status === 403) {

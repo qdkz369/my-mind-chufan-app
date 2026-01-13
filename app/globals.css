@@ -12,14 +12,27 @@
  * 2. visual-theme-[name]（可切换）- 通过 [data-theme="..."] 定义，作为覆盖层叠加
  * 3. user-overrides（预留，不实现）- 未来用户自定义覆盖层
  * 
- * ⛔ 严格禁止：
- * - Visual Theme 覆盖结构变量（--spacing-*, --layout-*, --font-size-*, --line-height-*, --z-index-*）
- * - 动态注入 base-theme（Base Theme 只在 CSS 中定义，不被 JavaScript 动态注入）
+ * ✅ Theme 系统只控制：
+ * - 颜色（colors）
+ * - 字体（font-family，不是 font-size）
+ * - 阴影（shadows）
+ * - 圆角（border-radius）
+ * 
+ * ⛔ Theme 系统严禁控制（这些变量不属于 Theme，只是设计系统基础变量）：
+ * - 布局结构（Grid / Flex 方向）→ 已迁移到 BaseLayout / DashboardLayout 组件
+ * - 卡片信息层级（标题 / 主数值 / 辅助说明）→ 已迁移到 CardSkeleton 组件
+ * - 组件密度（padding / gap）→ 已迁移到 density.css（data-density 属性）
+ * - 信息显示顺序 → 已迁移到 CardSkeleton 组件
+ * - 字体大小（font-size）→ 设计系统基础变量（不属于 Theme）
+ * - 行高（line-height）→ 设计系统基础变量（不属于 Theme，部分在 density.css 中）
+ * - 间距（spacing）→ 设计系统基础变量（不属于 Theme，部分在 density.css 中）
+ * - 层级（z-index）→ 设计系统基础变量（不属于 Theme）
  * 
  * Base Theme（:root）：
  * - 工业蓝背景，硬朗直线，小圆角(4px)，高对比度
  * - 这是不可变的基础 UI，删除 localStorage 后必须回到这个状态
- * - 包含所有结构相关的 token（spacing、layout、fontSize、lineHeight、zIndex）
+ * - 包含视觉样式的默认值（颜色、字体、阴影、圆角）
+ * - 也包含设计系统基础变量（font-size、line-height、spacing、z-index），但这些不属于 Theme
  */
 
 /**
@@ -41,10 +54,17 @@
 @layer base-theme {
 :root {
   /* ========================================
-   * Base Theme：结构相关和语义 token（不可覆盖）
+   * 设计系统基础变量（不属于 Theme 系统）
    * ======================================== */
   
-  /* Spacing（间距）- 禁止 Visual Themes 修改 */
+  /* ⚠️ 重要：以下变量不属于 Theme 系统
+   * Theme 系统只控制：颜色、字体、阴影、圆角
+   * 以下变量是设计系统的基础变量，供组件和布局使用
+   */
+  
+  /* Spacing（间距）- 设计系统基础变量，不属于 Theme
+   * 组件密度（padding/gap）已迁移到 density.css（data-density 属性）
+   */
   --spacing-xs: 0.25rem;    /* 4px */
   --spacing-sm: 0.5rem;      /* 8px */
   --spacing-md: 1rem;        /* 16px */
@@ -53,13 +73,13 @@
   --spacing-2xl: 3rem;       /* 48px */
   --spacing-3xl: 4rem;       /* 64px */
   
-  /* Layout（布局）- 禁止 Visual Themes 修改 */
-  --layout-container-max-width: 1280px;
-  --layout-sidebar-width: 256px;
-  --layout-header-height: 64px;
-  --layout-footer-height: 80px;
+  /* Layout（布局）- 已迁移到 BaseLayout / DashboardLayout 组件
+   * 布局结构不属于 Theme 系统，Theme 只控制视觉样式
+   */
   
-  /* Typography Scale（字体大小）- 禁止 Visual Themes 修改 */
+  /* Typography Scale（字体大小）- 设计系统基础变量，不属于 Theme
+   * Theme 只控制字体家族（font-family），不控制字体大小（font-size）
+   */
   --font-size-xs: 0.75rem;     /* 12px */
   --font-size-sm: 0.875rem;    /* 14px */
   --font-size-base: 1rem;      /* 16px */
@@ -69,12 +89,14 @@
   --font-size-3xl: 1.875rem;   /* 30px */
   --font-size-4xl: 2.25rem;    /* 36px */
   
-  /* Line Height（行高）- 禁止 Visual Themes 修改 */
+  /* Line Height（行高）- 设计系统基础变量，不属于 Theme
+   * 部分行高变量在 density.css 中定义（data-density 属性）
+   */
   --line-height-tight: 1.25;
   --line-height-normal: 1.5;
   --line-height-relaxed: 1.75;
   
-  /* Z-Index Scale（层级）- 禁止 Visual Themes 修改 */
+  /* Z-Index Scale（层级）- 设计系统基础变量，不属于 Theme */
   --z-index-dropdown: 1000;
   --z-index-sticky: 1020;
   --z-index-fixed: 1030;
@@ -83,41 +105,84 @@
   --z-index-tooltip: 1060;
   
   /* ========================================
-   * Base Theme：视觉相关 token（可被 Visual Themes 覆盖）
+   * Base Theme：视觉样式 token（可被 Visual Themes 覆盖）
+   * 
+   * ✅ Theme 系统只控制以下视觉样式：
+   * - 颜色（colors）
+   * - 字体（font-family）
+   * - 阴影（shadows）
+   * - 圆角（border-radius）
    * ======================================== */
   
-  /* Base UI：Industrial Blue（工业蓝/原始 UI） */
-  /* 视觉优化：根据历史UI风格调整颜色，保持工业风基础 */
-  --background: #0A1628;
-  --background-secondary: #0F1B2E;
-  --foreground: #E5E8ED;
-  --foreground-secondary: #8B94A6;
-  --card: #141F35;
-  --card-foreground: #E5E8ED;
-  --popover: #141F35;
-  --popover-foreground: #E5E8ED;
-  --primary: #3B82F6; /* 蓝色主色（保持） */
-  --primary-foreground: #FFFFFF;
-  --secondary: #1E293B;
-  --secondary-foreground: #E5E8ED;
-  --accent: #60A5FA; /* 蓝色强调色（保持） */
-  --accent-foreground: #FFFFFF;
-  --muted: #1E293B;
-  --muted-foreground: #8B94A6;
-  --border: #1E293B;
-  --input: #1E293B;
-  --ring: #3B82F6;
-  --destructive: #EF4444; /* 红色（用于红色闪电图标、红色按钮） */
-  --destructive-foreground: #FFFFFF;
-  --success: #10B981; /* 绿色（用于在线状态、成功提示） */
-  --success-foreground: #FFFFFF;
-  --warning: #F59E0B; /* 橙色（用于待处理标签、警告提示） */
-  --warning-foreground: #FFFFFF;
-  --glass: rgba(20, 31, 53, 0.7);
-  --glass-border: rgba(59, 130, 246, 0.2);
+  /* DefaultTheme：默认主题（不可删除、不可关闭）
+   * 
+   * 设计原则：
+   * - 背景、卡片、分隔区必须有明确亮度层级
+   * - 不使用 Apple 风格的纯白/灰阶
+   * - 保留深色渐变背景
+   * - 卡片允许使用轻微透明度（rgba）或 gradient
+   * 
+   * 亮度层级（从暗到亮）：
+   * 1. 背景层（最暗）：#0A1628 → #0F1B2E
+   * 2. 卡片层（稍亮）：rgba(20, 31, 53, 0.95) 或 gradient
+   * 3. 分隔区（更亮）：#1E293B
+   * 
+   * ⚠️ 重要：
+   * - DefaultTheme 对应 Base Theme 的视觉样式
+   * - 所有用户首次进入系统时强制使用 DefaultTheme
+   * - DefaultTheme 不可删除、不可关闭
+   * - 仅恢复"原始 UI 的层次感"，不追求效果增强
+   */
   
-  /* 圆角规范：Industrial Blue 使用小圆角 */
-  --radius-card: 0.25rem; /* 4px */
+  /* 背景色（最暗层） */
+  --background: #0A1628; /* 深色背景（非纯黑，偏蓝灰） */
+  --background-secondary: #0F1B2E; /* 次要背景（稍亮，用于渐变） */
+  
+  /* 卡片色（稍亮层）- 使用 rgba 保持层次感 */
+  --card: rgba(20, 31, 53, 0.95); /* 卡片背景（轻微透明度，保持层次） */
+  --card-foreground: #E5E8ED; /* 卡片文字（高对比） */
+  --popover: rgba(20, 31, 53, 0.98); /* 弹出层（更不透明） */
+  --popover-foreground: #E5E8ED;
+  
+  /* 前景色（文字） */
+  --foreground: #E5E8ED; /* 主文字（高对比） */
+  --foreground-secondary: #8B94A6; /* 次要文字 */
+  
+  /* 主色 */
+  --primary: #3B82F6; /* 蓝色主色（高对比） */
+  --primary-foreground: #FFFFFF;
+  
+  /* 次要色（分隔区层，更亮） */
+  --secondary: #1E293B; /* 次要背景（分隔区，比卡片稍亮） */
+  --secondary-foreground: #E5E8ED;
+  
+  /* 强调色 */
+  --accent: #60A5FA; /* 蓝色强调色 */
+  --accent-foreground: #FFFFFF;
+  
+  /* 静音色 */
+  --muted: #1E293B; /* 静音背景（与分隔区同层） */
+  --muted-foreground: #8B94A6;
+  
+  /* 边框（分隔区层） */
+  --border: #1E293B; /* 边框（与分隔区同层，保持层次） */
+  --input: #1E293B; /* 输入框背景 */
+  --ring: #3B82F6; /* 焦点环 */
+  
+  /* 状态色 */
+  --destructive: #EF4444; /* 红色（高对比） */
+  --destructive-foreground: #FFFFFF;
+  --success: #10B981; /* 绿色（高对比） */
+  --success-foreground: #FFFFFF;
+  --warning: #F59E0B; /* 橙色（高对比） */
+  --warning-foreground: #FFFFFF;
+  
+  /* 毛玻璃效果 */
+  --glass: rgba(20, 31, 53, 0.7); /* 毛玻璃背景 */
+  --glass-border: rgba(59, 130, 246, 0.2); /* 毛玻璃边框 */
+  
+  /* 圆角规范：DefaultTheme 使用小圆角（最少装饰） */
+  --radius-card: 0.25rem; /* 4px - 最小圆角，减少装饰 */
   --radius-button: 0.25rem;
   --radius-input: 0.25rem;
   --radius-small: 0.25rem;
@@ -130,31 +195,49 @@
   --chart-4: #F59E0B;
   --chart-5: #EF4444;
   
-  /* 侧边栏 */
-  --sidebar: #141F35;
+  /* 侧边栏（与卡片同层，保持层次感） */
+  --sidebar: rgba(20, 31, 53, 0.95); /* 侧边栏（与卡片同层） */
   --sidebar-foreground: #E5E8ED;
   --sidebar-primary: #3B82F6;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1E293B;
+  --sidebar-accent: #1E293B; /* 侧边栏强调（分隔区层） */
   --sidebar-accent-foreground: #E5E8ED;
-  --sidebar-border: #1E293B;
+  --sidebar-border: #1E293B; /* 侧边栏边框（分隔区层） */
   --sidebar-ring: #3B82F6;
+  
+  /* 字体族（DefaultTheme 字体配置） */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 }
 }
 
 /**
  * Layer 2: Visual Theme - Apple White（可切换）
  * 
+ * ✅ AppleTheme 只能改变：
+ * - 字体（SF 系）- 只改变 font-family，不改变 font-size
+ * - 圆角（更大）- 只改变视觉样式，不改变卡片高度
+ * - 阴影（更柔）- 只改变视觉样式，不改变布局结构
+ * - 色彩（更浅）- 只改变颜色值，不改变语义
+ * 
+ * ⛔ AppleTheme 禁止修改：
+ * - 卡片高度（card height）- 必须与 DefaultTheme 完全一致
+ * - 数据字号层级（font-size hierarchy）- 必须与 DefaultTheme 完全一致
+ * - 信息密度（information density）- 必须与 DefaultTheme 完全一致
+ * - 模块拆分方式（module structure）- 必须与 DefaultTheme 完全一致
+ * 
  * ⛔ 严格禁止：
  * - 严禁修改 spacing、layout、组件结构
  * - 严禁修改 fontSize、lineHeight、zIndex
  * - 严禁覆盖结构变量（--spacing-*, --layout-*, --font-size-*, --line-height-*, --z-index-*）
- * - 只能覆盖颜色、圆角、阴影、字体
+ * - 严禁修改 padding、gap、margin 等影响布局的变量
  * 
  * 核心原则：
  * - 只覆盖视觉样式（颜色、圆角、阴影、字体）
  * - 禁止修改布局比例和组件结构
  * - 禁止修改组件语义色含义（primary 还是 primary，destructive 还是 destructive）
+ * - 确保同一页面在 DefaultTheme 与 AppleTheme 下，信息数量与位置完全一致
  * 
  * ⚠️ 重要：Visual Theme 作为覆盖层叠加在 Base Theme 之上
  * ⚠️ 重要：Visual Theme 通过 data-theme 属性应用，可以被 JavaScript 动态切换
@@ -190,8 +273,16 @@
   --glass: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.18);
   
-  /* 禁止修改布局比例：圆角保持与 Base UI 一致（4px） */
-  /* 不覆盖 --radius-* 变量，使用 :root 的值 */
+  /* ⚠️ 重要：AppleTheme 只能改变圆角大小（视觉样式），不能改变卡片高度
+   * - 圆角通过 --radius-* 变量覆盖
+   * - 圆角只影响视觉样式，不改变布局结构（卡片高度、内容区域等）
+   * - 确保同一页面在两种主题下信息数量和位置完全一致
+   */
+  --radius-card: 1.5rem; /* 24px - 更大圆角（Squircle感），但不改变卡片高度 */
+  --radius-button: 1.5rem;
+  --radius-input: 1.5rem;
+  --radius-small: 1rem;
+  --radius: 1.5rem;
   
   /* 图表颜色（只改变颜色值，不改变语义） */
   --chart-1: #007AFF;
@@ -209,6 +300,154 @@
   --sidebar-accent-foreground: #1D1D1F;
   --sidebar-border: #E5E5EA;
   --sidebar-ring: #007AFF;
+}
+
+/* Industrial Dark Theme：深色工业风格（基于图片UI效果） */
+[data-theme="industrial-dark"] {
+  /* 背景色（深蓝灰渐变，最暗层） */
+  --background: #0A1628; /* 深色背景（非纯黑，偏蓝灰） */
+  --background-secondary: #0F1B2E; /* 次要背景（稍亮，用于渐变） */
+  
+  /* 卡片色（稍亮层）- 使用 rgba 保持层次感 */
+  --card: rgba(20, 31, 53, 0.95); /* 卡片背景（轻微透明度，保持层次） */
+  --card-foreground: #E5E8ED; /* 卡片文字（高对比） */
+  --popover: rgba(20, 31, 53, 0.98); /* 弹出层（更不透明） */
+  --popover-foreground: #E5E8ED;
+  
+  /* 前景色（文字）- 高对比 */
+  --foreground: #E5E8ED; /* 主文字（高对比） */
+  --foreground-secondary: #8B94A6; /* 次要文字 */
+  
+  /* 主色 - 高对比蓝色 */
+  --primary: #3B82F6; /* 蓝色主色（高对比） */
+  --primary-foreground: #FFFFFF;
+  
+  /* 次要色（分隔区层，更亮） */
+  --secondary: #1E293B; /* 次要背景（分隔区，比卡片稍亮） */
+  --secondary-foreground: #E5E8ED;
+  
+  /* 强调色 */
+  --accent: #60A5FA; /* 蓝色强调色 */
+  --accent-foreground: #FFFFFF;
+  
+  /* 静音色 */
+  --muted: #1E293B; /* 静音背景（与分隔区同层） */
+  --muted-foreground: #8B94A6;
+  
+  /* 边框（分隔区层） */
+  --border: #1E293B; /* 边框（与分隔区同层，保持层次） */
+  --input: #1E293B; /* 输入框背景 */
+  --ring: #3B82F6; /* 焦点环 */
+  
+  /* 状态色 - 高对比 */
+  --destructive: #EF4444; /* 红色（高对比） */
+  --destructive-foreground: #FFFFFF;
+  --success: #10B981; /* 绿色（高对比） */
+  --success-foreground: #FFFFFF;
+  --warning: #F59E0B; /* 橙色（高对比） */
+  --warning-foreground: #FFFFFF;
+  
+  /* 毛玻璃效果 */
+  --glass: rgba(20, 31, 53, 0.7); /* 毛玻璃背景 */
+  --glass-border: rgba(59, 130, 246, 0.2); /* 毛玻璃边框 */
+  
+  /* 圆角规范：小圆角（最少装饰） */
+  --radius-card: 0.25rem; /* 4px - 最小圆角，减少装饰 */
+  --radius-button: 0.25rem;
+  --radius-input: 0.25rem;
+  --radius-small: 0.25rem;
+  --radius: 0.25rem;
+  
+  /* 图表颜色 */
+  --chart-1: #3B82F6;
+  --chart-2: #60A5FA;
+  --chart-3: #10B981;
+  --chart-4: #F59E0B;
+  --chart-5: #EF4444;
+  
+  /* 侧边栏（与卡片同层，保持层次感） */
+  --sidebar: rgba(20, 31, 53, 0.95); /* 侧边栏（与卡片同层） */
+  --sidebar-foreground: #E5E8ED;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1E293B; /* 侧边栏强调（分隔区层） */
+  --sidebar-accent-foreground: #E5E8ED;
+  --sidebar-border: #1E293B; /* 侧边栏边框（分隔区层） */
+  --sidebar-ring: #3B82F6;
+}
+
+/* Industrial Dark Theme：深色工业风格（基于图片UI效果） */
+[data-theme="industrial-dark"] {
+  /* 背景色（深蓝灰渐变，最暗层） */
+  --background: #0A1628; /* 深色背景（非纯黑，偏蓝灰） */
+  --background-secondary: #0F1B2E; /* 次要背景（稍亮，用于渐变） */
+  
+  /* 卡片色（稍亮层）- 使用 rgba 保持层次感 */
+  --card: rgba(20, 31, 53, 0.95); /* 卡片背景（轻微透明度，保持层次） */
+  --card-foreground: #E5E8ED; /* 卡片文字（高对比） */
+  --popover: rgba(20, 31, 53, 0.98); /* 弹出层（更不透明） */
+  --popover-foreground: #E5E8ED;
+  
+  /* 前景色（文字）- 高对比 */
+  --foreground: #E5E8ED; /* 主文字（高对比） */
+  --foreground-secondary: #8B94A6; /* 次要文字 */
+  
+  /* 主色 - 高对比蓝色 */
+  --primary: #3B82F6; /* 蓝色主色（高对比） */
+  --primary-foreground: #FFFFFF;
+  
+  /* 次要色（分隔区层，更亮） */
+  --secondary: #1E293B; /* 次要背景（分隔区，比卡片稍亮） */
+  --secondary-foreground: #E5E8ED;
+  
+  /* 强调色 */
+  --accent: #60A5FA; /* 蓝色强调色 */
+  --accent-foreground: #FFFFFF;
+  
+  /* 静音色 */
+  --muted: #1E293B; /* 静音背景（与分隔区同层） */
+  --muted-foreground: #8B94A6;
+  
+  /* 边框（分隔区层） */
+  --border: #1E293B; /* 边框（与分隔区同层，保持层次） */
+  --input: #1E293B; /* 输入框背景 */
+  --ring: #3B82F6; /* 焦点环 */
+  
+  /* 状态色 - 高对比 */
+  --destructive: #EF4444; /* 红色（高对比） */
+  --destructive-foreground: #FFFFFF;
+  --success: #10B981; /* 绿色（高对比） */
+  --success-foreground: #FFFFFF;
+  --warning: #F59E0B; /* 橙色（高对比） */
+  --warning-foreground: #FFFFFF;
+  
+  /* 毛玻璃效果 */
+  --glass: rgba(20, 31, 53, 0.7); /* 毛玻璃背景 */
+  --glass-border: rgba(59, 130, 246, 0.2); /* 毛玻璃边框 */
+  
+  /* 圆角规范：小圆角（最少装饰） */
+  --radius-card: 0.25rem; /* 4px - 最小圆角，减少装饰 */
+  --radius-button: 0.25rem;
+  --radius-input: 0.25rem;
+  --radius-small: 0.25rem;
+  --radius: 0.25rem;
+  
+  /* 图表颜色 */
+  --chart-1: #3B82F6;
+  --chart-2: #60A5FA;
+  --chart-3: #10B981;
+  --chart-4: #F59E0B;
+  --chart-5: #EF4444;
+  
+  /* 侧边栏（与卡片同层，保持层次感） */
+  --sidebar: rgba(20, 31, 53, 0.95); /* 侧边栏（与卡片同层） */
+  --sidebar-foreground: #E5E8ED;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1E293B; /* 侧边栏强调（分隔区层） */
+  --sidebar-accent-foreground: #E5E8ED;
+  --sidebar-border: #1E293B; /* 侧边栏边框（分隔区层） */
+  --sidebar-ring: #3B82F6;
 }
 }
 
@@ -284,8 +523,8 @@
   
   /* 工业蓝主题：应用从 #0A1628 到 #060E1A 的深邃渐变背景 */
   /* 视觉优化：增强渐变层次，提升视觉深度 */
-  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]) 选择器 */
-  :root:not([data-theme="apple-white"]) body {
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) 选择器 */
+  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) body {
     background: linear-gradient(135deg, var(--background) 0%, #060E1A 50%, #0A1628 100%);
     background-attachment: fixed;
     background-color: var(--background); /* 回退色 */
@@ -294,6 +533,13 @@
   /* 苹果白主题：应用从 #F2F2F7 到 #FFFFFF 的极淡渐变背景 */
   [data-theme="apple-white"] body {
     background: linear-gradient(to bottom, var(--background) 0%, #FFFFFF 100%);
+    background-attachment: fixed;
+    background-color: var(--background); /* 回退色 */
+  }
+  
+  /* Industrial Dark 主题：应用从 #0A1628 到 #0F1B2E 的深蓝灰渐变背景 */
+  [data-theme="industrial-dark"] body {
+    background: linear-gradient(135deg, var(--background) 0%, #0F1B2E 50%, #0A1628 100%);
     background-attachment: fixed;
     background-color: var(--background); /* 回退色 */
   }
@@ -315,15 +561,27 @@
     box-shadow: var(--theme-shadow, none);
   }
   
-  /* 工业蓝主题：微妙渐变背景、半透明蓝色边框和阴影 */
-  /* 视觉优化：增强卡片层次感，保持工业精密感 */
-  :root:not([data-theme="apple-white"]) .theme-card {
-    /* 极其微妙的背景渐变（基于 --card 颜色） */
+  /* DefaultTheme：卡片使用 gradient 保持层次感 */
+  /* 仅恢复"原始 UI 的层次感"，不追求效果增强 */
+  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) .theme-card {
+    /* 卡片背景渐变（基于 --card 颜色，保持层次感） */
     background: linear-gradient(135deg, var(--card) 0%, rgba(15, 23, 42, 0.95) 100%);
-    background-color: var(--card); /* 回退色 */
-    /* 0.5px 半透明蓝色边框，找回工业精密感 */
+    background-color: var(--card); /* 回退色（rgba 透明度） */
+    /* 边框（分隔区层，保持层次） */
     border: 0.5px solid rgba(59, 130, 246, 0.25);
-    /* 增强阴影，提升卡片层次感 */
+    /* 阴影（保持层次感） */
+    --theme-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 1px rgba(59, 130, 246, 0.1);
+    box-shadow: var(--theme-shadow);
+  }
+  
+  /* Industrial Dark 主题：卡片使用 gradient 保持层次感（与 DefaultTheme 一致） */
+  [data-theme="industrial-dark"] .theme-card {
+    /* 卡片背景渐变（基于 --card 颜色，保持层次感） */
+    background: linear-gradient(135deg, var(--card) 0%, rgba(15, 23, 42, 0.95) 100%);
+    background-color: var(--card); /* 回退色（rgba 透明度） */
+    /* 边框（分隔区层，保持层次） */
+    border: 0.5px solid rgba(59, 130, 246, 0.25);
+    /* 阴影（保持层次感） */
     --theme-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 1px rgba(59, 130, 246, 0.1);
     box-shadow: var(--theme-shadow);
   }
@@ -335,6 +593,37 @@
     box-shadow: var(--theme-shadow);
     /* 层级隔离：极细的浅灰色描边 */
     border: 0.5px solid rgba(0, 0, 0, 0.05);
+  }
+  
+  /* ========================================
+   * Card Effect Layer（卡片效果层）
+   * 
+   * ⚠️ 重要：此部分不属于 Theme 系统
+   * - 通过 data-card-effect 属性控制
+   * - 使用 ::after 伪元素实现
+   * - 不影响布局（position: absolute, z-index: -1）
+   * - 不破坏 DefaultTheme
+   * ======================================== */
+  
+  /* Card 基础定位（支持效果层） */
+  [data-slot="card"] {
+    position: relative;
+  }
+  
+  /* 柔和霓虹底光感效果 */
+  [data-slot="card"][data-card-effect="glow-soft"]::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    background: radial-gradient(
+      ellipse at bottom,
+      rgba(96, 165, 250, 0.35),
+      transparent 60%
+    );
+    filter: blur(14px);
+    z-index: -1;
+    pointer-events: none;
+    border-radius: inherit;
   }
   
   /* 主题化按钮 - 使用主题变量 */
@@ -378,8 +667,14 @@
   }
   
   /* Industrial Blue 模式：使用 backdrop-blur: 16px */
-  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]) 选择器 */
-  :root:not([data-theme="apple-white"]) .theme-glass {
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) 选择器 */
+  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) .theme-glass {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  
+  /* Industrial Dark 模式：使用 backdrop-blur: 16px */
+  [data-theme="industrial-dark"] .theme-glass {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
   }
@@ -491,8 +786,15 @@
   }
   
   /* 工业蓝模式：保持原有样式（使用浅色文字） */
-  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]) 选择器 */
-  :root:not([data-theme="apple-white"]) svg:not([class*="text-"]) {
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) 选择器 */
+  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) svg:not([class*="text-"]) {
+    color: var(--foreground);
+    stroke: var(--foreground);
+    fill: var(--foreground);
+  }
+  
+  /* Industrial Dark 模式：保持原有样式（使用浅色文字） */
+  [data-theme="industrial-dark"] svg:not([class*="text-"]) {
     color: var(--foreground);
     stroke: var(--foreground);
     fill: var(--foreground);
