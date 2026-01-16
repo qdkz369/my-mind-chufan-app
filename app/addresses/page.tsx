@@ -13,6 +13,7 @@ import { BottomNavigation } from "@/components/bottom-navigation"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { loadAMapOnce, isAMapAvailable } from "@/lib/amap-loader"
 import { getCachedAddress, cacheAddress } from "@/lib/geocoding-cache"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 export default function AddressesPage() {
   const router = useRouter()
@@ -93,7 +94,7 @@ export default function AddressesPage() {
         setAmapLoaded(true)
         console.log('[定位] 高德地图插件加载成功（全局单例）')
       } catch (error) {
-        console.error('[定位] 加载高德地图插件失败:', error)
+        logBusinessWarning('定位', '加载高德地图插件失败', error)
         setLocationError('地图服务加载失败，请刷新页面重试')
       }
     }
@@ -131,7 +132,7 @@ export default function AddressesPage() {
           })
         }
       } catch (error) {
-        console.error("加载地址信息失败:", error)
+        logBusinessWarning('地址页面', '加载地址信息失败', error)
       }
     }
 
@@ -230,7 +231,7 @@ export default function AddressesPage() {
               }
             })
           } catch (error) {
-            console.error('[定位] 高德逆地理编码异常:', error)
+            logBusinessWarning('定位', '高德逆地理编码异常', error)
             setFormData(prev => ({
               ...prev,
               latitude,
@@ -253,7 +254,7 @@ export default function AddressesPage() {
           return
         }
       } catch (error: any) {
-        console.error('[定位] 浏览器原生定位失败:', error)
+        logBusinessWarning('定位', '浏览器原生定位失败', error)
         
         // 根据错误代码提供友好的中文提示
         let errorMessage = "定位失败，请检查定位权限或稍后重试"
@@ -354,7 +355,7 @@ export default function AddressesPage() {
         alert("保存失败: " + (result.error || "未知错误"))
       }
     } catch (error) {
-      console.error("保存失败:", error)
+      logBusinessWarning('地址页面', '保存失败', error)
       alert("保存失败，请检查网络连接或稍后重试")
     } finally {
       setIsSubmitting(false)
@@ -383,7 +384,7 @@ export default function AddressesPage() {
           </div>
         )}
 
-        <Card className="theme-card p-6">
+        <Card className="glass-breath p-6">
           {!isEditing ? (
             <>
               {/* 查看模式 */}
@@ -408,7 +409,7 @@ export default function AddressesPage() {
                 </div>
 
                 {restaurantInfo?.address ? (
-                  <div className="p-4 theme-card">
+                  <div className="p-4 glass-breath">
                     <div className="flex items-start gap-3">
                       <MapPin className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
                       <div className="flex-1">
@@ -422,7 +423,7 @@ export default function AddressesPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 theme-card text-center">
+                  <div className="p-4 glass-breath text-center">
                     <p className="text-muted-foreground text-sm">暂无地址信息</p>
                     <p className="text-muted-foreground text-xs mt-1 opacity-60">点击"编辑"按钮添加地址</p>
                   </div>
@@ -489,7 +490,7 @@ export default function AddressesPage() {
                     </div>
                   )}
                   {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
-                    <div className="mt-2 p-3 theme-card">
+                    <div className="mt-2 p-3 glass-breath">
                       <div className="flex items-start gap-2">
                         <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                         <div className="flex-1">

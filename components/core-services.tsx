@@ -4,39 +4,89 @@ import { Truck, Wrench, ArrowRight } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-
-const services = [
-  {
-    icon: Truck,
-    title: "燃料配送",
-    description: "智能监控 · 自动补给 · 24小时送达",
-    color: "from-orange-500 to-red-600",
-    shadowColor: "shadow-orange-500/30",
-    iconBg: "bg-orange-500/10",
-    iconColor: "text-orange-400",
-    stats: [
-      { label: "今日配送", value: "28单" },
-      { label: "准时率", value: "99.2%" },
-    ],
-    href: "/payment?service=燃料配送",
-  },
-  {
-    icon: Wrench,
-    title: "设备租赁",
-    description: "灵活租期 · 免费维护 · 随时升级",
-    color: "from-blue-500 to-cyan-600",
-    shadowColor: "shadow-blue-500/30",
-    iconBg: "bg-blue-500/10",
-    iconColor: "text-blue-400",
-    stats: [
-      { label: "可租设备", value: "156台" },
-      { label: "满意度", value: "98%" },
-    ],
-    href: "/equipment-rental",
-  },
-]
+import { useEffect, useState } from "react"
 
 export function CoreServices() {
+  const [todayDeliveries, setTodayDeliveries] = useState<number>(0)
+  const [onTimeRate, setOnTimeRate] = useState<number>(0)
+  const [availableEquipmentCount, setAvailableEquipmentCount] = useState<number>(0)
+  const [satisfactionRate, setSatisfactionRate] = useState<number>(0)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const restaurantId = typeof window !== "undefined" 
+          ? localStorage.getItem("restaurantId") 
+          : null
+
+        // 加载配送统计数据
+        if (restaurantId) {
+          const deliveryResponse = await fetch(`/api/facts/restaurant/${restaurantId}/delivery-stats`, {
+            headers: {
+              "x-restaurant-id": restaurantId,
+            },
+          })
+
+          if (deliveryResponse.ok) {
+            const deliveryData = await deliveryResponse.json()
+            if (deliveryData.success) {
+              setTodayDeliveries(deliveryData.today_deliveries || 0)
+              setOnTimeRate(deliveryData.on_time_rate || 0)
+            }
+          }
+        }
+
+        // 加载设备租赁统计数据（不需要 restaurantId，是全局统计）
+        const rentalStatsResponse = await fetch(`/api/facts/equipment-rental-stats`)
+        if (rentalStatsResponse.ok) {
+          const rentalStatsData = await rentalStatsResponse.json()
+          if (rentalStatsData.success) {
+            setAvailableEquipmentCount(rentalStatsData.available_count || 0)
+            setSatisfactionRate(rentalStatsData.satisfaction_rate || 0)
+          }
+        }
+      } catch (error) {
+        console.warn('[Core Services] 加载统计数据失败:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadStats()
+  }, [])
+
+  const services = [
+    {
+      icon: Truck,
+      title: "燃料配送",
+      description: "智能监控 · 自动补给 · 24小时送达",
+      color: "from-orange-500 to-red-600",
+      shadowColor: "shadow-orange-500/30",
+      iconBg: "bg-orange-500/10",
+      iconColor: "text-orange-400",
+      stats: [
+        { label: "今日配送", value: isLoading ? "加载中..." : `${todayDeliveries}单` },
+        { label: "准时率", value: isLoading ? "加载中..." : `${onTimeRate}%` },
+      ],
+      href: "/payment?service=燃料配送",
+    },
+    {
+      icon: Wrench,
+      title: "设备租赁",
+      description: "灵活租期 · 免费维护 · 随时升级",
+      color: "from-blue-500 to-cyan-600",
+      shadowColor: "shadow-blue-500/30",
+      iconBg: "bg-blue-500/10",
+      iconColor: "text-blue-400",
+      stats: [
+        { label: "可租设备", value: isLoading ? "加载中..." : `${availableEquipmentCount}台` },
+        { label: "满意度", value: isLoading ? "加载中..." : satisfactionRate > 0 ? `${satisfactionRate}%` : "暂无数据" },
+      ],
+      href: "/equipment-rental",
+    },
+  ]
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -53,14 +103,15 @@ export function CoreServices() {
         {services.map((service) => (
           <Card
             key={service.title}
-            className="theme-card backdrop-blur-sm p-6 hover:scale-[1.02] transition-transform cursor-pointer"
+            semanticLevel="primary_fact"
+            className="theme-card backdrop-blur-sm p-6 hover:scale-[1.01] transition-transform"
           >
             <div className="flex items-start gap-4 mb-4">
               <div
-                className={`w-12 h-12 bg-gradient-to-br ${service.color} rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor}`}
+                className={`w-14 h-14 bg-gradient-to-br ${service.color} rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor}`}
                 style={{ borderRadius: 'var(--radius-button)' }}
               >
-                <service.icon className="h-6 w-6 text-primary-foreground" />
+                <service.icon className="h-7 w-7 text-white" />
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-foreground mb-1">{service.title}</h3>
@@ -70,17 +121,19 @@ export function CoreServices() {
 
             <div className="grid grid-cols-2 gap-3 mb-4">
               {service.stats.map((stat) => (
-                <div key={stat.label} className="bg-muted/50 rounded-lg p-3" style={{ borderRadius: 'var(--radius-small)' }}>
+                <div key={stat.label} className="bg-muted/40 rounded-lg p-3 border border-border/50" style={{ borderRadius: 'var(--radius-small)' }}>
                   <div className="text-xs text-muted-foreground mb-1">{stat.label}</div>
-                  <div className="text-lg font-bold text-foreground">{stat.value}</div>
+                  <div className="text-xl font-bold text-foreground">{stat.value}</div>
                 </div>
               ))}
             </div>
 
             <Link href={service.href || "/services"}>
-              <Button className={`w-full bg-gradient-to-r ${service.color} hover:opacity-90 text-primary-foreground`}>
-                立即下单
-                <ArrowRight className="h-4 w-4 ml-2" />
+              <Button 
+                className={`w-full bg-gradient-to-r ${service.color} hover:opacity-90 text-white font-medium shadow-lg ${service.shadowColor}`}
+                style={{ borderRadius: 'var(--radius-button)' }}
+              >
+                立即下单 →
               </Button>
             </Link>
           </Card>

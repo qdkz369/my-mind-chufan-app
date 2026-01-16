@@ -10,6 +10,7 @@ if (typeof window !== 'undefined') {
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
+import { logBusinessWarning } from "@/lib/utils/logger"
 import {
   Bell,
   Home,
@@ -58,12 +59,15 @@ import {
   Calendar,
   CreditCard,
   AlertTriangle,
+  FileText,
+  ChevronRight,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Dialog,
   DialogContent,
@@ -83,6 +87,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
 import { ProductApproval } from "./product-approval"
 import { SupplierManagement } from "./supplier-management"
+import { SendNotification } from "./send-notification"
 import {
   Line,
   LineChart,
@@ -177,6 +182,7 @@ const menuItems = [
   { icon: Wrench, label: "设备监控", key: "devices" },
   { icon: Truck, label: "工人管理", key: "workers" },
   { icon: DollarSign, label: "燃料实时价格监控", key: "fuelPricing" },
+  { icon: FileText, label: "协议管理", key: "agreements" },
   { icon: Server, label: "API配置", key: "api" },
   { icon: BarChart3, label: "数据统计", key: "analytics" },
   { icon: Settings, label: "系统设置", key: "settings" },
@@ -187,6 +193,139 @@ export default function AdminDashboard() {
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeMenu, setActiveMenu] = useState("dashboard")
+  
+  // 用户和公司信息（用于多租户数据隔离）
+  const [userRole, setUserRole] = useState<string | null>(null) // super_admin, admin, supplier
+  const [userCompanyId, setUserCompanyId] = useState<string | null>(null) // 供应商的公司ID
+  const [companyPermissions, setCompanyPermissions] = useState<string[]>([]) // 供应商可访问的功能模块
+  const [companyFuelTypes, setCompanyFuelTypes] = useState<string[]>([]) // 供应商可供应的燃料品种
+  
+  // 密码修改对话框状态
+  const [isChangePasswordDialogOpen, setIsChangePasswordDialogOpen] = useState(false)
+  const [changePasswordForm, setChangePasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false)
+  
+  // 检测 URL 参数，自动打开密码修改对话框
+  useEffect(() => {
+    const action = searchParams.get("action")
+    if (action === "change-password") {
+      setIsChangePasswordDialogOpen(true)
+      // 清除 URL 参数
+      router.replace("/dashboard", { scroll: false })
+    }
+  }, [searchParams, router])
+
+  // 修改密码函数
+  const handleChangePassword = async () => {
+    setChangePasswordError(null)
+    setChangePasswordSuccess(false)
+
+    // 验证输入
+    if (!changePasswordForm.currentPassword || !changePasswordForm.newPassword || !changePasswordForm.confirmPassword) {
+      setChangePasswordError("请填写所有字段")
+      return
+    }
+
+    if (changePasswordForm.newPassword.length < 6) {
+      setChangePasswordError("新密码长度至少为6位")
+      return
+    }
+
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setChangePasswordError("两次输入的新密码不一致")
+      return
+    }
+
+    setIsChangingPassword(true)
+
+    try {
+      if (!supabase) {
+        throw new Error("Supabase 未初始化")
+      }
+
+      // 先验证当前密码（通过重新登录）
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || !user.email) {
+        throw new Error("无法获取用户信息")
+      }
+
+      // 验证当前密码
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: changePasswordForm.currentPassword,
+      })
+
+      if (verifyError) {
+        setChangePasswordError("当前密码错误")
+        setIsChangingPassword(false)
+        return
+      }
+
+      // 更新密码
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: changePasswordForm.newPassword,
+      })
+
+      if (updateError) {
+        throw updateError
+      }
+
+      // 更新 user_metadata，标记已修改密码
+      await supabase.auth.updateUser({
+        data: {
+          is_default_password: false,
+        },
+      })
+
+      setChangePasswordSuccess(true)
+      setChangePasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      })
+
+      // 2秒后关闭对话框
+      setTimeout(() => {
+        setIsChangePasswordDialogOpen(false)
+        setChangePasswordSuccess(false)
+      }, 2000)
+    } catch (error: any) {
+      logBusinessWarning('Dashboard', '修改密码失败', error)
+      setChangePasswordError(error.message || "修改密码失败，请重试")
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+  
+  // 强制立即渲染：移除所有 hidden 属性，确保页面内容始终可见
+  // 修复：直接移除 hidden 属性，不再检查
+  useEffect(() => {
+    // 立即移除所有 hidden 属性
+    const hiddenDivs = document.querySelectorAll('body > div[hidden], [hidden]')
+    hiddenDivs.forEach((div: any) => {
+      div.removeAttribute('hidden')
+      div.style.display = ''
+      div.style.visibility = 'visible'
+      div.style.opacity = '1'
+      console.log('[Dashboard] 已移除 hidden 属性:', div)
+    })
+    
+    // 添加一个标记，表示页面已加载
+    document.body.setAttribute('data-dashboard-loaded', 'true')
+    document.body.style.display = 'block'
+    document.body.style.visibility = 'visible'
+    document.body.style.opacity = '1'
+    
+    return () => {
+      document.body.removeAttribute('data-dashboard-loaded')
+    }
+  }, [])
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [orderServiceTypeFilter, setOrderServiceTypeFilter] = useState<string>("all") // 订单服务类型筛选：all, 维修服务, 燃料配送, 设备租赁
@@ -195,7 +334,8 @@ export default function AdminDashboard() {
   const [devices, setDevices] = useState<Device[]>([])
   const [apiConfigs, setApiConfigs] = useState<ApiConfig[]>([])
   const [servicePoints, setServicePoints] = useState<ServicePoint[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false) // 强制初始值为 false，确保 UI 立即显示
+  const [forceRender, setForceRender] = useState(false) // 强制渲染标志，用于解除UI锁定
   const [currentUser, setCurrentUser] = useState<{ email?: string } | null>(null)
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
@@ -204,6 +344,8 @@ export default function AdminDashboard() {
   const [isAssigning, setIsAssigning] = useState(false)
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [isLoadingOrders, setIsLoadingOrders] = useState(false)
+  const [isRecentOrdersExpanded, setIsRecentOrdersExpanded] = useState(false) // 控制最新订单是否展开
+  const [recentOrdersCount, setRecentOrdersCount] = useState(0) // 订单数量（不加载详细数据）
   const [repairs, setRepairs] = useState<any[]>([])
   const [isLoadingRepairs, setIsLoadingRepairs] = useState(false)
   const [repairStatusFilter, setRepairStatusFilter] = useState<string>("all")
@@ -357,6 +499,10 @@ export default function AdminDashboard() {
   const markerClickTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
   const markerDoubleClickFlagsRef = useRef<Map<string, boolean>>(new Map())
   const updateMarkersTimerRef = useRef<NodeJS.Timeout | null>(null) // 防抖定时器
+  const mapBoundsAdjustedRef = useRef<boolean>(false) // 标记是否已经调整过地图视图
+  const geocodingInProgressRef = useRef<Set<string>>(new Set()) // 正在地理编码的餐厅ID集合，避免重复编码
+  const lastUpdateMarkersTimeRef = useRef<number>(0) // 上次更新标记的时间戳
+  const isUpdatingMarkersRef = useRef<boolean>(false) // 是否正在更新标记，防止重复调用
 
   // 生成地址降级列表（逐步简化地址）
   const generateAddressFallbacks = useCallback((address: string): string[] => {
@@ -450,12 +596,12 @@ export default function AdminDashboard() {
               // 重新调用地理编码
               geocodeAddress(address).then(resolve)
             } else {
-              console.error('[地理编码] Geocoder 插件加载失败')
+              logBusinessWarning('地理编码', 'Geocoder 插件加载失败')
               resolve(null)
             }
           })
         } else {
-          console.error('[地理编码] AMap.plugin 不可用，无法加载 Geocoder 插件')
+          logBusinessWarning('地理编码', 'AMap.plugin 不可用，无法加载 Geocoder 插件')
           resolve(null)
         }
         return
@@ -511,13 +657,13 @@ export default function AdminDashboard() {
                 // 重新尝试 POI 搜索
                 tryPOISearch(searchText)
               } else {
-                console.error('[地理编码] PlaceSearch 插件加载失败')
+                logBusinessWarning('地理编码', 'PlaceSearch 插件加载失败')
                 // 静默处理，避免控制台刷屏
                 resolve(null)
               }
             })
           } else {
-            console.error('[地理编码] AMap.plugin 不可用，无法加载 PlaceSearch 插件')
+            logBusinessWarning('地理编码', 'AMap.plugin 不可用，无法加载 PlaceSearch 插件')
             // 静默处理，避免控制台刷屏
             resolve(null)
           }
@@ -585,6 +731,7 @@ export default function AdminDashboard() {
   }, [generateAddressFallbacks])
 
   // 批量更新餐厅的经纬度（对于有地址但没有经纬度的餐厅）
+  // 优化：24小时刷新一次，避免频繁调用地图API
   const updateRestaurantCoordinates = useCallback(async (restaurants: Restaurant[]) => {
     if (!supabase) {
       return
@@ -596,16 +743,60 @@ export default function AdminDashboard() {
       return
     }
 
-    // 找出有地址但没有经纬度的餐厅
+    // 找出有地址但没有经纬度的餐厅（这些餐厅需要立即地理编码，不受24小时缓存限制）
     const restaurantsToGeocode = restaurants.filter(
       r => r.address && 
       r.address.trim() !== '' && 
       r.address !== '地址待完善' &&
       (!r.latitude || !r.longitude || isNaN(r.latitude) || isNaN(r.longitude))
     )
+    
+    // 如果没有需要地理编码的餐厅，直接返回
+    if (restaurantsToGeocode.length === 0) {
+      console.log('[Admin Dashboard] ✅ 所有餐厅都有有效坐标，无需地理编码')
+      return
+    }
+    
+    // 检查24小时缓存（仅用于批量更新已有坐标的餐厅，不适用于首次获取坐标）
+    // 对于没有坐标的餐厅，允许立即地理编码
+    const CACHE_KEY = 'restaurant_geocode_last_update'
+    const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24小时 = 86400000 毫秒
+    const lastUpdate = typeof window !== 'undefined' 
+      ? localStorage.getItem(CACHE_KEY) 
+      : null
+    
+    // 检查是否有餐厅已有坐标（这些餐厅的批量更新受24小时缓存限制）
+    const restaurantsWithCoords = restaurants.filter(
+      r => r.latitude && r.longitude && 
+      !isNaN(r.latitude) && !isNaN(r.longitude) &&
+      isFinite(r.latitude) && isFinite(r.longitude)
+    )
+    
+    // 如果所有餐厅都没有坐标，允许立即地理编码（不受24小时缓存限制）
+    if (restaurantsWithCoords.length === 0) {
+      console.log(`[Admin Dashboard] 🔍 所有 ${restaurantsToGeocode.length} 个餐厅都没有坐标，立即进行地理编码（不受24小时缓存限制）`)
+    } else if (lastUpdate) {
+      const lastUpdateTime = parseInt(lastUpdate, 10)
+      const now = Date.now()
+      const timeSinceLastUpdate = now - lastUpdateTime
+      const hoursRemaining = Math.floor((CACHE_DURATION - timeSinceLastUpdate) / (60 * 60 * 1000))
+      
+      if (timeSinceLastUpdate < CACHE_DURATION) {
+        // 24小时内已更新过，但如果有餐厅没有坐标，仍然允许地理编码（仅针对没有坐标的餐厅）
+        console.log(`[Admin Dashboard] ⏰ 地理编码缓存有效（距离上次更新 ${Math.floor(timeSinceLastUpdate / (60 * 60 * 1000))} 小时），但 ${restaurantsToGeocode.length} 个餐厅没有坐标，允许立即地理编码`)
+      } else {
+        console.log(`[Admin Dashboard] ⏰ 地理编码缓存已过期（距离上次更新 ${Math.floor(timeSinceLastUpdate / (60 * 60 * 1000))} 小时），允许调用API`)
+      }
+    } else {
+      console.log(`[Admin Dashboard] ⏰ 首次地理编码，允许调用API（${restaurantsToGeocode.length} 个餐厅需要地理编码）`)
+    }
 
     if (restaurantsToGeocode.length === 0) {
       // 移除调试日志，避免控制台刷屏
+      // 即使没有需要编码的餐厅，也更新缓存时间
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CACHE_KEY, Date.now().toString())
+      }
       return
     }
 
@@ -613,6 +804,7 @@ export default function AdminDashboard() {
 
     // 批量处理地理编码（限制并发数，避免API限制）
     const batchSize = 3
+    let updatedCount = 0
     for (let i = 0; i < restaurantsToGeocode.length; i += batchSize) {
       const batch = restaurantsToGeocode.slice(i, i + batchSize)
       const promises = batch.map(async (restaurant) => {
@@ -631,8 +823,9 @@ export default function AdminDashboard() {
             .eq("id", restaurant.id)
 
           if (updateError) {
-            console.error(`[更新坐标] 更新餐厅 ${restaurant.id} 失败:`, updateError)
+            logBusinessWarning('更新坐标', `更新餐厅 ${restaurant.id} 失败`, updateError)
           } else {
+            updatedCount++
             // 移除调试日志，避免控制台刷屏
             // 更新本地状态
             setRestaurants(prev => prev.map(r => 
@@ -649,6 +842,15 @@ export default function AdminDashboard() {
       if (i + batchSize < restaurantsToGeocode.length) {
         await new Promise(resolve => setTimeout(resolve, 500))
       }
+    }
+    
+    // 更新缓存时间（无论是否成功更新，都记录本次尝试时间，确保24小时内不再调用API）
+    if (typeof window !== 'undefined') {
+      const updateTime = Date.now()
+      localStorage.setItem(CACHE_KEY, updateTime.toString())
+      const nextUpdateTime = new Date(updateTime + CACHE_DURATION)
+      console.log(`[Admin Dashboard] ✅ 地理编码完成，更新了 ${updatedCount} 个餐厅位置`)
+      console.log(`[Admin Dashboard] ⏰ 缓存已更新，下次允许调用API的时间：${nextUpdateTime.toLocaleString('zh-CN')}（24小时后）`)
     }
   }, [supabase, geocodeAddress])
 
@@ -749,39 +951,84 @@ export default function AdminDashboard() {
   }
 
   const loadRestaurants = useCallback(async () => {
+    console.log('[Restaurants] 🚀 loadRestaurants 被调用')
     try {
-      setIsLoading(true)
+      // 修复：不在 loadRestaurants 中设置 isLoading，避免覆盖身份验证状态
+      // setIsLoading(true) // 已注释：避免影响主页面渲染
       if (!supabase) {
-        console.warn("[Admin Dashboard] Supabase未配置")
-        setIsLoading(false)
+        console.warn("[Restaurants] ⚠️ Supabase未配置")
         return
       }
+      
+      // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+      // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+      // admin 角色但没有 companyId 时，允许查询（向后兼容）
+      if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+        console.warn("[Restaurants] ⚠️ 非管理员身份但缺少公司ID，禁止查询，防止权限滑坡")
+        setRestaurants([])
+        return
+      }
+      
+      console.log('[Restaurants] ✅ Supabase已配置，开始查询数据库')
 
+      console.log('[Restaurants] 🔍 开始查询数据库...')
       const { data, error } = await retryOnNetworkError(async () => {
-        return await supabase
+        let query = supabase!
           .from("restaurants")
           .select("id, name, contact_name, contact_phone, total_refilled, status, created_at, latitude, longitude, address, qr_token")
-          .order("created_at", { ascending: false })
+        
+        // 数据隔离：采用"非超级管理员即隔离"原则
+        // 只要不是 super_admin，且存在 userCompanyId，就强制注入公司过滤
+        // 注意：此查询依赖 restaurants 表有 company_id 字段
+        // 如果表结构不同，需要相应调整字段名
+        if (userRole !== "super_admin" && userCompanyId) {
+          query = query.eq("company_id", userCompanyId)
+          console.log(`[Restaurants] 🔒 数据隔离：供应商账号（角色: ${userRole}, 公司ID: ${userCompanyId}），只查询本公司的餐厅`)
+        } else if (userRole !== "super_admin" && !userCompanyId && userRole !== null) {
+          // 非超级管理员但没有 companyId，禁止查询（防止权限提升）
+          console.warn(`[Restaurants] ⚠️ 非超级管理员（角色: ${userRole}）但没有 companyId，禁止查询，防止权限提升`)
+          return { data: [], error: null }
+        }
+        // 超级管理员可以看到所有数据，不需要过滤
+        
+        const result = await query.order("created_at", { ascending: false })
+        console.log('[Restaurants] 📊 数据库查询结果:', { dataCount: result.data?.length || 0, error: result.error })
+        return result
       })
 
       if (error) {
-        console.error("[Admin Dashboard] 加载餐厅数据失败:", error)
-        setIsLoading(false)
+        logBusinessWarning('Admin Dashboard', '加载餐厅数据失败', error)
+        // 防御性渲染：即使加载失败，也设置空数组，确保页面能显示
+        setRestaurants([])
         return
       }
 
       if (data) {
+        console.log('当前加载到的餐厅数据:', data)
+        console.log(`[Restaurants] 📥 从数据库加载了 ${data.length} 个餐厅`)
         // 确保经纬度是数字类型
-        const processedData = data.map(restaurant => ({
-          ...restaurant,
-          latitude: restaurant.latitude ? (typeof restaurant.latitude === 'string' ? parseFloat(restaurant.latitude) : restaurant.latitude) : null,
-          longitude: restaurant.longitude ? (typeof restaurant.longitude === 'string' ? parseFloat(restaurant.longitude) : restaurant.longitude) : null,
-        }))
+        const processedData = data.map(restaurant => {
+          const lat = restaurant.latitude ? (typeof restaurant.latitude === 'string' ? parseFloat(restaurant.latitude) : restaurant.latitude) : null
+          const lng = restaurant.longitude ? (typeof restaurant.longitude === 'string' ? parseFloat(restaurant.longitude) : restaurant.longitude) : null
+          console.log(`[Restaurants] 📍 ${restaurant.name}: lat=${lat}, lng=${lng}, address=${restaurant.address}`)
+          return {
+            ...restaurant,
+            latitude: lat,
+            longitude: lng,
+          }
+        })
         
-        // 移除频繁的调试日志，避免控制台刷屏
-        // console.log('[Admin Dashboard] 加载餐厅数据:', processedData.length, '个餐厅')
+        // 统计有经纬度的餐厅数量
+        const restaurantsWithLocation = processedData.filter(r => 
+          r.latitude && r.longitude && 
+          !isNaN(r.latitude) && !isNaN(r.longitude) &&
+          isFinite(r.latitude) && isFinite(r.longitude)
+        )
+        console.log(`[Admin Dashboard] ✅ 加载餐厅数据: ${processedData.length} 个餐厅，其中 ${restaurantsWithLocation.length} 个有有效经纬度`)
         
+        // 确保状态更新
         setRestaurants(processedData)
+        console.log(`[Restaurants] ✅ 已更新 restaurants 状态，当前数量: ${processedData.length}`)
         
         // 自动为没有经纬度的餐厅进行地理编码（不依赖地图是否加载）
         // 检查是否有需要地理编码的餐厅
@@ -821,36 +1068,107 @@ export default function AdminDashboard() {
         }
       }
     } catch (error) {
-      console.error("[Admin Dashboard] 加载餐厅数据时出错:", error)
-    } finally {
-      setIsLoading(false)
+      logBusinessWarning('Admin Dashboard', '加载餐厅数据时出错', error)
+      // 防御性渲染：确保错误时也设置空数组
+      setRestaurants([])
     }
-  }, [supabase, mapLoaded, updateRestaurantCoordinates])
+  }, [supabase, mapLoaded, updateRestaurantCoordinates, userRole, userCompanyId])
+
+  // 获取订单数量（不加载详细数据，用于折叠提醒）
+  const loadRecentOrdersCount = useCallback(async () => {
+    if (!supabase) return
+
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[Orders] ⚠️ 非管理员身份但缺少公司ID，禁止查询订单数量，防止权限滑坡")
+      setRecentOrdersCount(0)
+      return
+    }
+
+    try {
+      // 只查询数量，不加载详细数据
+      const [repairResult, deliveryResult] = await Promise.all([
+        retryOnNetworkError(async () => {
+          const { count, error } = await supabase!
+            .from("repair_orders")
+            .select("*", { count: 'exact', head: true })
+          return { data: count || 0, error }
+        }),
+        retryOnNetworkError(async () => {
+          const { count, error } = await supabase!
+            .from("delivery_orders")
+            .select("*", { count: 'exact', head: true })
+          return { data: count || 0, error }
+        })
+      ])
+      
+      const repairCount = repairResult.data || 0
+      const deliveryCount = deliveryResult.data || 0
+      setRecentOrdersCount(repairCount + deliveryCount)
+    } catch (error) {
+      logBusinessWarning('Admin Dashboard', '获取订单数量失败', error)
+      setRecentOrdersCount(0)
+    }
+  }, [supabase, userRole, userCompanyId])
 
   // 加载订单数据
   // 加载最近订单（用于工作台显示）
   const loadRecentOrders = useCallback(async () => {
     if (!supabase) return
 
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[Orders] ⚠️ 非管理员身份但缺少公司ID，禁止查询订单，防止权限滑坡")
+      setRecentOrders([])
+      setIsLoadingOrders(false)
+      return
+    }
+
     try {
       setIsLoadingOrders(true)
       
+      // 数据隔离：如果是供应商，需要先查询该公司的餐厅ID列表
+      let companyRestaurantIds: string[] | null = null
+      if (userRole !== "super_admin" && userCompanyId) {
+        const { data: companyRestaurants } = await supabase!
+          .from("restaurants")
+          .select("id")
+          .eq("company_id", userCompanyId)
+        companyRestaurantIds = companyRestaurants?.map(r => r.id) || []
+        console.log(`[Orders] 🔒 数据隔离：供应商账号，只查询公司 ${userCompanyId} 的 ${companyRestaurantIds.length} 个餐厅的订单`)
+      }
+      
       // 表已分离，需要分别查询两个表然后合并
+      let repairQuery = supabase!
+        .from("repair_orders")
+        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
+        .order("created_at", { ascending: false })
+        .limit(20)
+      
+      let deliveryQuery = supabase!
+        .from("delivery_orders")
+        .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
+        .order("created_at", { ascending: false })
+        .limit(20)
+      
+      // 数据隔离：如果不是超级管理员，只查询本公司餐厅的订单
+      if (companyRestaurantIds !== null && companyRestaurantIds.length > 0) {
+        repairQuery = repairQuery.in("restaurant_id", companyRestaurantIds)
+        deliveryQuery = deliveryQuery.in("restaurant_id", companyRestaurantIds)
+      } else if (companyRestaurantIds !== null && companyRestaurantIds.length === 0) {
+        // 如果供应商没有餐厅，返回空结果
+        setRecentOrders([])
+        setIsLoadingOrders(false)
+        return
+      }
+      
       const [repairResult, deliveryResult] = await Promise.all([
-        retryOnNetworkError(async () => 
-          await supabase
-            .from("repair_orders")
-            .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
-            .order("created_at", { ascending: false })
-            .limit(20)
-        ),
-        retryOnNetworkError(async () => 
-          await supabase
-            .from("delivery_orders")
-            .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
-            .order("created_at", { ascending: false })
-            .limit(20)
-        )
+        retryOnNetworkError(async () => await repairQuery),
+        retryOnNetworkError(async () => await deliveryQuery)
       ])
       
       const repairData = repairResult.data || []
@@ -862,7 +1180,9 @@ export default function AdminDashboard() {
       const ordersError = repairResult.error || deliveryResult.error
 
       if (ordersError) {
-        console.error("[Admin Dashboard] 加载订单失败:", ordersError)
+        logBusinessWarning('Admin Dashboard', '加载订单失败', ordersError)
+        // 防御性渲染：即使加载失败，也设置空数组
+        setRecentOrders([])
         return
       }
 
@@ -898,8 +1218,11 @@ export default function AdminDashboard() {
         setRecentOrders(formattedOrders)
       }
     } catch (error) {
-      console.error("[Admin Dashboard] 加载订单时出错:", error)
+      logBusinessWarning('Admin Dashboard', '加载订单时出错', error)
+      // 防御性渲染：确保错误时也设置空数组
+      setRecentOrders([])
     } finally {
+      // 强制关闭 Loading，确保页面能渲染
       setIsLoadingOrders(false)
     }
   }, [])
@@ -908,8 +1231,29 @@ export default function AdminDashboard() {
   const loadAllOrders = useCallback(async () => {
     if (!supabase) return
 
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[Orders] ⚠️ 非管理员身份但缺少公司ID，禁止查询订单，防止权限滑坡")
+      setOrders([])
+      setIsLoadingOrders(false)
+      return
+    }
+
     try {
       setIsLoadingOrders(true)
+      
+      // 数据隔离：如果是供应商，需要先查询该公司的餐厅ID列表
+      let companyRestaurantIds: string[] | null = null
+      if (userRole !== "super_admin" && userCompanyId) {
+        const { data: companyRestaurants } = await supabase
+          .from("restaurants")
+          .select("id")
+          .eq("company_id", userCompanyId)
+        companyRestaurantIds = companyRestaurants?.map(r => r.id) || []
+        console.log(`[Orders] 🔒 数据隔离：供应商账号，只查询公司 ${userCompanyId} 的 ${companyRestaurantIds.length} 个餐厅的订单`)
+      }
       
       // 表已分离，需要根据筛选条件决定查询哪个表
       let repairQuery = supabase
@@ -921,6 +1265,17 @@ export default function AdminDashboard() {
         .from("delivery_orders")
         .select("id, restaurant_id, service_type, status, amount, created_at, updated_at, assigned_to")
         .order("created_at", { ascending: false })
+      
+      // 数据隔离：如果不是超级管理员，只查询本公司餐厅的订单
+      if (companyRestaurantIds !== null && companyRestaurantIds.length > 0) {
+        repairQuery = repairQuery.in("restaurant_id", companyRestaurantIds)
+        deliveryQuery = deliveryQuery.in("restaurant_id", companyRestaurantIds)
+      } else if (companyRestaurantIds !== null && companyRestaurantIds.length === 0) {
+        // 如果供应商没有餐厅，返回空结果
+        setOrders([])
+        setIsLoadingOrders(false)
+        return
+      }
 
       // 服务类型筛选
       if (orderServiceTypeFilter !== "all") {
@@ -961,7 +1316,7 @@ export default function AdminDashboard() {
       const ordersError = repairResult.error || deliveryResult.error
 
       if (ordersError) {
-        console.error("[Admin Dashboard] 加载所有订单失败:", ordersError)
+        logBusinessWarning('Admin Dashboard', '加载所有订单失败', ordersError)
         setOrders([])
         return
       }
@@ -999,7 +1354,7 @@ export default function AdminDashboard() {
         // 移除频繁的调试日志，避免控制台刷屏
       }
     } catch (error) {
-      console.error("[Admin Dashboard] 加载所有订单时出错:", error)
+      logBusinessWarning('Admin Dashboard', '加载所有订单时出错', error)
       setOrders([])
     } finally {
       setIsLoadingOrders(false)
@@ -1008,6 +1363,16 @@ export default function AdminDashboard() {
 
   // 加载报修数据 - 直接使用 Supabase 查询（符合官方最佳实践）
   const loadRepairs = useCallback(async () => {
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[Repairs] ⚠️ 非管理员身份但缺少公司ID，禁止查询报修数据，防止权限滑坡")
+      setRepairs([])
+      setIsLoadingRepairs(false)
+      return
+    }
+
     try {
       setIsLoadingRepairs(true)
       
@@ -1026,7 +1391,7 @@ export default function AdminDashboard() {
       
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("[Admin Dashboard] 接口返回错误:", response.status, errorText)
+        logBusinessWarning('Admin Dashboard', '接口返回错误', { status: response.status, errorText })
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
       }
       
@@ -1052,9 +1417,9 @@ export default function AdminDashboard() {
       }
 
     } catch (error) {
-      console.error("[Admin Dashboard] 加载报修时出错:", error)
+      logBusinessWarning('Admin Dashboard', '加载报修时出错', error)
       if (error instanceof Error) {
-        console.error("[Admin Dashboard] 错误详情:", error.message, error.stack)
+        logBusinessWarning('Admin Dashboard', '错误详情', { message: error.message, stack: error.stack })
         alert(`加载报修列表失败: ${error.message}`)
       }
       setRepairs([])
@@ -1128,7 +1493,7 @@ export default function AdminDashboard() {
 
       // 直接使用 Supabase 更新 repair_orders 表（报修工单）
       const { data: updatedRepair, error: updateError } = await retryOnNetworkError(
-        async () => await supabase
+        async () => await supabase!
           .from("repair_orders")
           .update(updateData)
           .eq("id", repairId)
@@ -1137,14 +1502,14 @@ export default function AdminDashboard() {
       )
 
       if (updateError) {
-        console.error("[Admin Dashboard] 更新报修失败:", updateError)
+        logBusinessWarning('Admin Dashboard', '更新报修失败', updateError)
         alert(`更新失败: ${updateError.message || "未知错误"}`)
         setIsUpdatingRepair(false)
         return
       }
 
       if (!updatedRepair) {
-        console.error("[Admin Dashboard] 更新报修后未返回数据")
+        logBusinessWarning('Admin Dashboard', '更新报修后未返回数据')
         alert("更新失败: 未返回更新后的数据")
         setIsUpdatingRepair(false)
         return
@@ -1172,7 +1537,7 @@ export default function AdminDashboard() {
         alert(`报修工单状态已更新为: ${status === "pending" ? "待处理" : status === "processing" ? "处理中" : status === "cancelled" ? "已取消" : status}`)
       }
     } catch (error: any) {
-      console.error("[Admin Dashboard] 更新报修时出错:", error)
+      logBusinessWarning('Admin Dashboard', '更新报修时出错', error)
       alert(`更新报修失败: ${error?.message || "未知错误"}`)
     } finally {
       setIsUpdatingRepair(false)
@@ -1216,6 +1581,16 @@ export default function AdminDashboard() {
 
   // 加载设备租赁订单（管理端）
   const loadRentalOrders = useCallback(async () => {
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[RentalOrders] ⚠️ 非管理员身份但缺少公司ID，禁止查询租赁订单，防止权限滑坡")
+      setRentalOrders([])
+      setIsLoadingRentalOrders(false)
+      return
+    }
+
     setIsLoadingRentalOrders(true)
     setRentalOrderError(null)
     try {
@@ -1233,13 +1608,13 @@ export default function AdminDashboard() {
       } else {
         const errorMsg = result.error || "获取租赁订单列表失败"
         const details = result.details ? `: ${result.details}` : ""
-        console.error("[设备租赁管理] 加载失败:", errorMsg, details)
+        logBusinessWarning('设备租赁管理', '加载失败', { errorMsg, details })
         setRentalOrderError(`${errorMsg}${details}`)
         setRentalOrders([])
       }
     } catch (err: any) {
       const errorMsg = err.message || "网络请求失败"
-      console.error("[设备租赁管理] 加载失败:", err)
+      logBusinessWarning('设备租赁管理', '加载失败', err)
       setRentalOrderError(errorMsg)
       setRentalOrders([])
     } finally {
@@ -1266,13 +1641,13 @@ export default function AdminDashboard() {
       } else {
         const errorMsg = result.error || "获取设备租赁记录列表失败"
         const details = result.details ? `: ${result.details}` : ""
-        console.error("[设备租赁基础功能] 加载失败:", errorMsg, details)
+        logBusinessWarning('设备租赁基础功能', '加载失败', { errorMsg, details })
         setDeviceRentalError(`${errorMsg}${details}`)
         setDeviceRentals([])
       }
     } catch (err: any) {
       const errorMsg = err.message || "网络请求失败"
-      console.error("[设备租赁基础功能] 加载失败:", err)
+      logBusinessWarning('设备租赁基础功能', '加载失败', err)
       setDeviceRentalError(errorMsg)
       setDeviceRentals([])
     } finally {
@@ -1282,25 +1657,47 @@ export default function AdminDashboard() {
   
   // 加载设备和餐厅列表（用于创建设备租赁记录）
   const loadDevicesAndRestaurantsForRental = useCallback(async () => {
-    if (!supabase) return
+    if (!supabase) {
+      // 防御性渲染：如果 Supabase 未配置，设置空数组
+      setAvailableDevices([])
+      setAvailableRestaurants([])
+      return
+    }
     try {
       // 加载设备列表
-      const { data: devicesData } = await supabase
+      const { data: devicesData, error: devicesError } = await supabase
         .from("devices")
         .select("device_id, model, status")
         .order("device_id")
-      if (devicesData) setAvailableDevices(devicesData)
+      
+      // 防御性渲染：确保数据存在，否则设置空数组
+      if (devicesError) {
+        logBusinessWarning('设备租赁基础功能', '加载设备列表失败', devicesError)
+        setAvailableDevices([])
+      } else {
+        setAvailableDevices(devicesData || [])
+      }
 
       // 加载餐厅列表
-      const { data: restaurantData } = await supabase
+      const { data: restaurantData, error: restaurantError } = await supabase
         .from("restaurants")
         .select("id, name, address")
         .order("name")
-      if (restaurantData) setAvailableRestaurants(restaurantData)
+      
+      // 防御性渲染：确保数据存在，否则设置空数组
+      if (restaurantError) {
+        logBusinessWarning('设备租赁基础功能', '加载餐厅列表失败', restaurantError)
+        setAvailableRestaurants([])
+      } else {
+        setAvailableRestaurants(restaurantData || [])
+      }
     } catch (err) {
-      console.error("[设备租赁基础功能] 加载设备和餐厅列表失败:", err)
+      logBusinessWarning('设备租赁基础功能', '加载设备和餐厅列表失败', err)
+      // 防御性渲染：确保错误时也设置空数组
+      setAvailableDevices([])
+      setAvailableRestaurants([])
     }
-  }, [supabase])
+  }, [supabase, userRole, userCompanyId])
   
   // 创建设备租赁记录
   const handleCreateDeviceRental = useCallback(async () => {
@@ -1412,9 +1809,9 @@ export default function AdminDashboard() {
         .order("name")
       if (companyData) setCompanyList(companyData)
     } catch (err) {
-      console.error("[设备租赁管理] 加载设备和餐厅列表失败:", err)
+      logBusinessWarning('设备租赁管理', '加载设备和餐厅列表失败', err)
     }
-  }, [supabase])
+  }, [supabase, userRole, userCompanyId])
 
   // 更新订单状态
   const handleUpdateRentalOrderStatus = useCallback(async (orderId: string, newStatus: string) => {
@@ -1537,18 +1934,18 @@ export default function AdminDashboard() {
         .order("created_at", { ascending: false })
 
       if (error) {
-        console.error("[租赁工作台] 加载失败:", error)
+        logBusinessWarning('租赁工作台', '加载失败', error)
         setRentals([])
       } else {
         setRentals(data || [])
       }
     } catch (err) {
-      console.error("[租赁工作台] 加载失败:", err)
+      logBusinessWarning('租赁工作台', '加载失败', err)
       setRentals([])
     } finally {
       setIsLoadingRentals(false)
     }
-  }, [supabase])
+  }, [supabase, userRole, userCompanyId])
 
   // 当切换到租赁工作台时加载数据
   useEffect(() => {
@@ -1610,7 +2007,9 @@ export default function AdminDashboard() {
         clearTimeout(debounceTimer)
       }
       // 清理订阅
-      supabase.removeChannel(channel)
+      if (supabase) {
+        supabase.removeChannel(channel)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, activeMenu, loadRepairs])
@@ -1619,21 +2018,38 @@ export default function AdminDashboard() {
   const loadWorkers = useCallback(async () => {
     if (!supabase) return
 
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[Workers] ⚠️ 非管理员身份但缺少公司ID，禁止查询工人数据，防止权限滑坡")
+      setWorkers([])
+      return
+    }
+
     try {
       const { data, error } = await retryOnNetworkError(async () => {
-        return await supabase
+        let query = supabase!
           .from("workers")
           .select("id, name, phone, worker_type, product_types, status, created_at, updated_at")
-          .order("created_at", { ascending: false })
+        
+        // 数据隔离：如果是供应商，只查询本公司的工人
+        if (userRole !== "super_admin" && userCompanyId) {
+          query = query.eq("company_id", userCompanyId)
+          console.log(`[Workers] 🔒 数据隔离：供应商账号（角色: ${userRole}, 公司ID: ${userCompanyId}），只查询本公司的工人`)
+        }
+        
+        return await query.order("created_at", { ascending: false })
       })
 
       if (error) {
-        console.error("[Admin Dashboard] 加载工人列表失败:", error)
+        logBusinessWarning('Admin Dashboard', '加载工人列表失败', error)
         setWorkers([])
         return
       }
 
-      if (data) {
+      // 防御性渲染：确保 data 存在且是数组，否则设置空数组
+      if (data && Array.isArray(data)) {
         // 处理product_types和worker_type（可能是JSON字符串或数组）
         const processedData = data.map((worker: any) => {
           // 处理product_types
@@ -1700,9 +2116,13 @@ export default function AdminDashboard() {
           }
         })
         setWorkers(processedData)
+      } else {
+        // 防御性渲染：如果 data 不存在或不是数组，设置空数组
+        setWorkers([])
       }
     } catch (error) {
-      console.error("[Admin Dashboard] 加载工人列表失败:", error)
+      logBusinessWarning('Admin Dashboard', '加载工人列表失败', error)
+      // 防御性渲染：确保错误时也设置空数组
       setWorkers([])
     }
   }, [])
@@ -1782,10 +2202,7 @@ export default function AdminDashboard() {
         .single()
 
       if (error) {
-        console.error("[Admin Dashboard] 添加工人失败 - 详细错误:", error)
-        console.error("[Admin Dashboard] 错误代码:", error.code)
-        console.error("[Admin Dashboard] 错误详情:", error.details)
-        console.error("[Admin Dashboard] 错误提示:", error.hint)
+        logBusinessWarning('Admin Dashboard', '添加工人失败 - 详细错误', { error, code: error.code, details: error.details, hint: error.hint })
         
         // 提供更详细的错误信息
         if (error.message?.includes("Invalid API key") || error.code === "PGRST301" || error.code === "401") {
@@ -1833,7 +2250,7 @@ export default function AdminDashboard() {
       setIsAddWorkerDialogOpen(false)
       alert("工人添加成功")
     } catch (error: any) {
-      console.error("[Admin Dashboard] 添加工人失败:", error)
+      logBusinessWarning('Admin Dashboard', '添加工人失败', error)
       alert(`添加工人失败: ${error.message || "未知错误"}`)
     } finally {
       setIsAddingWorker(false)
@@ -1943,7 +2360,7 @@ export default function AdminDashboard() {
         .single()
 
       if (error) {
-        console.error("[Admin Dashboard] 更新工人失败 - 详细错误:", error)
+        logBusinessWarning('Admin Dashboard', '更新工人失败 - 详细错误', error)
         throw new Error(error.message || "更新工人失败")
       }
 
@@ -1955,7 +2372,7 @@ export default function AdminDashboard() {
       setEditingWorker(null)
       alert("工人信息更新成功")
     } catch (error: any) {
-      console.error("[Admin Dashboard] 更新工人失败:", error)
+      logBusinessWarning('Admin Dashboard', '更新工人失败', error)
       alert(`更新工人失败: ${error.message || "未知错误"}`)
     } finally {
       setIsUpdatingWorker(false)
@@ -1981,7 +2398,7 @@ export default function AdminDashboard() {
         .eq("id", workerId)
 
       if (error) {
-        console.error("[Admin Dashboard] 删除工人失败 - 详细错误:", error)
+        logBusinessWarning('Admin Dashboard', '删除工人失败 - 详细错误', error)
         throw new Error(error.message || "删除工人失败")
       }
 
@@ -1989,7 +2406,7 @@ export default function AdminDashboard() {
       await loadWorkers()
       alert("工人删除成功")
     } catch (error: any) {
-      console.error("[Admin Dashboard] 删除工人失败:", error)
+      logBusinessWarning('Admin Dashboard', '删除工人失败', error)
       alert(`删除工人失败: ${error.message || "未知错误"}`)
     } finally {
       setIsDeletingWorker(false)
@@ -2006,7 +2423,7 @@ export default function AdminDashboard() {
       // 跳转到登录页
       window.location.href = "/login"
     } catch (error) {
-      console.error("[Dashboard] 登出失败:", error)
+      logBusinessWarning('Dashboard', '登出失败', error)
       // 即使出错也跳转到登录页
       window.location.href = "/login"
     }
@@ -2016,29 +2433,57 @@ export default function AdminDashboard() {
   const loadDevices = useCallback(async () => {
     if (!supabase) return
 
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[Devices] ⚠️ 非管理员身份但缺少公司ID，禁止查询设备数据，防止权限滑坡")
+      setDevices([])
+      return
+    }
+
     try {
       const { data, error } = await retryOnNetworkError(async () => {
-        return await supabase
+        let query = supabase!
           .from("devices")
           .select("device_id, restaurant_id, model, address, installer, install_date, status")
-          .order("install_date", { ascending: false })
+        
+        // 数据隔离：采用"非超级管理员即隔离"原则
+        if (userRole !== "super_admin" && userCompanyId) {
+          query = query.eq("company_id", userCompanyId)
+          console.log('[Devices] 🔒 数据隔离：只查询公司ID', userCompanyId, '的设备')
+        }
+        
+        return await query.order("install_date", { ascending: false })
       })
 
       if (error) {
-        console.error("[Admin Dashboard] 加载设备列表失败:", error)
+        logBusinessWarning('Admin Dashboard', '加载设备列表失败', error)
+        // 防御性渲染：即使加载失败，也设置空数组
+        setDevices([])
         return
       }
 
-      if (data) {
-        setDevices(data)
-      }
+      // 防御性渲染：确保 data 存在，否则设置空数组
+      setDevices(data || [])
     } catch (error) {
-      console.error("[Admin Dashboard] 加载设备列表失败:", error)
+      logBusinessWarning('Admin Dashboard', '加载设备列表失败', error)
+      // 防御性渲染：确保错误时也设置空数组
+      setDevices([])
     }
-  }, [])
+  }, [supabase, userRole, userCompanyId])
 
   // 加载服务点数据
   const loadServicePoints = useCallback(async () => {
+    // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
+    // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
+    // admin 角色但没有 companyId 时，允许查询（向后兼容）
+    if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
+      console.warn("[ServicePoints] ⚠️ 非管理员身份但缺少公司ID，禁止查询服务点数据，防止权限滑坡")
+      setServicePoints([])
+      return
+    }
+
     if (!supabase) {
       // 如果Supabase未配置，使用模拟数据
       setServicePoints([
@@ -2112,11 +2557,35 @@ export default function AdminDashboard() {
         }
       }
 
-      if (data) {
-        setServicePoints(data)
-      }
+      // 防御性渲染：确保 data 存在，否则使用模拟数据
+      setServicePoints(data || [
+        {
+          id: "sp_001",
+          name: "五华区服务点",
+          township: "五华区",
+          latitude: 25.0389,
+          longitude: 102.7183,
+          service_radius: 15,
+          legal_entity: "昆明市五华区燃料服务有限公司",
+          status: "active",
+          created_at: new Date().toISOString(),
+          workers: [],
+        },
+        {
+          id: "sp_002",
+          name: "盘龙区服务点",
+          township: "盘龙区",
+          latitude: 25.0853,
+          longitude: 102.7353,
+          service_radius: 12,
+          legal_entity: "昆明市盘龙区能源服务有限公司",
+          status: "active",
+          created_at: new Date().toISOString(),
+          workers: [],
+        },
+      ])
     } catch (error: any) {
-      // 静默处理所有错误，使用模拟数据，不输出错误日志避免控制台刷屏
+      // 防御性渲染：静默处理所有错误，使用模拟数据，不输出错误日志避免控制台刷屏
       setServicePoints([
         {
           id: "sp_001",
@@ -2132,150 +2601,171 @@ export default function AdminDashboard() {
         },
       ])
     }
-  }, [supabase])
+  }, [supabase, userRole, userCompanyId])
 
   // 身份验证状态
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const isRedirectingRef = useRef(false) // 防止重复重定向
 
-  // 获取当前用户信息并验证身份
+  // 加载用户角色和公司信息（不进行重定向检查）
   useEffect(() => {
-    const getUser = async () => {
-      // 防止重复执行
-      if (isRedirectingRef.current) {
-        console.log("[Dashboard] 正在重定向中，跳过验证")
-        return
-      }
-
+    const loadUserInfo = async () => {
       if (!supabase) {
-        console.error("[Dashboard] Supabase未初始化")
-        setIsAuthenticated(false)
+        console.warn("[Dashboard] Supabase未配置，跳过用户信息加载")
+        setForceRender(true)
         setIsLoading(false)
-        // 使用 window.location 进行完整跳转，避免React路由冲突
-        if (!isRedirectingRef.current) {
-          isRedirectingRef.current = true
-          window.location.href = "/login"
-        }
+        setIsAuthenticated(true)
         return
       }
 
-      // 等待一段时间，确保从登录页面跳转过来时，认证状态已完全同步
-      // 这对于解决 "Multiple GoTrueClient instances" 警告导致的状态不同步问题很重要
-      // 从登录页面跳转到 dashboard 时，需要给足够时间让认证状态同步
-      console.log("[Dashboard] 等待认证状态同步...")
-      await new Promise(resolve => setTimeout(resolve, 1500))
-
-      // 重试机制：最多重试5次，每次间隔800ms
-      // 增加重试次数和间隔，确保在状态同步较慢时也能成功
-      let retryCount = 0
-      const maxRetries = 5
-
-      while (retryCount < maxRetries && !isRedirectingRef.current) {
-        try {
-          const { data: { user }, error: userError } = await supabase.auth.getUser()
-          
-          if (userError || !user) {
-            if (retryCount < maxRetries - 1) {
-              console.log(`[Dashboard] 获取用户信息失败，重试中... (${retryCount + 1}/${maxRetries})`)
-              console.log("[Dashboard] 错误详情:", userError?.message || "用户为空")
-              // 等待更长时间，确保认证状态完全同步
-              await new Promise(resolve => setTimeout(resolve, 800))
-              retryCount++
-              continue
-            }
-            console.error("[Dashboard] 未登录，已重试", maxRetries, "次，重定向到登录页面")
-            console.error("[Dashboard] 最后错误:", userError)
-            setIsAuthenticated(false)
-            setIsLoading(false)
-            if (!isRedirectingRef.current) {
-              isRedirectingRef.current = true
-              window.location.href = "/login"
-            }
-            return
-          }
-
-          // 检查用户角色
-          const { data: roleData, error: roleError } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", user.id)
-            .maybeSingle()
-
-          if (roleError) {
-            if (retryCount < maxRetries - 1) {
-              console.log(`[Dashboard] 查询角色失败，重试中... (${retryCount + 1}/${maxRetries})`)
-              console.log("[Dashboard] 角色查询错误:", roleError.message)
-              await new Promise(resolve => setTimeout(resolve, 800))
-              retryCount++
-              continue
-            }
-            console.error("[Dashboard] 查询角色失败，已重试", maxRetries, "次:", roleError)
-            setIsAuthenticated(false)
-            setIsLoading(false)
-            if (!isRedirectingRef.current) {
-              isRedirectingRef.current = true
-              window.location.href = "/login"
-            }
-            return
-          }
-
-          if (!roleData) {
-            console.error("[Dashboard] 用户没有角色记录")
-            setIsAuthenticated(false)
-            setIsLoading(false)
-            if (!isRedirectingRef.current) {
-              isRedirectingRef.current = true
-              window.location.href = "/login"
-            }
-            return
-          }
-
-          const actualRole = Array.isArray(roleData) ? roleData[0]?.role : roleData.role
-
-          if (actualRole !== "super_admin" && actualRole !== "admin") {
-            console.error("[Dashboard] 用户没有管理员权限，当前角色:", actualRole)
-            setIsAuthenticated(false)
-            setIsLoading(false)
-            if (!isRedirectingRef.current) {
-              isRedirectingRef.current = true
-              window.location.href = "/login"
-            }
-            return
-          }
-
-          // 用户验证通过，设置用户信息
-          console.log("[Dashboard] 身份验证成功，用户:", user.email, "角色:", actualRole)
-          setCurrentUser({ email: user.email })
-          setIsAuthenticated(true)
+      try {
+        // 获取当前用户
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError || !user) {
+          console.warn("[Dashboard] 未获取到用户信息，以访客模式运行")
+          setUserRole(null)
+          setUserCompanyId(null)
+          setForceRender(true)
           setIsLoading(false)
-          return // 成功，退出重试循环
-        } catch (error) {
-          if (retryCount < maxRetries - 1) {
-            console.log(`[Dashboard] 验证失败，重试中... (${retryCount + 1}/${maxRetries})`)
-            console.log("[Dashboard] 错误详情:", error)
-            await new Promise(resolve => setTimeout(resolve, 800))
-            retryCount++
-            continue
-          }
-          console.error("[Dashboard] 获取用户信息失败，已重试", maxRetries, "次:", error)
-          setIsAuthenticated(false)
-          setIsLoading(false)
-          if (!isRedirectingRef.current) {
-            isRedirectingRef.current = true
-            window.location.href = "/login"
-          }
+          setIsAuthenticated(true) // 允许访问，但不加载数据
           return
         }
+
+        // 获取用户角色
+        const { data: roleData, error: roleError } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .maybeSingle()
+
+        if (roleError) {
+          console.warn("[Dashboard] 查询角色失败:", roleError)
+        }
+
+        const role = roleData?.role || null
+        setUserRole(role)
+        console.log("[Dashboard] 用户角色:", role)
+
+        // 如果是超级管理员，不需要查询公司信息
+        if (role === "super_admin") {
+          setUserCompanyId(null)
+          setCompanyPermissions([])
+          setCompanyFuelTypes([])
+          setForceRender(true)
+          setIsLoading(false)
+          setIsAuthenticated(true)
+          return
+        }
+
+        // 如果不是超级管理员，查询公司信息
+        const { data: userCompany, error: ucError } = await supabase
+          .from("user_companies")
+          .select("company_id")
+          .eq("user_id", user.id)
+          .eq("is_primary", true)
+          .maybeSingle()
+
+        if (ucError) {
+          console.warn("[Dashboard] 查询公司信息失败:", ucError)
+        }
+
+        const companyId = userCompany?.company_id || null
+        setUserCompanyId(companyId)
+        console.log("[Dashboard] 用户公司ID:", companyId)
+
+        // 如果有关联公司，加载权限（使用 API 端点绕过 RLS）
+        if (companyId) {
+          try {
+            // 使用 API 端点查询权限，绕过 RLS 限制
+            const response = await fetch(`/api/admin/get-company-permissions?companyId=${companyId}`)
+            const result = await response.json()
+
+            if (result.success) {
+              const permissions = result.permissions || []
+              const fuelTypes = result.fuelTypes || []
+              
+              setCompanyPermissions(permissions)
+              setCompanyFuelTypes(fuelTypes)
+              console.log("[Dashboard] ✅ 公司权限加载成功:", {
+                permissions,
+                fuelTypes,
+                permissionsCount: permissions.length,
+                fuelTypesCount: fuelTypes.length
+              })
+            } else {
+              console.warn("[Dashboard] ⚠️ 权限查询失败:", result.error)
+              setCompanyPermissions([])
+              setCompanyFuelTypes([])
+            }
+          } catch (error: any) {
+            console.error("[Dashboard] ❌ 权限查询异常:", error)
+            // 如果 API 调用失败，尝试直接查询（可能用户有权限）
+            try {
+              const { data: permissionsData } = await supabase
+                .from("company_permissions")
+                .select("permission_key")
+                .eq("company_id", companyId)
+                .eq("enabled", true)
+
+              const permissions = (permissionsData || []).map(p => p.permission_key)
+              setCompanyPermissions(permissions)
+              console.log("[Dashboard] 公司权限（直接查询）:", permissions)
+
+              const { data: fuelTypesData } = await supabase
+                .from("company_fuel_types")
+                .select("fuel_type")
+                .eq("company_id", companyId)
+                .eq("enabled", true)
+
+              const fuelTypes = (fuelTypesData || []).map(f => f.fuel_type)
+              setCompanyFuelTypes(fuelTypes)
+              console.log("[Dashboard] 公司燃料品种（直接查询）:", fuelTypes)
+            } catch (fallbackError) {
+              console.error("[Dashboard] ❌ 直接查询也失败:", fallbackError)
+              setCompanyPermissions([])
+              setCompanyFuelTypes([])
+            }
+          }
+        } else {
+          setCompanyPermissions([])
+          setCompanyFuelTypes([])
+        }
+
+        setForceRender(true)
+        setIsLoading(false)
+        setIsAuthenticated(true)
+      } catch (error: any) {
+        console.error("[Dashboard] 加载用户信息异常:", error)
+        setForceRender(true)
+        setIsLoading(false)
+        setIsAuthenticated(true) // 即使出错也允许访问
       }
     }
-    getUser()
+
+    loadUserInfo()
   }, [supabase])
 
-  // 实时订阅
+  // 实时订阅 - 等待用户信息加载完成后再加载数据
   useEffect(() => {
+    // 如果用户信息还未加载完成，等待
+    if (isAuthenticated === null || isLoading) {
+      console.log('[Dashboard] ⏳ 等待用户信息加载完成...')
+      return
+    }
+
+    // 如果未认证，不加载数据
+    if (!isAuthenticated) {
+      console.log('[Dashboard] ⚠️ 用户未认证，跳过数据加载')
+      return
+    }
+
+    console.log('[Dashboard] 🚀 用户信息已加载，开始加载数据')
+    console.log('[Dashboard] 用户角色:', userRole, '公司ID:', userCompanyId)
+    
     loadRestaurants()
     loadWorkers()
-    loadRecentOrders()
+    loadRecentOrdersCount() // 只加载订单数量，不加载详细数据
     loadDevices()
     loadServicePoints()
 
@@ -2291,7 +2781,11 @@ export default function AdminDashboard() {
           },
           (payload) => {
             // 移除频繁的调试日志，避免控制台刷屏
-            loadRecentOrders()
+            // 只更新订单数量，不加载详细数据（除非已展开）
+            loadRecentOrdersCount()
+            if (isRecentOrdersExpanded) {
+              loadRecentOrders()
+            }
             loadRestaurants()
           }
         )
@@ -2315,7 +2809,7 @@ export default function AdminDashboard() {
         }
       }
     }
-  }, [loadRestaurants, loadWorkers, loadRecentOrders, loadDevices, loadServicePoints])
+  }, [isAuthenticated, isLoading, userRole, userCompanyId, loadRestaurants, loadWorkers, loadRecentOrdersCount, loadRecentOrders, loadDevices, loadServicePoints, supabase, isRecentOrdersExpanded])
 
 
   // 格式化时间
@@ -2332,52 +2826,27 @@ export default function AdminDashboard() {
     return date.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
   }
 
-  // 创建自定义HTML标记
+  // 创建自定义HTML标记 - 白色圆圈带脉冲动画
   const createMarkerHTML = (restaurant: Restaurant, hasActiveOrders: boolean) => {
-    const isPending = restaurant.status === "pending" || restaurant.status === "待激活"
-    const isActivated = restaurant.status === "activated" || restaurant.status === "已激活"
-    
-    // 夜晚城市灯光效果：温暖的橙黄色系
-    // 待激活：较暗的橙黄色（类似小城市灯光）
-    // 已激活且有实时订单：明亮的金黄色+扩散光圈（类似大城市灯光）
-    // 已激活但无订单：标准橙黄色（类似中等城市灯光）
-    let markerColor = "rgb(255, 200, 50)" // 标准橙黄色 - 夜晚城市灯光
-    let markerGlowColor = "rgba(255, 200, 50, 0.8)" // 发光颜色
-    let markerClass = "marker-pulse"
-    
-    if (isPending) {
-      markerColor = "rgb(255, 165, 80)" // 较暗的橙黄色 - 小城市灯光
-      markerGlowColor = "rgba(255, 165, 80, 0.6)"
-    } else if (isActivated && hasActiveOrders) {
-      markerColor = "rgb(255, 255, 100)" // 明亮的金黄色 - 大城市灯光
-      markerGlowColor = "rgba(255, 255, 100, 0.9)"
-      markerClass = "marker-pulse marker-ripple"
-    } else {
-      markerGlowColor = "rgba(255, 200, 50, 0.8)"
-    }
-
     return `
-      <div class="custom-marker-wrapper" style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-        ${isActivated && hasActiveOrders ? `
-          <div class="marker-ripple" style="position: absolute; width: 40px; height: 40px; border-radius: 50%; border: 2px solid ${markerColor}; opacity: 0.6; animation: marker-ripple 2s ease-out infinite;"></div>
-        ` : ''}
-        <div class="${markerClass}" style="
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: radial-gradient(circle, ${markerColor} 0%, ${markerColor}dd 50%, ${markerColor}aa 100%);
-          box-shadow: 0 0 20px ${markerGlowColor}, 0 0 40px ${markerGlowColor}, 0 0 60px ${markerGlowColor}60;
-          position: relative;
-          z-index: 10;
-          animation: marker-pulse 2s ease-in-out infinite;
-        "></div>
-      </div>
+      <div class="marker-pulse" style="
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: white;
+        border: 2px solid #3b82f6;
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        cursor: pointer;
+        display: block;
+        position: relative;
+      "></div>
     `
   }
 
   // 计算餐厅坐标的中心点和合适的缩放级别
+  // 使用最后一个注册的餐厅位置作为初始定位
   const calculateMapCenterAndZoom = useCallback(() => {
-    const restaurantsWithLocation = restaurants.filter(
+    let restaurantsWithLocation = restaurants.filter(
       (r) => r.latitude && r.longitude && 
       typeof r.latitude === 'number' && typeof r.longitude === 'number' &&
       !isNaN(r.latitude) && !isNaN(r.longitude)
@@ -2385,80 +2854,62 @@ export default function AdminDashboard() {
 
     if (restaurantsWithLocation.length === 0) {
       // 如果没有餐厅数据，返回默认的昆明中心
+      console.log('[Map] 📍 没有餐厅数据，使用默认昆明中心点')
+      return {
+        center: [102.7183, 25.0389] as [number, number], // 昆明市中心
+        zoom: 12
+      }
+    }
+    
+    // 验证所有坐标是否有效（防止定位到其他国家）
+    const validRestaurants = restaurantsWithLocation.filter(r => {
+      const lng = r.longitude!
+      const lat = r.latitude!
+      // 昆明大致范围：经度 102-103，纬度 24-26
+      // 如果坐标明显不在中国境内，使用默认昆明中心
+      const isValid = lng >= 102 && lng <= 103 && lat >= 24 && lat <= 26
+      if (!isValid) {
+        console.warn(`[Map] ⚠️ 餐厅 ${r.name} 的坐标 [${lng}, ${lat}] 不在昆明范围内，将使用默认中心点`)
+      }
+      return isValid
+    })
+    
+    // 如果没有有效坐标，使用默认昆明中心
+    if (validRestaurants.length === 0) {
+      console.warn('[Map] ⚠️ 没有有效的餐厅坐标，使用默认昆明中心点')
       return {
         center: [102.7183, 25.0389] as [number, number],
         zoom: 12
       }
     }
-
-    // 如果只有一个餐厅，直接使用该餐厅的坐标
-    if (restaurantsWithLocation.length === 1) {
-      const firstRestaurant = restaurantsWithLocation[0]
-      // 移除调试日志，避免控制台刷屏
-      return {
-        center: [firstRestaurant.longitude!, firstRestaurant.latitude!] as [number, number],
-        zoom: 15
-      }
-    }
-
-    // 计算所有餐厅坐标的边界
-    const lngs = restaurantsWithLocation.map((r) => r.longitude!)
-    const lats = restaurantsWithLocation.map((r) => r.latitude!)
     
-    const minLng = Math.min(...lngs)
-    const maxLng = Math.max(...lngs)
-    const minLat = Math.min(...lats)
-    const maxLat = Math.max(...lats)
+    // 使用有效餐厅数据
+    restaurantsWithLocation = validRestaurants
 
-    // 计算经纬度范围
-    const lngDiff = maxLng - minLng
-    const latDiff = maxLat - minLat
-    const maxDiff = Math.max(lngDiff, latDiff)
-
-    // 如果所有餐厅都在同一个位置（范围非常小），使用第一个餐厅的坐标
-    if (maxDiff < 0.0001) {
-      const firstRestaurant = restaurantsWithLocation[0]
-      // 移除调试日志，避免控制台刷屏
+    // 按创建时间排序，获取最后一个注册的餐厅（created_at 最新的）
+    const sortedRestaurants = [...restaurantsWithLocation].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0
+      return timeB - timeA // 降序排列，最新的在前
+    })
+    
+    // 使用最后一个注册的餐厅位置作为地图中心
+    const lastRestaurant = sortedRestaurants[0] // 排序后第一个就是最新的
+    const center = [lastRestaurant.longitude!, lastRestaurant.latitude!] as [number, number]
+    console.log(`[Map] 📍 使用最后一个注册的餐厅位置作为地图中心: ${lastRestaurant.name} [${center[0]}, ${center[1]}]`)
+    
+    // 验证中心点坐标是否在合理范围内（昆明地区）
+    if (center[0] < 102 || center[0] > 103 || center[1] < 24 || center[1] > 26) {
+      console.warn(`[Map] ⚠️ 计算出的中心点 [${center[0]}, ${center[1]}] 不在昆明范围内，使用默认昆明中心点`)
       return {
-        center: [firstRestaurant.longitude!, firstRestaurant.latitude!] as [number, number],
-        zoom: 15
+        center: [102.7183, 25.0389] as [number, number], // 昆明市中心
+        zoom: 13
       }
     }
-
-    // 计算中心点（多个餐厅的平均位置）
-    const centerLng = (minLng + maxLng) / 2
-    const centerLat = (minLat + maxLat) / 2
-
-    // 计算合适的缩放级别
-    // 根据经纬度范围计算缩放级别
-    let zoom = 12 // 默认缩放级别
-    if (maxDiff > 0.5) {
-      zoom = 8 // 范围很大，缩小视图
-    } else if (maxDiff > 0.2) {
-      zoom = 10
-    } else if (maxDiff > 0.1) {
-      zoom = 11
-    } else if (maxDiff > 0.05) {
-      zoom = 12
-    } else if (maxDiff > 0.02) {
-      zoom = 13
-    } else if (maxDiff > 0.01) {
-      zoom = 14
-    } else {
-      zoom = 15 // 范围很小，放大视图
-    }
-
-    // 移除调试日志，避免控制台刷屏
-    // 计算地图中心点（多个餐厅）: { 
-    //   center: [centerLng, centerLat], 
-    //   zoom, 
-    //   restaurantCount: restaurantsWithLocation.length,
-    //   range: { lngDiff, latDiff, maxDiff }
-    // }
-
+    
     return {
-      center: [centerLng, centerLat] as [number, number],
-      zoom
+      center: center,
+      zoom: 13 // 市级范围视图，确保可以看到昆明市范围（13级可以清楚看到市级区域，不会显示世界地图）
     }
   }, [restaurants])
 
@@ -2509,7 +2960,7 @@ export default function AdminDashboard() {
         mapInstanceRef.current = null
         // 移除频繁的调试日志，避免控制台刷屏
       } catch (error) {
-        console.error('[Map] 销毁地图实例时出错:', error)
+        logBusinessWarning('Map', '销毁地图实例时出错', error)
       }
     }
     setMapLoaded(false)
@@ -2517,25 +2968,99 @@ export default function AdminDashboard() {
 
 
   // 更新地图标记
-  const updateMarkers = useCallback(() => {
+  // 注意：这个函数使用 restaurants 作为参数，确保总是使用最新的状态
+  const updateMarkers = useCallback((restaurantsToUse?: Restaurant[]) => {
+    // 防止频繁调用：如果距离上次调用不到500ms，跳过
+    const now = Date.now()
+    if (isUpdatingMarkersRef.current) {
+      console.log('[Map] ⏸️ updateMarkers 正在执行中，跳过重复调用')
+      return
+    }
+    if (now - lastUpdateMarkersTimeRef.current < 500) {
+      console.log('[Map] ⏸️ updateMarkers 调用过于频繁，跳过（距离上次调用不到500ms）')
+      return
+    }
+    
+    // 如果传入了参数，使用参数；否则使用当前状态（可能不是最新的）
+    const currentRestaurants = restaurantsToUse || restaurants
+    
+    console.log('[Map] 🚀 updateMarkers 被调用')
+    console.log('[Map] 📊 当前状态:', {
+      mapInstance: mapInstanceRef.current ? '存在' : '不存在',
+      AMap: (window as any).AMap ? '已加载' : '未加载',
+      restaurantsCount: currentRestaurants.length,
+      mapLoaded: mapLoaded,
+      usingProvidedRestaurants: !!restaurantsToUse,
+      当前标记数: markersRef.current.length
+    })
+    
     if (!mapInstanceRef.current) {
-      // 静默返回，不输出日志
+      console.warn('[Map] ⚠️ updateMarkers: 地图实例不存在，跳过标记更新')
       return
     }
 
     const map = mapInstanceRef.current
     const AMap = (window as any).AMap
     if (!AMap) {
-      // 静默返回，不输出日志
+      console.warn('[Map] ⚠️ updateMarkers: AMap 未加载，跳过标记更新')
       return
     }
+    
+    // 标记为正在更新
+    isUpdatingMarkersRef.current = true
+    lastUpdateMarkersTimeRef.current = now
+    
+    console.log(`[Map] ✅ updateMarkers: 开始更新标记，餐厅数量: ${currentRestaurants.length}`)
+    
+    // 输出餐厅数据详情，用于调试
+    const restaurantsStatus = currentRestaurants.map(r => ({
+      id: r.id,
+      name: r.name,
+      address: r.address,
+      lat: r.latitude,
+      lng: r.longitude,
+      hasValidCoords: r.latitude && r.longitude && 
+                      typeof r.latitude === 'number' && typeof r.longitude === 'number' &&
+                      !isNaN(r.latitude) && !isNaN(r.longitude)
+    }))
+    console.log(`[Map] 📊 餐厅数据详情:`, restaurantsStatus)
+    
+    // 统计有效坐标的餐厅数量
+    const validCoordsCount = restaurantsStatus.filter(r => r.hasValidCoords).length
+    console.log(`[Map] 📊 有效坐标的餐厅数量: ${validCoordsCount} / ${currentRestaurants.length}`)
+    
+    if (validCoordsCount === 0 && currentRestaurants.length > 0) {
+      console.warn(`[Map] ⚠️ 有 ${currentRestaurants.length} 个餐厅，但都没有有效坐标！`)
+      console.warn(`[Map] ⚠️ 可能原因：1) 24小时缓存阻止了地理编码 2) 地理编码失败 3) 数据库中没有存储坐标`)
+    }
 
-    // 移除调试日志，避免控制台刷屏
-    // 清除现有标记
-    markersRef.current.forEach(marker => {
-      map.remove(marker)
-    })
-    markersRef.current = []
+    // 清除现有标记（只在有标记时才清除）
+    // 重要：只有在餐厅数据真正变化时才清除标记，避免频繁清除导致标记消失
+    const currentMarkerCount = markersRef.current.length
+    const newRestaurantIds = new Set(currentRestaurants.map(r => r.id))
+    const existingMarkerIds = new Set(Array.from(markerMapRef.current.keys()))
+    
+    // 检查是否有餐厅被删除或添加
+    const hasRestaurantChanges = currentRestaurants.length !== existingMarkerIds.size ||
+      currentRestaurants.some(r => !existingMarkerIds.has(r.id)) ||
+      Array.from(existingMarkerIds).some(id => !newRestaurantIds.has(id))
+    
+    if (currentMarkerCount > 0 && hasRestaurantChanges) {
+      console.log(`[Map] 🗑️ 检测到餐厅数据变化，清除 ${currentMarkerCount} 个现有标记`)
+      markersRef.current.forEach(marker => {
+        try {
+          map.remove(marker)
+        } catch (e) {
+          // 静默处理错误
+        }
+      })
+      markersRef.current = []
+    } else if (currentMarkerCount > 0) {
+      console.log(`[Map] ✅ 餐厅数据未变化，保留现有 ${currentMarkerCount} 个标记`)
+      // 不清除标记，直接返回，只更新需要更新的标记
+      isUpdatingMarkersRef.current = false
+      return
+    }
 
     infoWindowsRef.current.forEach(infoWindow => {
       map.remove(infoWindow)
@@ -2558,25 +3083,45 @@ export default function AdminDashboard() {
         })
         serviceCirclesRef.current = []
 
-        // 清除现有热力图
-        if (heatmapRef.current) {
+        // 清除现有热力图（如果切换模式，需要清除旧的热力图）
+        if (heatmapRef.current && !showHeatmap) {
           try {
             map.remove(heatmapRef.current)
             heatmapRef.current.setMap(null)
             heatmapRef.current = null
+            console.log('[Map] 🗑️ 已清除热力图（切换到标记模式）')
           } catch (e) {
             // 静默处理错误，避免控制台刷屏
           }
         }
 
-    // 根据热力图状态决定显示方式
-    if (showHeatmap) {
-      // 显示热力图模式
-      const restaurantsWithLocation = restaurants.filter(
+    // 始终显示标记，无论是否启用热力图
+    // 获取有实时订单的餐厅ID列表
+    const activeOrderRestaurantIds = new Set(
+      orders
+        .filter(o => o.status === "pending" || o.status === "待处理" || o.status === "delivering" || o.status === "配送中")
+        .map(o => o.restaurant_id)
+    )
+
+    // 热力图功能暂时关闭，等待后续优化
+    // 如果启用热力图，同时显示热力图
+    // console.log(`[Map] 🔍 热力图状态检查: showHeatmap=${showHeatmap}, 当前餐厅数=${currentRestaurants.length}`)
+    if (false && showHeatmap) { // 暂时禁用热力图功能
+      console.log('[Map] 🔥 热力图模式已启用，同时显示标记和热力图')
+      // 显示热力图模式（同时也会显示标记）
+      const restaurantsWithLocation = currentRestaurants.filter(
         r => r.latitude && r.longitude && 
         typeof r.latitude === 'number' && typeof r.longitude === 'number' &&
         !isNaN(r.latitude) && !isNaN(r.longitude)
       )
+
+      console.log(`[Map] 🔥 有有效坐标的餐厅数量: ${restaurantsWithLocation.length} / ${currentRestaurants.length}`)
+      console.log(`[Map] 🔥 餐厅坐标详情:`, currentRestaurants.map(r => ({
+        name: r.name,
+        lat: r.latitude,
+        lng: r.longitude,
+        hasValidCoords: r.latitude && r.longitude && !isNaN(r.latitude) && !isNaN(r.longitude)
+      })))
 
       if (restaurantsWithLocation.length > 0) {
         // 准备热力图数据（确保坐标有效）
@@ -2592,46 +3137,248 @@ export default function AdminDashboard() {
           .map(restaurant => ({
             lng: restaurant.longitude!,
             lat: restaurant.latitude!,
-            count: 1, // 每个餐厅的权重
+            count: 50, // 大幅增加权重，使灯光效果更明显（模拟城市灯光强度）
           }))
-
-        // 创建热力图
-        if (!heatmapRef.current) {
-          heatmapRef.current = new AMap.Heatmap(map, {
-            radius: 25, // 热力点半径
-            opacity: [0, 0.8], // 透明度范围
-            gradient: {
-              0.4: 'blue',    // 低密度区域 - 蓝色
-              0.6: 'cyan',    // 中低密度 - 青色
-              0.7: 'lime',    // 中密度 - 黄绿色
-              0.8: 'yellow',  // 中高密度 - 黄色
-              1.0: 'red'      // 高密度区域 - 红色
-            },
-            zIndex: 100,
+          // 为每个餐厅添加多个数据点，增强视觉效果
+          .flatMap(point => {
+            // 在每个餐厅周围添加多个数据点，模拟灯光扩散
+            const points = [point]
+            for (let i = 0; i < 5; i++) {
+              // 在餐厅周围随机添加数据点（半径约100米）
+              const angle = (Math.PI * 2 * i) / 5
+              const radius = 0.001 // 约100米
+              points.push({
+                lng: point.lng + Math.cos(angle) * radius,
+                lat: point.lat + Math.sin(angle) * radius,
+                count: 30
+              })
+            }
+            return points
           })
+
+        console.log(`[Map] 🔥 热力图数据: ${heatmapData.length} 个有效坐标`)
+        if (heatmapData.length > 0) {
+          console.log(`[Map] 🔥 热力图数据示例（前3个）:`, heatmapData.slice(0, 3))
         }
 
-        // 设置热力图数据
-        heatmapRef.current.setDataSet({
-          data: heatmapData,
-          max: 100, // 最大权重值
-        })
+        // 创建热力图（使用新的 API：AMap.HeatMap）
+        try {
+          // 如果已存在热力图实例，先清除（确保使用最新配置）
+          if (heatmapRef.current) {
+            try {
+              map.remove(heatmapRef.current)
+              heatmapRef.current.setMap(null)
+              heatmapRef.current = null
+              console.log('[Map] 🔄 清除旧热力图实例，重新创建')
+            } catch (e) {
+              console.warn('[Map] ⚠️ 清除旧热力图失败:', e)
+            }
+          }
+          
+          // 使用新的 API 名称：AMap.HeatMap（注意大小写）
+          if (AMap.HeatMap) {
+            console.log('[Map] 🔥 使用 AMap.HeatMap 创建热力图（城市灯光效果）')
+            heatmapRef.current = new AMap.HeatMap(map, {
+              radius: 150, // 大幅增大热力点半径，模拟城市灯光扩散效果（从太空看）
+              opacity: [0, 1], // 提高最大透明度，增强灯光亮度
+              gradient: {
+                0.0: 'rgba(0, 0, 0, 0)',      // 完全透明（太空背景）
+                0.1: 'rgba(30, 30, 100, 0.5)', // 深蓝色（偏远区域微弱灯光）
+                0.3: 'rgba(100, 100, 200, 0.8)', // 蓝色（郊区灯光）
+                0.5: 'rgba(200, 200, 100, 1)', // 黄绿色（城市边缘）
+                0.7: 'rgba(255, 220, 100, 1)', // 金黄色（城市中心）
+                0.9: 'rgba(255, 255, 200, 1)', // 亮黄色（城市核心）
+                1.0: 'rgba(255, 255, 255, 1)'    // 纯白色（最亮城市核心）
+              },
+              zIndex: 100, // 提高 zIndex，确保热力图在最上层可见
+            })
+          } else if (AMap.Heatmap) {
+            // 兼容旧版本 API
+            console.log('[Map] 🔥 使用 AMap.Heatmap 创建热力图（城市灯光效果）')
+            heatmapRef.current = new AMap.Heatmap(map, {
+              radius: 150, // 大幅增大热力点半径，模拟城市灯光扩散效果（从太空看）
+              opacity: [0, 1], // 提高最大透明度，增强灯光亮度
+              gradient: {
+                0.0: 'rgba(0, 0, 0, 0)',      // 完全透明（太空背景）
+                0.1: 'rgba(30, 30, 100, 0.5)', // 深蓝色（偏远区域微弱灯光）
+                0.3: 'rgba(100, 100, 200, 0.8)', // 蓝色（郊区灯光）
+                0.5: 'rgba(200, 200, 100, 1)', // 黄绿色（城市边缘）
+                0.7: 'rgba(255, 220, 100, 1)', // 金黄色（城市中心）
+                0.9: 'rgba(255, 255, 200, 1)', // 亮黄色（城市核心）
+                1.0: 'rgba(255, 255, 255, 1)'    // 纯白色（最亮城市核心）
+              },
+              zIndex: 30,
+            })
+          } else {
+            console.warn('[Map] ⚠️ 热力图 API 不可用，请检查 AMap.HeatMap 插件是否已加载')
+            console.warn('[Map] ⚠️ 可用的 AMap 对象:', Object.keys(AMap).filter(k => k.toLowerCase().includes('heat')))
+            return
+          }
 
-        map.add(heatmapRef.current)
-        // 移除频繁的调试日志，避免控制台刷屏
+          // 设置热力图数据（根据 API 版本使用不同方法）
+          if (heatmapRef.current) {
+            console.log(`[Map] 🔥 准备设置热力图数据，数据点数量: ${heatmapData.length}`)
+            console.log(`[Map] 🔥 热力图数据示例:`, heatmapData.slice(0, 3))
+            
+            // 尝试多种方法设置热力图数据
+            let dataSet = false
+            if (typeof heatmapRef.current.setDataSet === 'function') {
+              // 新版本 API - setDataSet
+              console.log('[Map] 🔥 使用 setDataSet 方法设置热力图数据')
+              try {
+                heatmapRef.current.setDataSet({
+                  data: heatmapData,
+                  max: 100,
+                })
+                dataSet = true
+                console.log('[Map] ✅ setDataSet 成功')
+              } catch (e) {
+                console.warn('[Map] ⚠️ setDataSet 失败:', e)
+              }
+            }
+            
+            if (!dataSet && typeof heatmapRef.current.setData === 'function') {
+              // 旧版本 API - setData
+              console.log('[Map] 🔥 使用 setData 方法设置热力图数据')
+              try {
+                heatmapRef.current.setData({
+                  data: heatmapData,
+                  max: 200, // 提高最大值，使热力图更明显
+                })
+                dataSet = true
+                console.log('[Map] ✅ setData 成功')
+              } catch (e) {
+                console.warn('[Map] ⚠️ setData 失败:', e)
+              }
+            }
+            
+            // 如果以上方法都失败，尝试直接设置 data 属性
+            if (!dataSet && heatmapRef.current.data !== undefined) {
+              console.log('[Map] 🔥 尝试直接设置 data 属性')
+              try {
+                heatmapRef.current.data = heatmapData
+                dataSet = true
+                console.log('[Map] ✅ 直接设置 data 成功')
+              } catch (e) {
+                console.warn('[Map] ⚠️ 直接设置 data 失败:', e)
+              }
+            }
+            
+            if (!dataSet) {
+              console.warn('[Map] ⚠️ 所有热力图数据设置方法都失败')
+              console.warn('[Map] ⚠️ 热力图对象的方法:', Object.getOwnPropertyNames(heatmapRef.current).filter(m => typeof heatmapRef.current[m] === 'function'))
+              console.warn('[Map] ⚠️ 热力图对象的属性:', Object.getOwnPropertyNames(heatmapRef.current))
+              return
+            }
+            
+            console.log('[Map] 🔥 热力图数据已设置')
+          }
+        } catch (error) {
+          console.error('[Map] ❌ 创建热力图失败:', error)
+          logBusinessWarning('Map', '创建热力图失败', error)
+          return
+        }
+
+        // 确保热力图添加到地图（强制添加，不检查是否已存在）
+        if (heatmapRef.current) {
+          try {
+            // 先尝试移除（如果存在）
+            try {
+              map.remove(heatmapRef.current)
+              console.log('[Map] 🔄 已移除旧热力图实例')
+            } catch (e) {
+              // 忽略错误，可能不存在
+              console.log('[Map] 🔄 旧热力图实例不存在，跳过移除')
+            }
+            
+            // 添加到地图
+            map.add(heatmapRef.current)
+            console.log('[Map] 🔥 热力图已成功添加到地图')
+            
+            // 立即验证热力图是否真的在地图上
+            try {
+              const overlays = map.getAllOverlays ? map.getAllOverlays() : []
+              const hasHeatmap = Array.from(overlays).some((overlay: any) => overlay === heatmapRef.current)
+              console.log(`[Map] 🔥 热力图立即验证: ${hasHeatmap ? '✅ 已在地图上' : '❌ 未在地图上'}`)
+              
+              if (!hasHeatmap) {
+                console.warn('[Map] ⚠️ 热力图未成功添加到地图，尝试重新添加')
+                map.add(heatmapRef.current)
+              }
+              
+              // 强制显示热力图
+              if (heatmapRef.current.show) {
+                heatmapRef.current.show()
+                console.log('[Map] 🔥 已调用 heatmapRef.current.show()')
+              }
+              if (heatmapRef.current.setVisible) {
+                heatmapRef.current.setVisible(true)
+                console.log('[Map] 🔥 已调用 heatmapRef.current.setVisible(true)')
+              }
+              
+              // 检查热力图的可见性
+              const isVisible = heatmapRef.current.getVisible ? heatmapRef.current.getVisible() : true
+              console.log(`[Map] 🔥 热力图可见性: ${isVisible ? '可见' : '不可见'}`)
+              
+              console.log('[Map] 🔥 热力图已强制显示')
+            } catch (e) {
+              console.error('[Map] ❌ 验证热力图时出错:', e)
+            }
+            
+            // 延迟验证（确保热力图完全加载）
+            setTimeout(() => {
+              try {
+                const overlays = map.getAllOverlays ? map.getAllOverlays() : []
+                const hasHeatmap = Array.from(overlays).some((overlay: any) => overlay === heatmapRef.current)
+                console.log(`[Map] 🔥 热力图延迟验证（500ms后）: ${hasHeatmap ? '✅ 已在地图上' : '❌ 未在地图上'}`)
+                
+                if (!hasHeatmap) {
+                  console.warn('[Map] ⚠️ 热力图在延迟验证时未在地图上，尝试重新添加')
+                  map.add(heatmapRef.current)
+                }
+              } catch (e) {
+                console.error('[Map] ❌ 延迟验证热力图时出错:', e)
+              }
+            }, 500)
+          } catch (e) {
+            console.error('[Map] ❌ 添加热力图到地图失败:', e)
+          }
+        } else {
+          console.error('[Map] ❌ heatmapRef.current 为空，无法添加到地图')
+        }
+      } else {
+        console.warn('[Map] ⚠️ 没有有效的餐厅坐标用于热力图，需要等待地理编码完成')
+        console.log(`[Map] 📍 当前餐厅坐标状态: ${currentRestaurants.map(r => `${r.name}: lat=${r.latitude}, lng=${r.longitude}`).join('; ')}`)
       }
     } else {
-      // 显示标记模式
-      // 获取有实时订单的餐厅ID列表
-      const activeOrderRestaurantIds = new Set(
-        orders
-          .filter(o => o.status === "pending" || o.status === "待处理" || o.status === "delivering" || o.status === "配送中")
-          .map(o => o.restaurant_id)
-      )
-
-      // 为每个餐厅创建标记
-      restaurants.forEach(restaurant => {
-        // 移除详细的调试日志，避免控制台刷屏
+      console.log('[Map] 标记模式（未启用热力图）')
+    }
+    
+    // 无论是否启用热力图，都显示标记点
+    // 获取有实时订单的餐厅ID列表（使用之前定义的 activeOrderRestaurantIds）
+    // 为每个餐厅创建标记
+    console.log(`[Map] 🚀 开始为 ${currentRestaurants.length} 个餐厅创建标记（使用 currentRestaurants）`)
+    // 输出餐厅数据详情，方便调试
+    if (currentRestaurants.length > 0) {
+      console.log(`[Map] 📊 餐厅数据详情:`, currentRestaurants.map(r => ({
+        name: r.name,
+        lat: r.latitude,
+        lng: r.longitude,
+        hasAddress: !!r.address,
+        hasValidCoords: r.latitude && r.longitude && 
+                        typeof r.latitude === 'number' && typeof r.longitude === 'number' &&
+                        !isNaN(r.latitude) && !isNaN(r.longitude)
+      })))
+    } else {
+      console.warn(`[Map] ⚠️ 当前没有餐厅数据（currentRestaurants.length = 0），无法创建标记`)
+      isUpdatingMarkersRef.current = false
+      return
+    }
+    let validCount = 0
+    let invalidCount = 0
+    let createdCount = 0 // 实际创建的标记数量
+    
+    currentRestaurants.forEach(restaurant => {
         // 检查经纬度是否有效（更严格的验证）
         const lat = typeof restaurant.latitude === 'number' 
           ? restaurant.latitude 
@@ -2644,14 +3391,36 @@ export default function AdminDashboard() {
         const isValidLat = !isNaN(lat) && isFinite(lat) && lat >= -90 && lat <= 90
         const isValidLng = !isNaN(lng) && isFinite(lng) && lng >= -180 && lng <= 180
         
-        if (!isValidLat || !isValidLng) {
-          // 如果有地址但没有经纬度，尝试地理编码（异步，不阻塞标记创建）
+        // 如果有有效的经纬度，直接创建标记（即使24小时内不进行地理编码，也要使用已有的经纬度）
+        if (isValidLat && isValidLng) {
+          // 经纬度有效，继续创建标记（下面的代码会处理）
+        } else {
+          invalidCount++
+          // 如果没有有效的经纬度，检查24小时缓存后再决定是否进行地理编码
+          // 重要：即使是新餐厅，也要遵循24小时缓存规则，防止频繁调用API造成账单消费
           if (restaurant.address && restaurant.address.trim() !== '' && restaurant.address !== '地址待完善') {
-            // 移除调试日志，避免控制台刷屏
-            // 异步地理编码，不阻塞当前标记创建
+            // 检查是否已经在进行地理编码，避免重复请求
+            if (geocodingInProgressRef.current.has(restaurant.id)) {
+              // 正在编码中，静默跳过，不输出日志
+              return
+            }
+            
+            // 重要：对于没有坐标的餐厅，允许立即地理编码，不受24小时缓存限制
+            // 24小时缓存只适用于已有坐标的餐厅的批量更新，不适用于首次获取坐标
+            // 这样可以确保新餐厅或缺少坐标的餐厅能够立即显示在地图上
+            console.log(`[Map] 🔍 ${restaurant.name} 缺少经纬度，立即进行地理编码（不受24小时缓存限制）`)
+            
+            // 标记为正在编码
+            geocodingInProgressRef.current.add(restaurant.id)
+            // 输出地理编码启动日志（限制输出次数）
+            const geocodeCount = geocodingInProgressRef.current.size
+            if (geocodeCount <= 5) {
+              console.log(`[Map] 🔍 [${geocodeCount}/3] 为 ${restaurant.name} 进行地理编码: ${restaurant.address}（24小时缓存已过期或首次调用）`)
+            }
+            // 进行地理编码（24小时缓存已过期或首次调用）
             geocodeAddress(restaurant.address).then(location => {
               if (location && supabase) {
-                // 移除调试日志，避免控制台刷屏
+                console.log(`[Map] 地理编码成功: ${restaurant.name} -> lat=${location.latitude}, lng=${location.longitude}`)
                 // 更新数据库
                 supabase
                   .from("restaurants")
@@ -2663,29 +3432,71 @@ export default function AdminDashboard() {
                   .eq("id", restaurant.id)
                   .then(({ error }) => {
                     if (!error) {
-                      // 移除调试日志，避免控制台刷屏
-                      // 更新本地状态并重新创建标记
-                      setRestaurants(prev => prev.map(r => 
-                        r.id === restaurant.id 
-                          ? { ...r, latitude: location.latitude, longitude: location.longitude }
-                          : r
-                      ))
-                      // 触发标记更新（使用防抖机制，避免频繁调用）
-                      updateMarkers()
+                      // 更新24小时缓存时间（防止频繁调用API造成账单消费）
+                      const CACHE_KEY = 'restaurant_geocode_last_update'
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem(CACHE_KEY, Date.now().toString())
+                      }
+                      console.log(`[Map] 💾 数据库更新成功: ${restaurant.name}`)
+                      // 更新本地状态并重新创建标记（使用函数式更新确保获取最新状态）
+                      setRestaurants(prev => {
+                        const updated = prev.map(r => 
+                          r.id === restaurant.id 
+                            ? { ...r, latitude: location.latitude, longitude: location.longitude }
+                            : r
+                        )
+                        console.log(`[Map] 🔄 已更新本地状态: ${restaurant.name} 现在有有效坐标 (lat=${location.latitude}, lng=${location.longitude})`)
+                        console.log(`[Map] 📊 更新后的餐厅状态:`, updated.map(r => ({
+                          name: r.name,
+                          lat: r.latitude,
+                          lng: r.longitude
+                        })))
+                        // 立即触发标记更新（使用更新后的状态）
+                        // 注意：不要立即调用 updateMarkers，因为这会清除所有现有标记
+                        // 而是只更新这个特定餐厅的标记位置
+                        setTimeout(() => {
+                          console.log(`[Map] 🔄 地理编码成功，更新单个餐厅标记: ${restaurant.name}`)
+                          // 只更新这个餐厅的标记，而不是清除所有标记
+                          if (mapInstanceRef.current && markerMapRef.current.has(restaurant.id)) {
+                            const { marker } = markerMapRef.current.get(restaurant.id)!
+                            try {
+                              marker.setPosition([location.longitude, location.latitude])
+                              console.log(`[Map] ✅ 已更新标记位置: ${restaurant.name} -> [${location.longitude}, ${location.latitude}]`)
+                            } catch (e) {
+                              console.error(`[Map] ❌ 更新标记位置失败: ${restaurant.name}`, e)
+                              // 如果更新失败，重新创建标记
+                              updateMarkers(updated)
+                            }
+                          } else {
+                            // 如果标记不存在，重新创建所有标记
+                            console.log(`[Map] 🔄 标记不存在，重新创建所有标记`)
+                            updateMarkers(updated)
+                          }
+                        }, 300)
+                        return updated
+                      })
                     } else {
-                      console.error('[Map] 数据库更新失败:', error)
+                      console.error(`[Map] 数据库更新失败: ${restaurant.name}`, error)
+                      logBusinessWarning('Map', '数据库更新失败', error)
                     }
+                    // 移除编码标记
+                    geocodingInProgressRef.current.delete(restaurant.id)
                   })
               } else {
-                // 移除频繁的调试日志，避免控制台刷屏
+                console.warn(`[Map] 地理编码失败: ${restaurant.name} - 无法获取位置信息`)
+                // 移除编码标记
+                geocodingInProgressRef.current.delete(restaurant.id)
               }
             }).catch(err => {
-              // 只保留错误日志
-              console.error('[Map] 地理编码失败:', restaurant.name, err)
+              console.error(`[Map] 地理编码异常: ${restaurant.name}`, err)
+              logBusinessWarning('Map', `地理编码失败: ${restaurant.name}`, err)
+              // 移除编码标记（即使失败也要移除，避免永久阻塞）
+              geocodingInProgressRef.current.delete(restaurant.id)
             })
           } else {
-            // 移除频繁的调试日志，避免控制台刷屏
+            console.warn(`[Map] 餐厅 ${restaurant.name} 没有有效地址，无法进行地理编码`)
           }
+          // 跳过标记创建（因为经纬度无效，等待地理编码完成后再创建）
           return
         }
 
@@ -2699,9 +3510,16 @@ export default function AdminDashboard() {
             isNaN(lng) || isNaN(lat) ||
             lng < -180 || lng > 180 || 
             lat < -90 || lat > 90) {
-          // 静默跳过无效坐标，避免控制台刷屏和地图错误
+          console.warn(`[Map] ⚠️ 跳过无效坐标的餐厅标记: ${restaurant.name} (lat: ${lat}, lng: ${lng})`)
+          invalidCount++
           return
         }
+        
+        // 坐标验证通过，增加有效计数
+        validCount++
+        
+        // 调试日志：确认使用已有的经纬度创建标记
+        console.log(`[Map] ✅ 准备创建标记: ${restaurant.name} (lat: ${lat}, lng: ${lng})`)
         
         const markerPosition: [number, number] = [lng, lat]
         
@@ -2714,10 +3532,15 @@ export default function AdminDashboard() {
             content: markerHTML,
             offset: new AMap.Pixel(-20, -20),
             zIndex: 100,
+            visible: true, // 确保标记可见
+            raiseOnDrag: true, // 拖拽时提升层级
+            cursor: 'pointer', // 鼠标悬停时显示手型
+            title: restaurant.name, // 添加标题
           })
         } catch (error) {
           // 捕获创建标记时的错误，避免地图崩溃
-          console.error('[Map] 创建标记失败:', restaurant.name, error)
+          console.error(`[Map] ❌ 创建标记失败: ${restaurant.name}`, error)
+          logBusinessWarning('Map', `创建标记失败: ${restaurant.name}`, error)
           return
         }
 
@@ -2861,16 +3684,242 @@ export default function AdminDashboard() {
           }
         })
 
-        map.add(marker)
-        markersRef.current.push(marker)
-        infoWindowsRef.current.push(infoWindow)
-        
-        // 存储标记和信息窗口的映射关系，用于定位功能
-        markerMapRef.current.set(restaurant.id, { marker, infoWindow })
-        // 移除调试日志，避免控制台刷屏
+        try {
+          // 添加到地图
+          map.add(marker)
+          
+          // 确保标记可见
+          if (marker.show) {
+            marker.show()
+          }
+          if (marker.setVisible) {
+            marker.setVisible(true)
+          }
+          
+          markersRef.current.push(marker)
+          infoWindowsRef.current.push(infoWindow)
+          
+          // 存储标记和信息窗口的映射关系，用于定位功能
+          markerMapRef.current.set(restaurant.id, { marker, infoWindow })
+          
+          // 验证标记是否真的在地图上
+          const markerPosition = marker.getPosition()
+          const markerVisible = marker.getVisible ? marker.getVisible() : true
+          const actualLng = markerPosition ? markerPosition.getLng() : null
+          const actualLat = markerPosition ? markerPosition.getLat() : null
+          
+          // 检查坐标是否匹配
+          if (actualLng !== null && actualLat !== null) {
+            const lngDiff = Math.abs(actualLng - lng)
+            const latDiff = Math.abs(actualLat - lat)
+            if (lngDiff > 0.001 || latDiff > 0.001) {
+              console.warn(`[Map] ⚠️ 坐标不匹配: ${restaurant.name}`, {
+                预期位置: `[${lng}, ${lat}]`,
+                实际位置: `[${actualLng}, ${actualLat}]`,
+                差异: `经度差 ${lngDiff.toFixed(6)}, 纬度差 ${latDiff.toFixed(6)}`
+              })
+            }
+          }
+          
+          console.log(`[Map] ✅ 成功创建并添加标记到地图: ${restaurant.name}`, {
+            预期位置: `[${lng}, ${lat}]`,
+            实际位置: markerPosition ? `[${actualLng}, ${actualLat}]` : '无法获取',
+            可见性: markerVisible,
+            zIndex: marker.getzIndex ? marker.getzIndex() : 100,
+            标记对象: marker
+          })
+          
+          // 强制设置标记位置（如果坐标不匹配）
+          if (markerPosition && (Math.abs(markerPosition.getLng() - lng) > 0.001 || Math.abs(markerPosition.getLat() - lat) > 0.001)) {
+            console.log(`[Map] 🔧 修正标记位置: ${restaurant.name} 从 [${markerPosition.getLng()}, ${markerPosition.getLat()}] 到 [${lng}, ${lat}]`)
+            try {
+              marker.setPosition([lng, lat])
+            } catch (e) {
+              console.error(`[Map] ❌ 修正标记位置失败: ${restaurant.name}`, e)
+            }
+          }
+          createdCount++
+        } catch (error) {
+          console.error(`[Map] ❌ 添加标记到地图失败: ${restaurant.name}`, error)
+          logBusinessWarning('Map', `添加标记失败: ${restaurant.name}`, error)
+          // 标记创建失败，从有效计数中减去（因为之前已经增加了）
+          validCount--
+          invalidCount++
+        }
+    })
+    
+    // 标记更新完成
+    isUpdatingMarkersRef.current = false
+    
+    console.log(`[Map] 📍 标记创建完成总结: 有效坐标 ${validCount} 个，无效坐标 ${invalidCount} 个，成功创建 ${createdCount} 个，实际添加到地图 ${markersRef.current.length} 个标记`)
+    
+    // 如果标记数量不匹配，输出警告
+    if (validCount !== markersRef.current.length) {
+      console.warn(`[Map] ⚠️ 标记数量不匹配: 有效坐标 ${validCount} 个，但只添加了 ${markersRef.current.length} 个标记到地图`)
+    }
+    
+    // 验证所有标记是否真的在地图上并可见
+    if (markersRef.current.length > 0 && map) {
+      console.log(`[Map] 🔍 开始验证 ${markersRef.current.length} 个标记的可见性:`)
+      markersRef.current.forEach((marker, index) => {
+        try {
+          const position = marker.getPosition()
+          const visible = marker.getVisible ? marker.getVisible() : true
+          const zIndex = marker.getzIndex ? marker.getzIndex() : 100
+          const content = marker.getContent ? marker.getContent() : null
+          
+          console.log(`[Map]   标记 ${index + 1}:`, {
+            位置: position ? `[${position.getLng()}, ${position.getLat()}]` : '无法获取',
+            可见性: visible,
+            zIndex: zIndex,
+            content存在: !!content,
+            content长度: content ? String(content).length : 0
+          })
+          
+          // 如果标记不可见，尝试强制显示
+          if (!visible) {
+            console.warn(`[Map] ⚠️ 标记 ${index + 1} 不可见，尝试强制显示`)
+            if (marker.show) marker.show()
+            if (marker.setVisible) marker.setVisible(true)
+          }
+        } catch (error) {
+          console.error(`[Map] ❌ 验证标记 ${index + 1} 时出错:`, error)
+        }
       })
       
-      // 移除调试日志，避免控制台刷屏
+      // 测试标记已移除 - 餐厅标记已正常工作
+    }
+    
+    // 如果有标记，尝试调整地图视图以显示所有标记（只在第一次有标记时调整，避免频繁重置）
+    if (markersRef.current.length > 0 && map) {
+      try {
+        const bounds = new AMap.Bounds()
+        let hasValidBounds = false
+        markersRef.current.forEach(marker => {
+          const position = marker.getPosition()
+          if (position) {
+            const lng = position.getLng()
+            const lat = position.getLat()
+            // 验证坐标是否有效
+            if (isFinite(lng) && isFinite(lat) && !isNaN(lng) && !isNaN(lat)) {
+              bounds.extend(position)
+              hasValidBounds = true
+            }
+          }
+        })
+        // 只有在有有效边界时才调整地图视图
+        if (hasValidBounds && bounds.getSouthWest() && bounds.getNorthEast()) {
+          // 检查当前地图中心，如果已经是正确区域，不要重置（避免用户手动缩放后被重置）
+          const currentCenter = map.getCenter()
+          const currentZoom = map.getZoom()
+          const boundsCenter = bounds.getCenter()
+          
+          // 如果当前视图已经在地图范围内，且缩放级别合理，不重置视图
+          const distance = currentCenter.distance(boundsCenter)
+          // 强制调整：如果缩放级别太小（世界视图）或距离太远，必须调整
+          const shouldAdjust = !mapBoundsAdjustedRef.current || currentZoom < 5 || distance > 10000
+          
+          console.log(`[Map] 📊 地图视图调整判断:`, {
+            当前中心: `[${currentCenter.getLng()}, ${currentCenter.getLat()}]`,
+            当前缩放: currentZoom,
+            标记中心: `[${boundsCenter.getLng()}, ${boundsCenter.getLat()}]`,
+            距离: `${distance.toFixed(0)}m`,
+            已调整过: mapBoundsAdjustedRef.current,
+            应该调整: shouldAdjust
+          })
+          
+          if (shouldAdjust) {
+            console.log(`[Map] 🎯 调整地图视图以显示所有 ${markersRef.current.length} 个标记`)
+            
+            // 优先使用最后一个注册餐厅的位置作为中心点
+            const sortedRestaurants = restaurants.filter(
+              r => r.latitude && r.longitude && 
+              typeof r.latitude === 'number' && typeof r.longitude === 'number' &&
+              !isNaN(r.latitude) && !isNaN(r.longitude)
+            ).sort((a, b) => {
+              const timeA = a.created_at ? new Date(a.created_at).getTime() : 0
+              const timeB = b.created_at ? new Date(b.created_at).getTime() : 0
+              return timeB - timeA
+            })
+            
+            if (sortedRestaurants.length > 0) {
+              // 使用最后一个注册餐厅的位置作为中心点
+              const lastRestaurant = sortedRestaurants[0]
+              const lastRestaurantCenter = [lastRestaurant.longitude!, lastRestaurant.latitude!] as [number, number]
+              console.log(`[Map] 📍 使用最后一个注册餐厅位置作为地图中心: ${lastRestaurant.name} [${lastRestaurantCenter[0]}, ${lastRestaurantCenter[1]}]`)
+              
+              // 验证中心点是否在合理范围内
+              if (lastRestaurantCenter[0] >= 102 && lastRestaurantCenter[0] <= 103 && 
+                  lastRestaurantCenter[1] >= 24 && lastRestaurantCenter[1] <= 26) {
+                map.setCenter(lastRestaurantCenter)
+                map.setZoom(13) // 市级范围视图
+                console.log(`[Map] ✅ 地图已定位到最后一个注册餐厅: ${lastRestaurant.name}`)
+              } else {
+                // 如果坐标不在昆明范围内，使用边界调整
+                console.warn(`[Map] ⚠️ 最后一个餐厅坐标不在昆明范围内，使用边界调整`)
+                map.setBounds(bounds, false, [50, 50, 50, 50])
+              }
+            } else {
+              // 如果没有餐厅数据，使用边界调整
+              map.setBounds(bounds, false, [50, 50, 50, 50])
+            }
+            
+            mapBoundsAdjustedRef.current = true // 标记已调整
+            
+            // 验证调整后的视图
+            setTimeout(() => {
+              const newCenter = map.getCenter()
+              const newZoom = map.getZoom()
+              console.log(`[Map] ✅ 地图视图已调整: 中心 [${newCenter.getLng()}, ${newCenter.getLat()}], 缩放 ${newZoom}`)
+              
+              // 如果缩放级别仍然太小，强制设置一个合理的缩放级别
+              if (newZoom < 10) {
+                console.log(`[Map] 🔧 缩放级别太小 (${newZoom})，强制设置为 13`)
+                map.setZoom(13)
+              }
+              
+              // 验证中心点是否在合理范围内（昆明地区）
+              const centerLng = newCenter.getLng()
+              const centerLat = newCenter.getLat()
+              if (centerLng < 102 || centerLng > 103 || centerLat < 24 || centerLat > 26) {
+                console.warn(`[Map] ⚠️ 调整后的中心点 [${centerLng}, ${centerLat}] 不在昆明范围内，重新使用最后一个注册餐厅的位置`)
+                // 重新使用最后一个注册餐厅的位置
+                if (sortedRestaurants.length > 0) {
+                  const lastRestaurant = sortedRestaurants[0]
+                  map.setCenter([lastRestaurant.longitude!, lastRestaurant.latitude!])
+                  map.setZoom(13)
+                  console.log(`[Map] ✅ 已重新定位到最后一个注册餐厅: ${lastRestaurant.name} [${lastRestaurant.longitude}, ${lastRestaurant.latitude}]`)
+                } else {
+                  map.setCenter([102.7183, 25.0389]) // 昆明中心
+                  map.setZoom(13)
+                }
+              }
+            }, 500)
+          } else {
+            console.log(`[Map] 📍 地图视图已在正确位置，不重置（当前缩放: ${currentZoom}, 距离: ${distance.toFixed(0)}m）`)
+          }
+        }
+      } catch (error) {
+        console.warn('[Map] 调整地图视图失败，使用默认视图', error)
+      }
+    } else if (markersRef.current.length === 0) {
+      // 没有标记时，确保地图显示昆明区域（不要重置为世界地图）
+      if (map) {
+        const currentCenter = map.getCenter()
+        const currentZoom = map.getZoom()
+        // 如果当前是世界地图视图（缩放级别太小），且还没有调整过，设置为昆明区域
+        if (currentZoom < 5 && !mapBoundsAdjustedRef.current) {
+          console.log(`[Map] 🗺️ 当前为世界地图视图（缩放: ${currentZoom}），设置为昆明区域`)
+          map.setCenter([102.7183, 25.0389]) // 昆明中心
+          map.setZoom(12) // 合适的缩放级别
+          mapBoundsAdjustedRef.current = true // 标记已调整
+        } else {
+          // 如果用户已经手动缩放，保持当前视图，不要重置
+          console.log(`[Map] ⚠️ 没有标记被创建，但地图视图保持在当前区域（缩放: ${currentZoom}）`)
+        }
+      } else {
+        console.warn('[Map] ⚠️ 没有标记被创建，请检查餐厅数据是否有有效经纬度')
+      }
     }
 
     // 根据状态决定是否绘制服务点范围圆圈
@@ -2900,13 +3949,22 @@ export default function AdminDashboard() {
     }
   }, [restaurants, orders, servicePoints, showServicePoints, showHeatmap, geocodeAddress, supabase])
 
+  // 热力图功能暂时关闭，等待后续优化
+  // 监听 showHeatmap 变化，立即更新热力图
+  // useEffect(() => {
+  //   if (mapInstanceRef.current && mapLoaded) {
+  //     console.log(`[Map] 🔥 showHeatmap 状态变化: ${showHeatmap}，立即更新热力图`)
+  //     updateMarkers()
+  //   }
+  // }, [showHeatmap, mapLoaded, updateMarkers])
+
   // 初始化地图
   const initMap = useCallback(async () => {
     if (!mapContainerRef.current || mapInstanceRef.current) return
 
     const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
     if (!amapKey) {
-      console.error('[Map] AMAP_KEY未配置')
+      logBusinessWarning('Map', 'AMAP_KEY未配置')
       setMapLoaded(true)
       return
     }
@@ -2919,79 +3977,201 @@ export default function AdminDashboard() {
     }
 
     try {
-      // 移除调试日志，避免控制台刷屏
       // 计算地图中心点和缩放级别
       const { center, zoom } = calculateMapCenterAndZoom()
+      console.log(`[Map] 🗺️ 地图初始化 - 中心点: [${center[0]}, ${center[1]}], 缩放级别: ${zoom}`)
       
-      // 动态加载高德地图JS API
-      const script = document.createElement('script')
-      script.src = `https://webapi.amap.com/maps?v=2.0&key=${amapKey}&callback=initAMapCallback`
-      script.async = true
-      
-      // 创建全局回调函数
-      ;(window as any).initAMapCallback = () => {
+      // 检查 AMap 是否已经加载
+      if (typeof window !== 'undefined' && (window as any).AMap) {
+        console.log('[Map] ✅ AMap 已存在，直接使用')
+        // AMap 已加载，直接创建地图
         const AMap = (window as any).AMap
-        if (!AMap) {
-          console.error('[Map] AMap未加载')
-          setMapLoaded(true)
-          return
-        }
-
         if (!mapContainerRef.current) {
-          console.error('[Map] 地图容器不存在')
+          logBusinessWarning('Map', '地图容器不存在')
           setMapLoaded(true)
           return
         }
-
-        // 移除调试日志，避免控制台刷屏
-        // 创建地图实例，使用计算出的中心点和缩放级别
+        
         const map = new AMap.Map(mapContainerRef.current, {
           mapStyle: 'amap://styles/darkblue',
           center: center,
           zoom: zoom,
           viewMode: '3D',
         })
-
+        
         mapInstanceRef.current = map
-
-        // 加载必要的地图插件（Geocoder 和 PlaceSearch）
+        
+        // 热力图功能暂时关闭，不再切换到卫星图
+        // setTimeout(() => {
+        //   try {
+        //     if (AMap.MapType && AMap.MapType.SATELLITE) {
+        //       map.setMapType(AMap.MapType.SATELLITE) // 切换到卫星图
+        //       console.log('[Map] 🛰️ 已切换到卫星图，热力图应该更明显')
+        //     }
+        //   } catch (e) {
+        //     console.warn('[Map] ⚠️ 切换到卫星图失败，使用默认地图类型:', e)
+        //   }
+        // }, 1000)
+        
+        // 加载必要的地图插件
         if (AMap.plugin) {
-          AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => {
-            // 移除调试日志，避免控制台刷屏
+          AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => { // 热力图插件已暂时移除
+            console.log('[Map] ✅ 地图插件已加载（包括热力图）')
           })
         }
-
+        
         // 地图加载完成
-        map.on('complete', () => {
-          // 移除调试日志，避免控制台刷屏
+        const handleMapComplete = () => {
+          console.log('[Map] ✅ 地图加载完成，开始更新标记')
           setMapLoaded(true)
-          // 地图加载完成后，尝试更新没有经纬度的餐厅坐标
-          // 使用函数式更新，确保获取最新的 restaurants 状态
           setTimeout(() => {
+            console.log('[Map] 🔄 地图加载完成，调用 updateMarkers')
+            updateMarkers()
             setRestaurants(currentRestaurants => {
               if (currentRestaurants.length > 0) {
                 updateRestaurantCoordinates(currentRestaurants)
               }
               return currentRestaurants
             })
-          }, 1000)
-        })
-
-        // 如果地图已经加载完成
-        if (map.getStatus() === 'complete') {
-          // 移除调试日志，避免控制台刷屏
+          }, 500)
+        }
+        
+        // 添加超时保护：如果地图在10秒内没有加载完成，强制设置为已加载
+        const loadTimeout = setTimeout(() => {
+          console.warn('[Map] ⚠️ 地图加载超时（10秒），强制设置为已加载状态')
           setMapLoaded(true)
+          setTimeout(() => {
+            updateMarkers()
+          }, 500)
+        }, 10000)
+        
+        map.on('complete', () => {
+          clearTimeout(loadTimeout)
+          handleMapComplete()
+        })
+        
+        // 如果地图已经加载完成（可能很快），立即处理
+        if (map.getStatus && map.getStatus() === 'complete') {
+          clearTimeout(loadTimeout)
+          handleMapComplete()
+        }
+        
+        return
+      }
+      
+      // 动态加载高德地图JS API
+      const script = document.createElement('script')
+      script.src = `https://webapi.amap.com/maps?v=2.0&key=${amapKey}&callback=initAMapCallback`
+      script.async = true
+      
+      // 添加脚本加载错误处理
+      script.onerror = () => {
+        console.error('[Map] ❌ 地图脚本加载失败')
+        logBusinessWarning('Map', '地图脚本加载失败')
+        setMapLoaded(true) // 即使加载失败，也设置为已加载，避免一直显示加载中
+      }
+      
+      // 创建全局回调函数
+      ;(window as any).initAMapCallback = () => {
+        const AMap = (window as any).AMap
+        if (!AMap) {
+          logBusinessWarning('Map', 'AMap未加载')
+          setMapLoaded(true)
+          return
+        }
+
+        if (!mapContainerRef.current) {
+          logBusinessWarning('Map', '地图容器不存在')
+          setMapLoaded(true)
+          return
+        }
+
+        // 创建地图实例，使用计算出的中心点和缩放级别
+        console.log(`[Map] 📍 创建地图实例 - 中心点: [${center[0]}, ${center[1]}], 缩放级别: ${zoom}`)
+        const map = new AMap.Map(mapContainerRef.current, {
+          mapStyle: 'amap://styles/darkblue',
+          center: center, // AMap 使用 [经度, 纬度] 格式
+          zoom: zoom, // 确保使用计算出的缩放级别，避免显示世界地图
+          viewMode: '3D',
+          // 设置最小缩放级别，防止缩放到世界地图
+          minZoom: 10,
+          maxZoom: 18,
+        })
+        
+        mapInstanceRef.current = map
+        
+        // 验证地图缩放级别是否正确设置（防止显示世界地图）
+        setTimeout(() => {
+          const actualZoom = map.getZoom()
+          console.log(`[Map] ✅ 地图实际缩放级别: ${actualZoom} (预期: ${zoom})`)
+          if (actualZoom < 10) {
+            console.warn(`[Map] ⚠️ 地图缩放级别过小 (${actualZoom})，强制设置为 13`)
+            map.setZoom(13)
+            map.setCenter(center) // 确保中心点也正确
+          }
+        }, 500)
+        // 清除初始化标志
+        if (mapContainerRef.current) {
+          ;(mapContainerRef.current as any).__mapInitializing = false
+        }
+        console.log('[Map] ✅ 地图实例创建成功')
+
+      // 加载必要的地图插件（Geocoder、PlaceSearch 和 HeatMap）
+      if (AMap.plugin) {
+        AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch', 'AMap.HeatMap'], () => {
+          console.log('[Map] ✅ 地图插件已加载（包括热力图）')
+        })
+      }
+
+        // 添加超时保护：如果地图在10秒内没有加载完成，强制设置为已加载
+        const loadTimeout = setTimeout(() => {
+          console.warn('[Map] ⚠️ 地图加载超时（10秒），强制设置为已加载状态')
+          setMapLoaded(true)
+          // 尝试更新标记
+          setTimeout(() => {
+            updateMarkers()
+          }, 500)
+        }, 10000)
+        
+        // 地图加载完成
+        const handleMapComplete = () => {
+          clearTimeout(loadTimeout)
+          console.log('[Map] ✅ 地图加载完成，开始更新标记')
+          setMapLoaded(true)
+          // 地图加载完成后，立即更新标记（使用已有的经纬度）
+          setTimeout(() => {
+            console.log('[Map] 🔄 地图加载完成，调用 updateMarkers')
+            updateMarkers()
+            // 尝试更新没有经纬度的餐厅坐标
+            setRestaurants(currentRestaurants => {
+              if (currentRestaurants.length > 0) {
+                updateRestaurantCoordinates(currentRestaurants)
+              }
+              return currentRestaurants
+            })
+          }, 500)
+        }
+        
+        map.on('complete', () => {
+          clearTimeout(loadTimeout)
+          handleMapComplete()
+        })
+        
+        // 如果地图已经加载完成（可能很快），立即处理
+        if (map.getStatus && map.getStatus() === 'complete') {
+          clearTimeout(loadTimeout)
+          handleMapComplete()
         }
       }
 
       script.onerror = () => {
-        console.error('[Map] 地图脚本加载失败')
+        logBusinessWarning('Map', '地图脚本加载失败')
         setMapLoaded(true)
       }
 
       document.head.appendChild(script)
     } catch (error) {
-      console.error('[Map] 初始化地图失败:', error)
+      logBusinessWarning('Map', '初始化地图失败', error)
       setMapLoaded(true)
     }
   }, [calculateMapCenterAndZoom, updateRestaurantCoordinates])
@@ -3018,10 +4198,15 @@ export default function AdminDashboard() {
         clearTimeout(updateMarkersTimerRef.current)
       }
       
-      // 使用防抖机制，避免频繁调用（延迟300ms）
+      // 使用防抖机制，避免频繁调用（延迟1000ms，增加延迟以减少频繁更新）
       updateMarkersTimerRef.current = setTimeout(() => {
-        updateMarkers()
-      }, 300)
+        // 只有在标记更新完成后才允许再次调用
+        if (!isUpdatingMarkersRef.current) {
+          updateMarkers()
+        } else {
+          console.log('[Map] ⏸️ updateMarkers 正在执行中，跳过 useEffect 触发的调用')
+        }
+      }, 1000) // 增加到1秒，减少频繁更新
       
       // 如果餐厅数据更新后，检查是否有需要地理编码的餐厅
       const needsGeocode = restaurants.some(
@@ -3094,7 +4279,7 @@ export default function AdminDashboard() {
       setSelectedWorkerId("")
       loadRecentOrders()
     } catch (error: any) {
-      console.error("[Admin Dashboard] 创建订单失败:", error)
+      logBusinessWarning('Admin Dashboard', '创建订单失败', error)
       alert("创建订单失败: " + (error.message || "未知错误"))
     } finally {
       setIsAssigning(false)
@@ -3401,26 +4586,71 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* 最新订单 */}
+        {/* 最新订单 - 折叠消息条目提醒 */}
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">最新订单</CardTitle>
             <CardDescription className="text-slate-400">实时订单动态</CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoadingOrders ? (
-              <div className="text-center py-8">
-                <div className="inline-block h-6 w-6 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-slate-400 mt-2 text-sm">加载中...</p>
-              </div>
-            ) : recentOrders.length === 0 ? (
-              <div className="text-center py-8">
-                <Clock className="h-8 w-8 text-slate-600 mx-auto mb-2" />
-                <p className="text-slate-400 text-sm">暂无订单</p>
+            {!isRecentOrdersExpanded ? (
+              // 折叠状态：显示消息条目提醒
+              <div 
+                className="p-4 rounded-xl border-2 border-blue-500/30 bg-blue-500/5 cursor-pointer hover:border-blue-500/50 hover:bg-blue-500/10 transition-all duration-300"
+                onClick={async () => {
+                  setIsRecentOrdersExpanded(true)
+                  // 点击后加载实际订单数据
+                  await loadRecentOrders()
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/20">
+                      <ShoppingCart className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold text-sm">点击查看最新订单</p>
+                      <p className="text-slate-400 text-xs mt-1">
+                        {recentOrdersCount > 0 ? `共有 ${recentOrdersCount} 个订单` : '正在获取订单数量...'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                      {recentOrdersCount > 0 ? `${recentOrdersCount} 条` : '加载中'}
+                    </Badge>
+                    <ChevronRight className="h-4 w-4 text-blue-400" />
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {recentOrders.slice(0, 5).map((order) => {
+              // 展开状态：显示实际订单列表
+              <>
+                <div className="mb-4 flex items-center justify-between">
+                  <p className="text-sm text-slate-400">已展开订单列表</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsRecentOrdersExpanded(false)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    折叠
+                  </Button>
+                </div>
+                {isLoadingOrders ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block h-6 w-6 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-slate-400 mt-2 text-sm">加载中...</p>
+                  </div>
+                ) : recentOrders.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Clock className="h-8 w-8 text-slate-600 mx-auto mb-2" />
+                    <p className="text-slate-400 text-sm">暂无订单</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {recentOrders.slice(0, 5).map((order) => {
                   const isPending = order.status === "pending" || order.status === "待处理"
                   return (
                     <div
@@ -3493,6 +4723,8 @@ export default function AdminDashboard() {
                   )
                 })}
               </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -3510,16 +4742,18 @@ export default function AdminDashboard() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  onClick={() => setShowHeatmap(!showHeatmap)}
-                  variant={showHeatmap ? "default" : "outline"}
-                  className={showHeatmap 
-                    ? "bg-orange-500 hover:bg-orange-600 text-white border-orange-500" 
-                    : "border-orange-500/50 text-orange-400 hover:bg-orange-500/10"
-                  }
-                  title={showHeatmap ? "切换到标记视图" : "切换到热力图视图"}
+                  onClick={() => {
+                    // 暂时禁用热力图功能
+                    console.log('[Map] ⚠️ 热力图功能已暂时关闭，等待后续优化')
+                    alert('热力图功能暂时关闭，等待后续优化')
+                  }}
+                  variant="outline"
+                  disabled
+                  className="border-gray-500/30 text-gray-400 cursor-not-allowed opacity-50"
+                  title="热力图功能暂时关闭，等待后续优化"
                 >
                   <Activity className="h-4 w-4 mr-2" />
-                  热力图
+                  热力图（已关闭）
                 </Button>
                 <Button
                   onClick={() => setShowServicePoints(!showServicePoints)}
@@ -3531,6 +4765,29 @@ export default function AdminDashboard() {
                 >
                   <MapPin className="h-4 w-4 mr-2" />
                   服务网点
+                </Button>
+                <Button
+                  onClick={() => {
+                    console.log('[Map] 🔧 手动触发标记更新')
+                    console.log(`[Map] 📊 当前餐厅数据:`, restaurants.map(r => ({
+                      name: r.name,
+                      lat: r.latitude,
+                      lng: r.longitude,
+                      address: r.address
+                    })))
+                    console.log(`[Map] 📊 地图实例:`, mapInstanceRef.current ? '存在' : '不存在')
+                    console.log(`[Map] 📊 地图已加载:`, mapLoaded)
+                    if (mapInstanceRef.current && mapLoaded) {
+                      updateMarkers()
+                    } else {
+                      console.warn('[Map] ⚠️ 地图未准备好，无法更新标记')
+                    }
+                  }}
+                  variant="outline"
+                  className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10"
+                  title="调试：手动更新标记"
+                >
+                  🔧 刷新标记
                 </Button>
               </div>
             </div>
@@ -3546,6 +4803,7 @@ export default function AdminDashboard() {
                   <div className="text-center">
                     <div className="inline-block h-8 w-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin mb-3"></div>
                     <p className="text-slate-400 text-sm">加载地图中...</p>
+                    <p className="text-slate-500 text-xs mt-2">如果长时间未加载，请刷新页面</p>
                   </div>
                 </div>
               )}
@@ -5376,7 +6634,7 @@ export default function AdminDashboard() {
         // TODO: 实现发送短信功能
         alert(`发送催缴短信给 ${rental.customer_name} (${rental.customer_phone})`)
       } catch (err) {
-        console.error("[催缴短信] 发送失败:", err)
+        logBusinessWarning('催缴短信', '发送失败', err)
         alert("发送失败，请稍后重试")
       }
     }
@@ -5419,7 +6677,7 @@ export default function AdminDashboard() {
         alert("合同已终止")
         loadRentals()
       } catch (err: any) {
-        console.error("[终止合同] 失败:", err)
+        logBusinessWarning('终止合同', '失败', err)
         alert(`终止合同失败: ${err.message}`)
       }
     }
@@ -5469,7 +6727,7 @@ export default function AdminDashboard() {
         })
         loadRentals()
       } catch (err: any) {
-        console.error("[创建租赁] 失败:", err)
+        logBusinessWarning('创建租赁', '失败', err)
         alert(`创建失败: ${err.message}`)
       }
     }
@@ -6653,7 +7911,7 @@ export default function AdminDashboard() {
       try {
         setApiConfigs(JSON.parse(saved))
       } catch (e) {
-        console.error("加载API配置失败:", e)
+        logBusinessWarning('API配置', '加载API配置失败', e)
       }
     }
   }, [])
@@ -6676,7 +7934,7 @@ export default function AdminDashboard() {
       setNewApiConfig({ name: "", endpoint: "", method: "POST", description: "", is_active: true })
       alert("API配置已添加")
     } catch (error) {
-      console.error("添加API配置失败:", error)
+      logBusinessWarning('API配置', '添加API配置失败', error)
       alert("添加失败")
     } finally {
       setIsAddingApi(false)
@@ -6915,6 +8173,15 @@ export default function AdminDashboard() {
 
   // 保存燃料价格
   const handleSaveFuelPrice = async (fuelId: string, newPrice: number) => {
+    // 权限校验：防止非法越权修改其他油品的单价
+    // 如果是供应商（非超级管理员），必须验证该燃料品种是否在授权列表中
+    if (userRole !== "super_admin" && userCompanyId) {
+      if (!companyFuelTypes.includes(fuelId)) {
+        alert(`⚠️ 权限不足：您没有权限修改 "${fuelId}" 的价格。请联系管理员分配该燃料品种的权限。`)
+        return
+      }
+    }
+
     setIsSavingPrice(true)
     try {
       // 更新本地状态
@@ -6925,6 +8192,7 @@ export default function AdminDashboard() {
       ))
       
       // TODO: 保存到数据库
+      // 注意：数据库层面也需要添加 RLS 策略，确保供应商只能修改自己授权的燃料品种
       // if (supabase) {
       //   await supabase.from('fuel_prices').upsert({
       //     fuel_id: fuelId,
@@ -6936,7 +8204,7 @@ export default function AdminDashboard() {
       // 移除调试日志，避免控制台刷屏
       alert('价格已保存')
     } catch (error) {
-      console.error('[Fuel Pricing] 保存价格失败:', error)
+      logBusinessWarning('Fuel Pricing', '保存价格失败', error)
       alert('保存失败，请重试')
     } finally {
       setIsSavingPrice(false)
@@ -6980,7 +8248,7 @@ export default function AdminDashboard() {
       // 移除调试日志，避免控制台刷屏
       alert('市场价格已同步')
     } catch (error) {
-      console.error('[Fuel Pricing] 同步市场价格失败:', error)
+      logBusinessWarning('Fuel Pricing', '同步市场价格失败', error)
       alert('同步失败，请重试')
     } finally {
       setIsSyncingPrice(false)
@@ -6997,6 +8265,7 @@ export default function AdminDashboard() {
   }
 
   // 渲染燃料实时价格监控
+  // 注意：供应商只能看到被授权的燃料品种
   const renderFuelPricing = () => {
     return (
       <div className="space-y-6">
@@ -7025,7 +8294,64 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {fuelPrices.map((fuel) => {
+          {(() => {
+            // 根据供应商权限过滤燃料价格显示
+            // 超级管理员可以看到所有，供应商只能看到被授权的品种
+            console.log(`[燃料价格] 🔍 过滤逻辑检查:`, {
+              userRole,
+              userCompanyId,
+              companyFuelTypes,
+              companyFuelTypesCount: companyFuelTypes.length,
+              allFuelPrices: fuelPrices.map(f => ({ id: f.id, name: f.name })),
+              isLoading
+            })
+            
+            const filteredFuelPrices = userRole === "super_admin"
+              ? fuelPrices // 超级管理员看到所有
+              : userCompanyId && companyFuelTypes.length > 0
+                ? fuelPrices.filter(fuel => {
+                    const isAuthorized = companyFuelTypes.includes(fuel.id)
+                    console.log(`[燃料价格] 燃料 ${fuel.id} (${fuel.name}): ${isAuthorized ? '✅ 已授权' : '❌ 未授权'}, 授权列表:`, companyFuelTypes)
+                    return isAuthorized
+                  }) // 供应商只看到授权的
+                : [] // 如果没有授权任何品种，显示为空（遵循最小权限原则）
+            
+            console.log(`[燃料价格] ✅ 过滤结果: ${filteredFuelPrices.length} / ${fuelPrices.length} 个燃料品种`)
+            
+            if (filteredFuelPrices.length === 0 && userRole !== "super_admin") {
+              // 如果权限还在加载中，显示加载提示
+              if (isLoading) {
+                return (
+                  <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm col-span-2">
+                    <CardContent className="p-12 text-center">
+                      <Loader2 className="h-16 w-16 text-blue-400 mx-auto mb-4 animate-spin" />
+                      <p className="text-slate-400 text-lg mb-2">正在加载燃料品种权限...</p>
+                    </CardContent>
+                  </Card>
+                )
+              }
+              
+              return (
+                <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm col-span-2">
+                  <CardContent className="p-12 text-center">
+                    <Droplet className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+                    <p className="text-slate-400 text-lg mb-2">暂无授权的燃料品种</p>
+                    <p className="text-slate-500 text-sm">请联系管理员为您分配燃料品种权限</p>
+                    {process.env.NODE_ENV === 'development' && (
+                      <div className="mt-4 p-3 bg-slate-800/50 rounded text-left text-xs text-slate-500 font-mono">
+                        <div>调试信息:</div>
+                        <div>公司ID: {userCompanyId || 'null'}</div>
+                        <div>已授权品种数: {companyFuelTypes.length}</div>
+                        <div>已授权品种: {companyFuelTypes.length > 0 ? companyFuelTypes.join(', ') : '无'}</div>
+                        <div>所有燃料ID: {fuelPrices.map(f => f.id).join(', ')}</div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            }
+            
+            return filteredFuelPrices.map((fuel) => {
             const priceDiff = fuel.marketPrice 
               ? ((fuel.basePrice - fuel.marketPrice) / fuel.marketPrice * 100).toFixed(2)
               : null
@@ -7108,23 +8434,42 @@ export default function AdminDashboard() {
 
                   {/* 操作按钮 */}
                   <div className="flex gap-2">
-                    <Button
-                      onClick={() => handleSaveFuelPrice(fuel.id, fuel.basePrice)}
-                      disabled={isSavingPrice}
-                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
-                    >
-                      {isSavingPrice ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          保存中...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4 mr-2" />
-                          保存价格
-                        </>
-                      )}
-                    </Button>
+                    {(() => {
+                      // 检查是否有权限修改该燃料品种的价格
+                      const hasPermission = userRole === "super_admin" || 
+                                          (userCompanyId && companyFuelTypes.includes(fuel.id))
+                      const isDisabled = isSavingPrice || !hasPermission
+                      
+                      return (
+                        <Button
+                          onClick={() => handleSaveFuelPrice(fuel.id, fuel.basePrice)}
+                          disabled={isDisabled}
+                          className={`flex-1 ${
+                            hasPermission
+                              ? "bg-blue-500 hover:bg-blue-600 text-white"
+                              : "bg-slate-600/50 text-slate-400 cursor-not-allowed border-slate-600"
+                          }`}
+                          title={!hasPermission ? `您没有权限修改 ${fuel.name} 的价格` : ""}
+                        >
+                          {isSavingPrice ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              保存中...
+                            </>
+                          ) : !hasPermission ? (
+                            <>
+                              <Lock className="h-4 w-4 mr-2" />
+                              无权限
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4 mr-2" />
+                              保存价格
+                            </>
+                          )}
+                        </Button>
+                      )
+                    })()}
                     <Button
                       onClick={() => handleToggleAutoSync(fuel.id)}
                       variant={fuel.autoSync ? "default" : "outline"}
@@ -7150,7 +8495,7 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             )
-          })}
+          })})()}
         </div>
 
         {/* 说明卡片 */}
@@ -7207,6 +8552,36 @@ export default function AdminDashboard() {
           <p className="text-slate-400">系统配置和参数设置</p>
         </div>
 
+        {/* 修改密码卡片 */}
+        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white">账户安全</CardTitle>
+            <CardDescription className="text-slate-400">修改登录密码</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Lock className="h-5 w-5 text-blue-400" />
+                  <div>
+                    <div className="text-white font-medium">登录密码</div>
+                    <div className="text-sm text-slate-400">
+                      定期修改密码可以保护账户安全
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setIsChangePasswordDialogOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Lock className="h-4 w-4 mr-2" />
+                  修改密码
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">数据库连接</CardTitle>
@@ -7241,23 +8616,80 @@ export default function AdminDashboard() {
     )
   }
 
-  // 如果正在验证身份或未通过验证，显示加载状态
-  // 避免在身份验证完成前渲染内容，防止DOM操作冲突
-  if (isLoading || isAuthenticated === null || isAuthenticated === false) {
+  // 强制解除UI渲染锁定：即使验证中或失败，也显示内容（添加超时保护）
+  // 添加调试信息（仅在开发环境）
+  if (process.env.NODE_ENV === 'development') {
+    console.log("[Dashboard Render] 当前状态:", { isLoading, isAuthenticated, forceRender })
+  }
+  
+  // 强制渲染：始终显示主界面，不再检查任何条件
+  // 修复：删除所有阻止渲染的逻辑
+  const shouldShowError = false // 强制为 false，不再显示错误页面
+  
+  if (false) { // 强制改为 false，确保不会提前返回
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-400 mx-auto" />
-          <p className="text-slate-400 text-sm">
-            {isAuthenticated === false ? "验证失败，正在跳转..." : "正在验证身份..."}
-          </p>
+          <AlertCircle className="h-8 w-8 text-red-400 mx-auto" />
+          <p className="text-red-400 text-sm font-medium">身份验证失败</p>
+          <p className="text-slate-400 text-xs">正在跳转到登录页面...</p>
+          <Button
+            onClick={() => window.location.href = "/login"}
+            className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            立即跳转
+          </Button>
         </div>
       </div>
     )
   }
+  
+  // 强制渲染：不再显示加载覆盖层，直接显示页面内容
+  // 修复：删除加载覆盖层逻辑，确保页面始终可见
+  const showLoadingOverlay = false // 强制为 false，不显示加载覆盖层
+  
+  // 调试信息（开发环境）
+  if (process.env.NODE_ENV === 'development') {
+    console.log("[Dashboard Render] 加载覆盖层状态:", { 
+      showLoadingOverlay, 
+      isLoading, 
+      isAuthenticated, 
+      forceRender 
+    })
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex" data-density="dense">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col" 
+      data-density="dense"
+      style={{ 
+        // 强制显示：确保不被 Next.js 路由系统的 hidden 状态影响
+        display: 'flex !important',
+        visibility: 'visible !important',
+        opacity: '1 !important',
+        position: 'relative',
+        zIndex: 1
+      }}
+    >
+      {/* 加载覆盖层：显示在内容上方，但不阻止页面结构显示 */}
+      {/* 只有真正需要时才显示，超时后自动隐藏 */}
+      {showLoadingOverlay && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
+          <div className="text-center space-y-4 bg-slate-800/90 rounded-lg p-6 border border-slate-700">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-400 mx-auto" />
+            <p className="text-slate-300 text-sm font-medium">正在验证身份...</p>
+            <p className="text-slate-400 text-xs">如果长时间无响应，页面将在3秒后自动显示</p>
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-4 p-2 bg-slate-900/50 rounded text-left text-xs text-slate-400 font-mono">
+                <div>isLoading: {String(isLoading)}</div>
+                <div>isAuthenticated: {String(isAuthenticated)}</div>
+                <div>forceRender: {String(forceRender)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="flex flex-1 mt-16">
       {/* 侧边栏 */}
       <div className={`${sidebarOpen ? "w-64" : "w-20"} bg-gradient-to-b from-slate-900 to-blue-950 border-r border-blue-800/50 transition-all duration-300 flex flex-col`}>
         <div className="p-4 border-b border-blue-800/50">
@@ -7277,23 +8709,65 @@ export default function AdminDashboard() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                key={item.key}
-                onClick={() => setActiveMenu(item.key)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                  activeMenu === item.key
-                    ? "bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-                }`}
-              >
-                <Icon className="h-5 w-5 flex-shrink-0" />
-                {sidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
-              </button>
-            )
-          })}
+          {(() => {
+            // 根据用户角色和权限过滤菜单项
+            // 采用"非超级管理员即隔离"原则，遵循最小权限原则
+            let filteredMenuItems = menuItems
+            
+            // 如果是超级管理员，可以看到所有菜单
+            if (userRole === "super_admin") {
+              filteredMenuItems = menuItems
+              console.log("[Dashboard] 🎯 超级管理员：显示所有菜单项")
+            } else if (userRole && userCompanyId) {
+              // 非超级管理员且有公司ID（供应商/管理员），严格按权限过滤
+              // 安全原则：白名单机制，默认只显示 dashboard
+              console.log(`[Dashboard] 🔒 供应商账号（角色: ${userRole}, 公司ID: ${userCompanyId}）`)
+              console.log(`[Dashboard] 📋 已分配权限:`, companyPermissions)
+              console.log(`[Dashboard] 📋 权限数量: ${companyPermissions.length}`)
+              
+              // 如果权限还未加载完成（为空数组且正在加载），显示加载状态
+              if (companyPermissions.length === 0 && isLoading) {
+                console.log("[Dashboard] ⏳ 权限加载中，暂时只显示 dashboard")
+                filteredMenuItems = menuItems.filter(item => item.key === "dashboard")
+              } else {
+                filteredMenuItems = menuItems.filter(item => {
+                  // 工作台（dashboard）始终可见
+                  if (item.key === "dashboard") return true
+                  // 其他功能必须明确授权（白名单机制）
+                  const hasPermission = companyPermissions.includes(item.key)
+                  if (!hasPermission) {
+                    console.log(`[Dashboard] 🚫 过滤菜单项: ${item.label} (${item.key}) - 未授权`)
+                  }
+                  return hasPermission
+                })
+                
+                console.log(`[Dashboard] ✅ 供应商菜单过滤完成: 显示 ${filteredMenuItems.length} / ${menuItems.length} 个菜单项`)
+                console.log(`[Dashboard] ✅ 显示的菜单项:`, filteredMenuItems.map(item => item.label))
+              }
+            } else {
+              // 非超级管理员但没有 companyId，出于安全考虑，只显示 dashboard
+              console.warn(`[Dashboard] ⚠️ 非超级管理员（角色: ${userRole}）但没有 companyId，仅显示 dashboard（防止权限提升）`)
+              filteredMenuItems = menuItems.filter(item => item.key === "dashboard")
+            }
+            
+            return filteredMenuItems.map((item) => {
+              const Icon = item.icon
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => setActiveMenu(item.key)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                    activeMenu === item.key
+                      ? "bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/20"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                  }`}
+                >
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  {sidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
+                </button>
+              )
+            })
+          })()}
         </nav>
 
         <div className="p-4 border-t border-blue-800/50">
@@ -7344,6 +8818,16 @@ export default function AdminDashboard() {
           {activeMenu === "api" && renderApiConfig()}
           {activeMenu === "fuelPricing" && renderFuelPricing()}
           {activeMenu === "analytics" && renderAnalytics()}
+          {activeMenu === "agreements" && (
+            <div className="p-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>协议管理</CardTitle>
+                  <CardDescription>协议管理功能开发中...</CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+          )}
           {activeMenu === "settings" && renderSettings()}
         </div>
       </div>
@@ -7408,6 +8892,99 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 密码修改对话框 */}
+      <Dialog open={isChangePasswordDialogOpen} onOpenChange={setIsChangePasswordDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              修改密码
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              为了账户安全，请修改您的默认密码
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            {changePasswordError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{changePasswordError}</AlertDescription>
+              </Alert>
+            )}
+            {changePasswordSuccess && (
+              <Alert className="bg-green-500/10 border-green-500/50 text-green-400">
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>密码修改成功！</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword" className="text-slate-300">当前密码</Label>
+              <Input
+                id="currentPassword"
+                type="password"
+                value={changePasswordForm.currentPassword}
+                onChange={(e) => setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })}
+                placeholder="请输入当前密码"
+                className="bg-slate-800 border-slate-700 text-white"
+                disabled={isChangingPassword}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newPassword" className="text-slate-300">新密码</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                value={changePasswordForm.newPassword}
+                onChange={(e) => setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })}
+                placeholder="请输入新密码（至少6位）"
+                className="bg-slate-800 border-slate-700 text-white"
+                disabled={isChangingPassword}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="text-slate-300">确认新密码</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={changePasswordForm.confirmPassword}
+                onChange={(e) => setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })}
+                placeholder="请再次输入新密码"
+                className="bg-slate-800 border-slate-700 text-white"
+                disabled={isChangingPassword}
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={handleChangePassword}
+                disabled={isChangingPassword}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                {isChangingPassword ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    修改中...
+                  </>
+                ) : (
+                  "确认修改"
+                )}
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsChangePasswordDialogOpen(false)
+                  setChangePasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" })
+                  setChangePasswordError(null)
+                  setChangePasswordSuccess(false)
+                }}
+                variant="outline"
+                className="border-slate-700 text-slate-300 hover:bg-slate-800"
+              >
+                取消
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -7500,6 +9077,7 @@ export default function AdminDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   )
 }

@@ -11,6 +11,7 @@ import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 import { requireCapability } from "@/lib/auth/requireCapability"
 import { Capability } from "@/lib/capabilities"
 import { writeAuditLog } from "@/lib/audit"
+import { createOrderStatusNotification } from "@/lib/notifications/create-notification"
 
 /**
  * POST: 配送员接单

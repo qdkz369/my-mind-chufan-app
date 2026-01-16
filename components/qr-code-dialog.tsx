@@ -16,7 +16,7 @@ export function QRCodeDialog({ open, onOpenChange, restaurantId, restaurantName 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="theme-card theme-glass max-w-md">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-foreground">客户身份二维码</DialogTitle>
         </DialogHeader>
@@ -28,14 +28,29 @@ export function QRCodeDialog({ open, onOpenChange, restaurantId, restaurantName 
             </div>
           )}
           {qrValue ? (
-            <div className="p-4 bg-white rounded-lg">
+            <div 
+              className="force-qr-colors rounded-lg"
+              style={{
+                backgroundColor: '#FFFFFF',
+                padding: '16px',
+                borderRadius: '12px',
+                display: 'inline-block',
+                isolation: 'isolate',
+                border: '2px solid #000000',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 4px rgba(255, 255, 255, 0.5)',
+              }}
+            >
               <QRCodeSVG
                 value={qrValue}
-                size={200}
+                size={240}
                 level="H"
                 includeMargin={true}
                 fgColor="#000000"
                 bgColor="#FFFFFF"
+                style={{
+                  display: 'block',
+                  margin: '0 auto',
+                }}
               />
             </div>
           ) : (

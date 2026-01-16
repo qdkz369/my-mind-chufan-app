@@ -1,12 +1,13 @@
 // ACCESS_LEVEL: STAFF_LEVEL
-// ALLOWED_ROLES: staff
+// ALLOWED_ROLES: staff, admin, super_admin
 // CURRENT_KEY: Anon Key (supabase)
 // TARGET_KEY: Anon Key + RLS
-// 说明：只能 staff 调用，必须绑定 worker_id / assigned_to，后续必须使用 RLS 限制只能访问自己数据
+// 说明：staff 调用必须绑定 worker_id / assigned_to，admin/super_admin 可以查看所有数据（但需要数据隔离）
 
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * GET: 获取服务工单列表（维修服务、清洁服务、工程改造）
@@ -27,10 +28,97 @@ export async function GET(request: Request) {
       )
     }
 
+    // 🔒 第一步：获取用户上下文，用于数据隔离
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      console.log("[报修列表API] 用户上下文:", {
+        role: userContext.role,
+        companyId: userContext.companyId,
+        userId: userContext.userId
+      })
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      
+      // 如果是未登录错误，返回 401
+      if (errorMessage.includes("未登录") || errorMessage.includes("无法获取用户")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      
+      // 其他错误，返回 403
+      console.warn("[报修列表API] 获取用户上下文失败:", errorMessage)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
     const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
     const serviceTypeFilter = searchParams.get("service_type") // 服务类型筛选：repair, cleaning, renovation, all
+
+    // 🔒 第二步：数据隔离 - 如果不是超级管理员，需要获取该公司的餐厅ID列表
+    let companyRestaurantIds: string[] | null = null
+    if (userContext.role !== "super_admin" && userContext.companyId) {
+      // 查询该公司的所有餐厅ID
+      const { data: companyRestaurants, error: restaurantError } = await supabase
+        .from("restaurants")
+        .select("id")
+        .eq("company_id", userContext.companyId)
+      
+      if (restaurantError) {
+        console.error("[报修列表API] 查询公司餐厅失败:", restaurantError)
+        return NextResponse.json(
+          {
+            success: false,
+            error: "查询失败",
+            details: restaurantError.message,
+          },
+          { status: 500 }
+        )
+      }
+      
+      companyRestaurantIds = companyRestaurants?.map(r => r.id) || []
+      console.log(`[报修列表API] 🔒 数据隔离：供应商账号（角色: ${userContext.role}, 公司ID: ${userContext.companyId}），只查询 ${companyRestaurantIds.length} 个餐厅的报修订单`)
+      
+      // 如果供应商没有餐厅，直接返回空列表
+      if (companyRestaurantIds.length === 0) {
+        console.log("[报修列表API] 供应商没有关联餐厅，返回空列表")
+        return NextResponse.json({
+          success: true,
+          data: [],
+          debug: {
+            totalOrders: 0,
+            filteredRepairs: 0,
+            audioOrders: 0,
+          },
+        })
+      }
+    } else if (userContext.role !== "super_admin" && !userContext.companyId) {
+      // 非超级管理员但没有 companyId，返回空列表（防止权限提升）
+      console.warn("[报修列表API] ⚠️ 非超级管理员但没有 companyId，返回空列表")
+      return NextResponse.json({
+        success: true,
+        data: [],
+        debug: {
+          totalOrders: 0,
+          filteredRepairs: 0,
+          audioOrders: 0,
+        },
+      })
+    }
 
     // 构建查询 - 直接查询 repair_orders 表（已分离，无需过滤 service_type）
     let query = supabase
@@ -41,8 +129,17 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(500) // 限制查询最近500条订单
     
+    // 🔒 数据隔离：如果不是超级管理员，只查询该公司的餐厅的报修订单
+    if (companyRestaurantIds !== null && companyRestaurantIds.length > 0) {
+      query = query.in("restaurant_id", companyRestaurantIds)
+    }
+    
     // 调试：记录查询条件
-    console.log("[报修列表API] 开始查询", status ? `status=${status}` : "", restaurantId ? `restaurant_id=${restaurantId}` : "")
+    console.log("[报修列表API] 开始查询", 
+      status ? `status=${status}` : "", 
+      restaurantId ? `restaurant_id=${restaurantId}` : "",
+      companyRestaurantIds ? `company_restaurants=${companyRestaurantIds.length}` : "all_restaurants"
+    )
 
     // 权限验证：如果请求头中包含 worker_id，验证工人权限
     const workerId = request.headers.get("x-worker-id")
@@ -55,7 +152,7 @@ export async function GET(request: Request) {
       console.log("[报修列表API] 工人权限验证通过:", authResult.worker.name)
     }
 
-    // 执行查询（先获取所有订单，然后在客户端过滤）
+    // 执行查询
     let { data: allOrders, error } = await query
 
     // 处理查询错误

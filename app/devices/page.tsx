@@ -27,6 +27,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { useFinancialViewPermission } from "@/hooks/use-financial-view-permission"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 export default function DevicesPage() {
   const router = useRouter()
@@ -81,7 +82,7 @@ export default function DevicesPage() {
         }
         setIsLoggedIn(true)
       } catch (error) {
-        console.error("[设备页面] 检查登录状态失败:", error)
+        logBusinessWarning('设备页面', '检查登录状态失败', error)
         setIsLoggedIn(false)
         router.push('/')
       }
@@ -140,7 +141,7 @@ export default function DevicesPage() {
           .order("install_date", { ascending: false })
 
         if (devicesError) {
-          console.error("查询设备失败:", devicesError)
+          logBusinessWarning('设备页面', '查询设备失败', devicesError)
           setError("查询设备失败")
           return
         }
@@ -238,7 +239,7 @@ export default function DevicesPage() {
           setDevices([])
         }
       } catch (err: any) {
-        console.error("加载设备失败:", err)
+        logBusinessWarning('设备页面', '加载设备失败', err)
         setError(err.message || "加载失败")
       } finally {
         setIsLoading(false)
@@ -332,7 +333,7 @@ export default function DevicesPage() {
 
         {/* 错误提示 */}
         {error && !isLoading && !isInitializing && (
-          <Card className="theme-card p-6 mb-6 border-destructive/30 bg-destructive/10">
+          <Card className="glass-breath p-6 mb-6 border-destructive/30 bg-destructive/10">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-destructive" />
               <div>
@@ -347,7 +348,7 @@ export default function DevicesPage() {
         {!isLoading && !isInitializing && !error && (
           <>
             {devices.length === 0 ? (
-              <Card className="theme-card p-8">
+              <Card className="glass-breath p-8">
                 <div className="text-center">
                   <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4 border border-border" style={{ borderRadius: 'var(--radius-card)' }}>
                     <Package className="h-8 w-8 text-muted-foreground" />
@@ -376,7 +377,7 @@ export default function DevicesPage() {
                     {/* ========================================
                         层级 1: Device Facts（设备事实）
                         ======================================== */}
-                    <Card className="theme-card">
+                    <Card semanticLevel="primary_fact" className="glass-breath">
                       <CardHeader>
                         <div className="flex items-start gap-4">
                           <div className="w-12 h-12 bg-primary/20 flex items-center justify-center border border-primary/30 flex-shrink-0" style={{ borderRadius: 'var(--radius-button)' }}>
@@ -450,7 +451,7 @@ export default function DevicesPage() {
                         层级 2: Lease Status（租赁状态）
                         ======================================== */}
                     {device.lease_status && (
-                      <Card className="theme-card border-blue-500/30 bg-blue-500/5">
+                      <Card className="glass-breath border-blue-500/30 bg-blue-500/5">
                         <CardHeader>
                           <div className="flex items-center gap-2">
                             <Building2 className="h-5 w-5 text-blue-400" />

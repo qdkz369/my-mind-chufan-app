@@ -1,0 +1,112 @@
+/**
+ * Decision Budget 标记组件
+ * 
+ * 职责：
+ * - 为页面元素标记决策类型（primary_decision 或 secondary_action）
+ * - 提供运行时验证
+ * - 集成到 React 组件中
+ */
+
+"use client"
+
+import * as React from 'react'
+import { type DecisionType } from './types'
+
+/**
+ * 决策元素上下文
+ */
+export interface DecisionElementContext {
+  /**
+   * 决策ID（唯一标识）
+   */
+  id: string
+
+  /**
+   * 决策类型
+   */
+  type: DecisionType
+
+  /**
+   * 决策描述（用于调试和日志）
+   */
+  description?: string
+}
+
+/**
+ * 决策上下文（React Context）
+ */
+const DecisionContext = React.createContext<DecisionElementContext[]>([])
+
+/**
+ * 决策标记提供者
+ * 
+ * 用于标记页面中的所有决策元素
+ */
+export function DecisionBudgetProvider({
+  children,
+  decisions,
+}: {
+  children: React.ReactNode
+  decisions: DecisionElementContext[]
+}) {
+  return (
+    <DecisionContext.Provider value={decisions}>
+      {children}
+    </DecisionContext.Provider>
+  )
+}
+
+/**
+ * 获取决策上下文
+ * 
+ * @returns 决策元素列表
+ */
+export function useDecisionBudget(): DecisionElementContext[] {
+  return React.useContext(DecisionContext)
+}
+
+/**
+ * 决策元素标记属性
+ */
+export interface DecisionMarkerProps {
+  /**
+   * 决策ID（唯一标识）
+   */
+  decisionId: string
+
+  /**
+   * 决策类型
+   */
+  decisionType: DecisionType
+
+  /**
+   * 决策描述（可选）
+   */
+  decisionDescription?: string
+}
+
+/**
+ * 决策元素标记（HOC）
+ * 
+ * 用于标记组件为决策元素
+ */
+export function withDecisionMarker<P extends object>(
+  Component: React.ComponentType<P>,
+  marker: DecisionMarkerProps
+) {
+  const MarkedComponent = React.forwardRef<any, P>((props, ref) => {
+    return (
+      <div
+        data-decision-id={marker.decisionId}
+        data-decision-type={marker.decisionType}
+        data-decision-description={marker.decisionDescription}
+      >
+        <Component {...props} ref={ref} />
+      </div>
+    )
+  })
+
+  MarkedComponent.displayName = `withDecisionMarker(${Component.displayName || Component.name || 'Component'})`
+
+  return MarkedComponent
+}

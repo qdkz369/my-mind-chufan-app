@@ -1,0 +1,93 @@
+/**
+ * Decision Budget 页面注册表
+ * 
+ * 职责：
+ * - 注册页面的决策预算
+ * - 提供运行时查询接口
+ * - 支持构建时验证
+ */
+
+import {
+  type PageDecisionBudget,
+  type DecisionBudgetValidationResult,
+  validateDecisionBudget,
+} from './types'
+
+/**
+ * 页面决策预算注册表（运行时）
+ */
+const pageBudgetRegistry = new Map<string, PageDecisionBudget>()
+
+/**
+ * 注册页面决策预算
+ * 
+ * @param budget - 页面决策预算
+ */
+export function registerPageBudget(budget: PageDecisionBudget): void {
+  // 验证决策预算
+  const validation = validateDecisionBudget(budget)
+  
+  if (!validation.valid) {
+    console.error(
+      `[Decision Budget] 页面 "${budget.pagePath}" 的决策预算验证失败：`,
+      validation.errors
+    )
+    // ⚠️ 重要：在开发环境下，验证失败会阻止注册（可选）
+    if (process.env.NODE_ENV === 'development') {
+      throw new Error(
+        `[Decision Budget] 页面 "${budget.pagePath}" 的决策预算验证失败：${validation.errors.join(', ')}`
+      )
+    }
+  }
+
+  pageBudgetRegistry.set(budget.pagePath, budget)
+}
+
+/**
+ * 获取页面决策预算
+ * 
+ * @param pagePath - 页面路径
+ * @returns 页面决策预算（如果存在）
+ */
+export function getPageBudget(pagePath: string): PageDecisionBudget | undefined {
+  return pageBudgetRegistry.get(pagePath)
+}
+
+/**
+ * 获取所有页面的决策预算
+ * 
+ * @returns 所有页面的决策预算列表
+ */
+export function getAllPageBudgets(): PageDecisionBudget[] {
+  return Array.from(pageBudgetRegistry.values())
+}
+
+/**
+ * 验证所有已注册的页面决策预算
+ * 
+ * @returns 验证结果列表
+ */
+export function validateAllPageBudgets(): DecisionBudgetValidationResult[] {
+  const budgets = getAllPageBudgets()
+  return budgets.map(validateDecisionBudget)
+}
+
+/**
+ * 检查是否所有页面都通过验证
+ * 
+ * @returns 是否所有页面都通过验证
+ */
+export function areAllPagesValid(): boolean {
+  const results = validateAllPageBudgets()
+  return results.every(result => result.valid)
+}
+
+/**
+ * 获取所有验证错误
+ * 
+ * @returns 所有错误消息列表
+ */
+export function getAllValidationErrors(): string[] {
+  const results = validateAllPageBudgets()
+  return results.flatMap(result => result.errors)
+}

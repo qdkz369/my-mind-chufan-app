@@ -9,9 +9,17 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { Truck, ArrowLeft, CheckCircle2, CreditCard, Smartphone, Wallet, MapPin, Calculator, Navigation, Loader2 } from "lucide-react"
+import { Truck, ArrowLeft, CheckCircle2, CreditCard, Smartphone, Wallet, MapPin, Calculator, Navigation, Loader2, FileText } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { logBusinessWarning } from "@/lib/utils/logger"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 // 液化气和醇基燃料的固定规格
 const bottleSpecs = [5, 15, 50] // KG
@@ -222,6 +230,41 @@ function PaymentContent() {
   } | null>(null)
   const [isLoadingLocations, setIsLoadingLocations] = useState<boolean>(false)
 
+  // 协议查看相关状态
+  const [isAgreementDialogOpen, setIsAgreementDialogOpen] = useState<boolean>(false)
+  const [selectedAgreementType, setSelectedAgreementType] = useState<string | null>(null)
+  const [serviceAgreement, setServiceAgreement] = useState<any>(null)
+  const [paymentAgreement, setPaymentAgreement] = useState<any>(null)
+
+  // 加载协议内容
+  useEffect(() => {
+    const loadAgreements = async () => {
+      try {
+        // 加载服务协议
+        const serviceResponse = await fetch("/api/agreements?type=service&active_only=true")
+        if (serviceResponse.ok) {
+          const serviceData = await serviceResponse.json()
+          if (serviceData.success && serviceData.data && serviceData.data.length > 0) {
+            setServiceAgreement(serviceData.data[0])
+          }
+        }
+
+        // 加载支付协议
+        const paymentResponse = await fetch("/api/agreements?type=payment&active_only=true")
+        if (paymentResponse.ok) {
+          const paymentData = await paymentResponse.json()
+          if (paymentData.success && paymentData.data && paymentData.data.length > 0) {
+            setPaymentAgreement(paymentData.data[0])
+          }
+        }
+      } catch (error) {
+        console.warn("[支付页面] 加载协议失败:", error)
+      }
+    }
+
+    loadAgreements()
+  }, [])
+
   // 从localStorage加载上一次的订单信息
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -267,7 +310,7 @@ function PaymentContent() {
         setIsLoadedFromMemory(true)
       }
     } catch (error) {
-      console.error("加载上次订单信息失败:", error)
+      logBusinessWarning('支付页面', '加载上次订单信息失败', error)
     }
   }, [])
 
@@ -321,7 +364,7 @@ function PaymentContent() {
           }
         }
       } catch (error) {
-        console.error("获取位置信息失败:", error)
+        logBusinessWarning('支付页面', '获取位置信息失败', error)
       } finally {
         setIsLoadingLocations(false)
       }
@@ -343,7 +386,7 @@ function PaymentContent() {
             })
           }
         })
-        .catch((error) => console.error("更新配送员位置失败:", error))
+        .catch((error) => logBusinessWarning('支付页面', '更新配送员位置失败', error))
     }, 30000)
 
     return () => clearInterval(interval)
@@ -451,7 +494,7 @@ function PaymentContent() {
               merchantId: merchantId,
             })
           } catch (error) {
-            console.error("保存商户位置失败:", error)
+            logBusinessWarning('支付页面', '保存商户位置失败', error)
           }
         } catch (error) {
           // 如果API调用失败，使用坐标作为地址
@@ -493,7 +536,7 @@ function PaymentContent() {
               merchantId: merchantId,
             })
           } catch (error) {
-            console.error("保存商户位置失败:", error)
+            logBusinessWarning('支付页面', '保存商户位置失败', error)
           }
         }
       },
@@ -654,7 +697,7 @@ function PaymentContent() {
           localStorage.setItem("lastSuccessfulOrder", JSON.stringify(orderDataToSave))
         }
       } catch (error) {
-        console.error("保存订单信息失败:", error)
+        logBusinessWarning('支付页面', '保存订单信息失败', error)
       }
 
       // 第二步：根据支付方式处理支付
@@ -704,7 +747,7 @@ function PaymentContent() {
         setIsProcessingPayment(false)
       }
     } catch (error: any) {
-      console.error("支付处理失败:", error)
+      logBusinessWarning('支付页面', '支付处理失败', error)
       alert("支付处理失败: " + (error.message || "未知错误"))
       setIsProcessingPayment(false)
     }
@@ -730,7 +773,7 @@ function PaymentContent() {
         </div>
 
         {/* 燃料选择 */}
-        <Card className="theme-card p-6">
+        <Card className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Calculator className="h-5 w-5" />
             选择燃料类型
@@ -1467,12 +1510,84 @@ function PaymentContent() {
               `确认支付 ¥${orderInfo.amount.toFixed(2)}`
             )}
           </Button>
-          <p className="text-xs text-slate-500 text-center mt-2">点击支付即表示同意《服务协议》和《支付协议》</p>
+          <p className="text-xs text-slate-500 text-center mt-2">
+            点击支付即表示同意
+            <button
+              onClick={() => {
+                setSelectedAgreementType("service")
+                setIsAgreementDialogOpen(true)
+              }}
+              className="text-blue-400 hover:text-blue-300 underline mx-1"
+            >
+              《服务协议》
+            </button>
+            和
+            <button
+              onClick={() => {
+                setSelectedAgreementType("payment")
+                setIsAgreementDialogOpen(true)
+              }}
+              className="text-blue-400 hover:text-blue-300 underline mx-1"
+            >
+              《支付协议》
+            </button>
+          </p>
           {process.env.NODE_ENV !== 'production' && selectedPayment === 'alipay' && (
             <p className="text-xs text-orange-400 text-center mt-1">⚠️ 沙箱环境：请使用支付宝沙箱账号进行支付测试</p>
           )}
         </div>
       </div>
+
+      {/* 协议查看弹窗 */}
+      <Dialog open={isAgreementDialogOpen} onOpenChange={setIsAgreementDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white">
+              {selectedAgreementType === "service" ? "服务协议" : "支付协议"}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {selectedAgreementType === "service" 
+                ? serviceAgreement?.version ? `版本 ${serviceAgreement.version}` : ""
+                : paymentAgreement?.version ? `版本 ${paymentAgreement.version}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4">
+            {selectedAgreementType === "service" && serviceAgreement ? (
+              <div className="prose prose-invert max-w-none">
+                {serviceAgreement.content_html ? (
+                  <div 
+                    dangerouslySetInnerHTML={{ __html: serviceAgreement.content_html }}
+                    className="text-slate-300 whitespace-pre-wrap"
+                  />
+                ) : (
+                  <div className="text-slate-300 whitespace-pre-wrap">
+                    {serviceAgreement.content}
+                  </div>
+                )}
+              </div>
+            ) : selectedAgreementType === "payment" && paymentAgreement ? (
+              <div className="prose prose-invert max-w-none">
+                {paymentAgreement.content_html ? (
+                  <div 
+                    dangerouslySetInnerHTML={{ __html: paymentAgreement.content_html }}
+                    className="text-slate-300 whitespace-pre-wrap"
+                  />
+                ) : (
+                  <div className="text-slate-300 whitespace-pre-wrap">
+                    {paymentAgreement.content}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-slate-400 text-center py-8">
+                协议内容加载中...
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <BottomNavigation />
     </main>
   )

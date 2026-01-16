@@ -1,0 +1,26 @@
+/**
+ * Decision Budget 系统导出
+ */
+
+export {
+  type DecisionType,
+  type DecisionElement,
+  type PageDecisionBudget,
+  type DecisionBudgetValidationResult,
+} from './types'
+
+export {
+  validateDecisionBudget,
+  validateMultipleDecisionBudgets,
+  allPagesValid,
+  getAllErrors,
+  getAllWarnings,
+} from './validator'
+
+export {
+  DecisionBudgetProvider,
+  useDecisionBudget,
+  withDecisionMarker,
+  type DecisionElementContext,
+  type DecisionMarkerProps,
+} from './marker'

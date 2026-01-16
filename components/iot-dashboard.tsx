@@ -9,6 +9,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 interface IoTDashboardProps {
   onDeviceClick?: () => void
@@ -23,6 +24,9 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isOnline, setIsOnline] = useState(false)
   const [deviceId, setDeviceId] = useState<string | null>(null)
+  const [deviceCount, setDeviceCount] = useState<number>(0)
+  const [repairResponseRate, setRepairResponseRate] = useState<number>(0)
+  const [deviceRunningDays, setDeviceRunningDays] = useState<number>(0)
 
   // 从 API 获取初始燃料数据
   useEffect(() => {
@@ -75,14 +79,62 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
             setUsageEfficiency(statsData.usage_efficiency || 0)
           }
         }
+
+        // 获取设备数量（从餐厅总览 API）
+        const overviewResponse = await fetch(`/api/facts/restaurant/${restaurantId}/overview`, {
+          headers: {
+            "x-restaurant-id": restaurantId,
+          },
+        })
+        if (overviewResponse.ok) {
+          const overviewData = await overviewResponse.json()
+          if (overviewData.success !== false && overviewData.active_assets !== undefined) {
+            setDeviceCount(overviewData.active_assets || 0)
+          }
+        }
+
+        // 获取报修响应率
+        const repairStatsResponse = await fetch(`/api/facts/restaurant/${restaurantId}/repair-stats`, {
+          headers: {
+            "x-restaurant-id": restaurantId,
+          },
+        })
+        if (repairStatsResponse.ok) {
+          const repairStatsData = await repairStatsResponse.json()
+          if (repairStatsData.success) {
+            setRepairResponseRate(repairStatsData.response_rate || 0)
+          }
+        }
+
+        // 获取设备运行天数
+        const runningDaysResponse = await fetch(`/api/facts/restaurant/${restaurantId}/device-running-days`, {
+          headers: {
+            "x-restaurant-id": restaurantId,
+          },
+        })
+        if (runningDaysResponse.ok) {
+          const runningDaysData = await runningDaysResponse.json()
+          if (runningDaysData.success) {
+            setDeviceRunningDays(runningDaysData.running_days || 0)
+          }
+        }
       } catch (error) {
-        console.error('[IoT Dashboard] 加载燃料数据失败:', error)
+        logBusinessWarning('IoT Dashboard', '加载燃料数据失败', error)
       } finally {
         setIsLoading(false)
       }
     }
 
     loadFuelData()
+    
+    // 设置12小时定时刷新（12小时 = 43200000毫秒）
+    const interval = setInterval(() => {
+      loadFuelData()
+    }, 12 * 60 * 60 * 1000) // 12小时
+    
+    return () => {
+      clearInterval(interval)
+    }
   }, [])
 
   // 使用 Supabase Realtime 订阅 fuel_level 表（带自动重连机制）
@@ -166,7 +218,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
                       setUsageEfficiency(statsData.usage_efficiency || 0)
                     }
                   })
-                  .catch(err => console.error('[IoT Dashboard] 刷新统计数据失败:', err))
+                  .catch(err => logBusinessWarning('IoT Dashboard', '刷新统计数据失败', err))
               }
             }
           )
@@ -178,7 +230,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
               console.log('[IoT Dashboard] Realtime 订阅成功')
             } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
               setIsOnline(false)
-              console.error('[IoT Dashboard] Realtime 订阅失败:', status, err)
+              logBusinessWarning('IoT Dashboard', 'Realtime 订阅失败', { status, err })
               // 自动重连机制
               if (!isUnmounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++
@@ -190,12 +242,12 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
                   }
                 }, RECONNECT_DELAY)
               } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                console.error('[IoT Dashboard] 达到最大重连次数，停止重连')
+                logBusinessWarning('IoT Dashboard', '达到最大重连次数，停止重连')
               }
             }
           })
       } catch (error) {
-        console.error('[IoT Dashboard] 设置实时订阅失败:', error)
+        logBusinessWarning('IoT Dashboard', '设置实时订阅失败', error)
         setIsOnline(false)
         // 尝试重连
         if (!isUnmounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -238,7 +290,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
   return (
     <div className="space-y-4">
       {/* 主要燃料监控卡片 */}
-      <Card className="theme-card p-6" style={{ padding: '1.5rem' }}>
+      <Card semanticLevel="primary_fact" className="theme-card p-6" style={{ padding: '1.5rem' }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-warning to-destructive rounded-xl flex items-center justify-center shadow-lg shadow-warning/30" style={{ borderRadius: 'var(--radius-button)' }}>
@@ -271,11 +323,11 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
                   <span className="text-xl text-muted-foreground ml-1 data-unit">%</span>
                 </div>
               </div>
-              <Progress value={fuelLevel} className="h-3 bg-muted" />
-              <div className="flex justify-between mt-2">
-                <span className="text-xs text-muted-foreground">约 {(fuelLevel * 5).toFixed(0)} kg</span>
+              <Progress value={fuelLevel} />
+              <div className="flex justify-between mt-3">
+                <span className="text-sm text-foreground font-medium">约 {(fuelLevel * 5).toFixed(0)} kg</span>
                 {dailyConsumption > 0 && (
-                  <span className="text-xs text-warning">预计可用 {Math.floor((fuelLevel * 5) / dailyConsumption)} 天</span>
+                  <span className="text-sm text-warning font-medium">预计可用 {Math.floor((fuelLevel * 5) / dailyConsumption)} 天</span>
                 )}
               </div>
             </>
@@ -288,7 +340,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
 
         {/* 数据统计网格 */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="theme-card p-3">
+          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-3 border border-border/30">
             <div className="flex items-center gap-2 mb-1">
               <TrendingUp className="h-4 w-4 text-primary" />
               <span className="text-xs text-muted-foreground">累计加注</span>
@@ -297,7 +349,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
             <div className="text-xs text-muted-foreground data-unit">kg</div>
           </div>
 
-          <div className="theme-card p-3">
+          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-3 border border-border/30">
             <div className="flex items-center gap-2 mb-1">
               <TrendingDown className="h-4 w-4 text-accent" />
               <span className="text-xs text-muted-foreground">日均消耗</span>
@@ -306,7 +358,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
             <div className="text-xs text-muted-foreground data-unit">kg/天</div>
           </div>
 
-          <div className="theme-card p-3">
+          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-3 border border-border/30">
             <div className="flex items-center gap-2 mb-1">
               <Zap className="h-4 w-4 text-warning" />
               <span className="text-xs text-muted-foreground">使用效率</span>
@@ -320,53 +372,37 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
       {/* 设备状态监控 */}
       <div className="grid grid-cols-2 gap-3">
         <Card 
+          semanticLevel="primary_fact"
           className="theme-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
           onClick={onDeviceClick}
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-foreground">我的设备</span>
-            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">设备监控</Badge>
+            <span className="text-sm font-medium text-foreground">我的设备</span>
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs px-2 py-0.5">
+              {deviceCount > 0 ? `${deviceCount}台在用` : '0台在用'}
+            </Badge>
           </div>
-          <div className="text-3xl font-bold text-foreground mb-1">100%</div>
+          <div className="text-3xl font-bold text-foreground mb-1">{deviceRunningDays}</div>
           <div className="text-xs text-success flex items-center gap-1">
             <TrendingUp className="h-3 w-3" />
-            运行正常
+            运行天数
           </div>
         </Card>
 
         <Card 
-          className="theme-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+          semanticLevel="primary_fact"
+          className="theme-card repair-warning-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
           onClick={handleQuickRepair}
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-foreground">一键报修</span>
-            <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">快速报修</Badge>
+            <span className="text-sm font-medium text-foreground">一键报修</span>
+            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs px-2 py-0.5">快速报修</Badge>
           </div>
-          <div className="text-3xl font-bold text-foreground mb-1">
-            <Wrench className="h-8 w-8 inline-block mb-1" />
-          </div>
-          <div className="text-xs text-muted-foreground">点击提交报修</div>
+          <div className="text-3xl font-bold text-foreground mb-1">{repairResponseRate.toFixed(1)}%</div>
+          <div className="text-xs text-muted-foreground">响应率</div>
         </Card>
       </div>
 
-      {/* 燃料配送卡片 */}
-      <Card className="theme-card p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-warning to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-warning/30">
-            <Truck className="w-5 h-5 text-warning-foreground" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-foreground">燃料配送</h3>
-            <p className="text-xs text-muted-foreground">快速下单，2小时送达</p>
-          </div>
-        </div>
-        <Link href="/payment?service=燃料配送">
-          <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground theme-button">
-            <Truck className="w-4 h-4 mr-2" />
-            立即购买燃料
-          </Button>
-        </Link>
-      </Card>
     </div>
   )
 }

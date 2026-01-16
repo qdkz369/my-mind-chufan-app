@@ -15,7 +15,8 @@
  */
 
 import { useEffect } from "react"
-import { useTheme } from "@/lib/styles/theme-context"
+// THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
+// import { useTheme } from "@/lib/styles/theme-context"
 import { Header } from "@/components/header"
 import { IoTDashboardOffline } from "@/components/iot-dashboard-offline"
 import { BottomNavigation } from "@/components/bottom-navigation"
@@ -71,17 +72,18 @@ const registeredServices = [
 ]
 
 export default function UserUnboundPage() {
-  const { setTheme, theme } = useTheme()
+  // THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
+  // const { setTheme, theme } = useTheme()
 
   // 主题初始化：在身份判定之后执行
   // 已注册未绑定用户默认主题：Base Theme（Industrial Blue，通过 globals.css 的 :root 自动加载）
   // ⚠️ 注意：Base Theme 不允许通过 JavaScript 切换，会自动通过 CSS 加载
-  useEffect(() => {
+  /* useEffect(() => {
     const savedTheme = typeof window !== "undefined" ? localStorage.getItem("ios-theme-preference") : null
     // Base Theme 会自动通过 globals.css 的 :root 加载，不需要手动设置
     // 如果有保存的 Visual Theme（如 apple-white），会自动应用
     console.log('[User Unbound Page] 已注册未绑定页面加载，主题:', savedTheme || 'base (industrial-blue)')
-  }, [])
+  }, []) */
 
   return (
     <main className="min-h-screen bg-background pb-20">
@@ -89,7 +91,7 @@ export default function UserUnboundPage() {
       
       {/* 设备绑定提示 */}
       <div className="container mx-auto px-4 py-4">
-        <Card className="theme-card p-4 mb-6">
+        <Card className="glass-breath p-4 mb-6">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 bg-primary/20 flex items-center justify-center flex-shrink-0" style={{ borderRadius: 'var(--radius-button)' }}>
               <Settings className="h-5 w-5 text-primary" />
@@ -123,7 +125,7 @@ export default function UserUnboundPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {registeredServices.map((service) => (
               <Link key={service.label} href={service.href}>
-                <Card className="theme-card p-5 hover:scale-[1.02] hover:border-primary/30 transition-all cursor-pointer group h-full">
+                <Card semanticLevel="secondary_fact" className="glass-breath p-5 hover:scale-[1.02] hover:border-primary/30 transition-all cursor-pointer group h-full">
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform" style={{ borderRadius: 'var(--radius-button)' }}>
                       <service.icon className="h-6 w-6 text-primary-foreground" />

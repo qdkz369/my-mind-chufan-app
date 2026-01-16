@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Upload, X, Image as ImageIcon, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 interface Category {
   id: string
@@ -49,7 +50,7 @@ export default function SupplierUploadPage() {
           setCategories(result.data)
         }
       } catch (error) {
-        console.error("[供应商上传] 加载分类失败:", error)
+        logBusinessWarning('供应商上传', '加载分类失败', error)
       }
     }
     loadCategories()
@@ -93,7 +94,7 @@ export default function SupplierUploadPage() {
           }
         }
       } catch (error) {
-        console.error("[供应商上传] 获取公司ID失败:", error)
+        logBusinessWarning('供应商上传', '获取公司ID失败', error)
       }
     }
 
@@ -137,7 +138,7 @@ export default function SupplierUploadPage() {
 
       setUploadedImages([...uploadedImages, ...newImages])
     } catch (error) {
-      console.error("[供应商上传] 图片上传失败:", error)
+      logBusinessWarning('供应商上传', '图片上传失败', error)
       alert("图片上传失败")
     } finally {
       setIsUploadingImages(false)
@@ -213,7 +214,7 @@ export default function SupplierUploadPage() {
         alert(`提交失败: ${result.error}`)
       }
     } catch (error: any) {
-      console.error("[供应商上传] 提交失败:", error)
+      logBusinessWarning('供应商上传', '提交失败', error)
       alert(`提交失败: ${error.message}`)
     } finally {
       setIsLoading(false)

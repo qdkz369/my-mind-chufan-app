@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2, AlertCircle, CheckCircle2, UserPlus, LogIn, Store, MapPin } from "lucide-react"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -122,7 +123,7 @@ export default function RegisterPage() {
         throw new Error("注册成功但未获取到餐厅ID，请联系客服")
       }
     } catch (err: any) {
-      console.error("[注册页面] 注册失败:", err)
+      logBusinessWarning('注册页面', '注册失败', err)
       setError(err.message || "注册失败，请重试")
       setIsLoading(false)
     }
@@ -187,7 +188,7 @@ export default function RegisterPage() {
         throw new Error("登录成功但未获取到餐厅ID，请联系客服")
       }
     } catch (err: any) {
-      console.error("[注册页面] 登录失败:", err)
+      logBusinessWarning('注册页面', '登录失败', err)
       setError(err.message || "登录失败，请重试")
       setIsLoading(false)
     }

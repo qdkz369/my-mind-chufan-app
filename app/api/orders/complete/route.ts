@@ -12,6 +12,7 @@ import { CONFIG_REQUIRE_ASSET_TRACE } from "@/lib/config/asset-trace"
 import { requireCapability } from "@/lib/auth/requireCapability"
 import { Capability } from "@/lib/capabilities"
 import { writeAuditLog } from "@/lib/audit"
+import { createOrderStatusNotification } from "@/lib/notifications/create-notification"
 
 /**
  * POST: 完成配送
@@ -210,6 +211,29 @@ export async function POST(request: Request) {
     } catch (auditError) {
       // 审计日志写入失败不影响主流程，只记录日志
       console.error('[完成配送API] 写入审计日志失败:', auditError)
+    }
+
+    // 创建订单状态变更通知（非阻断）
+    try {
+      const { data: orderDetail } = await supabase
+        .from("delivery_orders")
+        .select("order_number, restaurant_id")
+        .eq("id", order_id)
+        .single()
+
+      if (orderDetail) {
+        await createOrderStatusNotification(
+          orderDetail.restaurant_id,
+          order_id,
+          orderDetail.order_number || order_id.substring(0, 8),
+          currentStatus,
+          "completed",
+          "delivery"
+        )
+      }
+    } catch (notifyError) {
+      console.error('[完成配送API] 创建通知失败:', notifyError)
+      // 通知创建失败不影响主流程
     }
 
     return NextResponse.json({

@@ -19,6 +19,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { logBusinessWarning } from "@/lib/utils/logger"
 import {
   ArrowLeft,
   Loader2,
@@ -39,6 +40,7 @@ import { Badge } from "@/components/ui/badge"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import type { UsageSnapshot } from "@/lib/rental/usage-snapshot"
+import { RentalUIProvider } from "@/lib/ui-contexts"
 
 interface UsageSnapshotWithRelations extends UsageSnapshot {
   devices?: {
@@ -100,7 +102,7 @@ export default function UsageSnapshotsPage() {
         setIsAuthenticated(true)
         loadSnapshots()
       } catch (err) {
-        console.error("权限验证失败:", err)
+        logBusinessWarning('Usage Snapshot', '权限验证失败', err)
         setIsAuthenticated(false)
         router.push("/login")
       }
@@ -131,7 +133,7 @@ export default function UsageSnapshotsPage() {
 
       setSnapshots(result.data || [])
     } catch (err: any) {
-      console.error("加载快照列表失败:", err)
+      logBusinessWarning('Usage Snapshot', '加载快照列表失败', err)
       setError(err.message || "加载失败")
     } finally {
       setIsLoading(false)
@@ -168,7 +170,7 @@ export default function UsageSnapshotsPage() {
       // 重新加载列表
       await loadSnapshots()
     } catch (err: any) {
-      console.error("更新状态失败:", err)
+      logBusinessWarning('Usage Snapshot', '更新状态失败', err)
       alert(`更新失败: ${err.message || "未知错误"}`)
     } finally {
       setIsUpdating(null)
@@ -250,7 +252,8 @@ export default function UsageSnapshotsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background pb-20" data-density="dense">
+    <RentalUIProvider>
+      <main className="min-h-screen bg-background pb-20" data-density="dense">
       <div className="container mx-auto px-4 py-6">
         {/* 头部 */}
         <div className="flex items-center justify-between mb-6">
@@ -310,7 +313,7 @@ export default function UsageSnapshotsPage() {
             {snapshots.map((snapshot) => (
               <Card
                 key={snapshot.id}
-                className="theme-card p-6 hover:bg-muted/30 transition-colors"
+                className="glass-breath p-6 hover:bg-muted/30 transition-colors"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
@@ -434,6 +437,7 @@ export default function UsageSnapshotsPage() {
           </div>
         )}
       </div>
-    </main>
+      </main>
+    </RentalUIProvider>
   )
 }

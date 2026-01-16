@@ -4,6 +4,7 @@ import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Camera, X, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon } from "lucide-react"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 interface ImageUploaderProps {
   onUploadSuccess: (imageUrl: string) => void
@@ -70,7 +71,7 @@ export function ImageUploader({
       console.log("[图片上传] 上传成功，URL:", result.data.url)
       onUploadSuccess(result.data.url)
     } catch (err: any) {
-      console.error("上传失败:", err)
+      logBusinessWarning('Image Uploader', '上传失败', err)
       setError(err.message || "上传失败")
       setPreview(null)
       

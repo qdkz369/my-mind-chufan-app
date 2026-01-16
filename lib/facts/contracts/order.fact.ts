@@ -41,15 +41,46 @@ export type OrderFactContract = {
   restaurant_id: string
 
   /**
-   * 订单状态
+   * 订单状态（当前状态）
    * 
    * 数据来源：delivery_orders.status
    * 是否允许为空：否
    * 空值含义：不适用（必填字段）
    * 
    * 可能值：pending, accepted, delivering, completed, exception, rejected, cancelled
+   * 
+   * ⚠️ Behavior Timeline：
+   * - 此字段对应 BehaviorTimelineState.current_state
+   * - 与 previous_state 和 next_expected_state 一起构成行为时间线
    */
   status: string
+
+  /**
+   * 前一个状态（Behavior Timeline）
+   * 
+   * 数据来源：audit_logs（从状态变化历史推断）或 null
+   * 是否允许为空：是
+   * 空值含义：初始状态（无前一个状态）
+   * 
+   * ⚠️ Behavior Timeline：
+   * - 用于判断状态变化轨迹
+   * - 与 current_state（status）和 next_expected_state 一起构成行为时间线
+   */
+  previous_state: string | null
+
+  /**
+   * 下一个预期状态（Behavior Timeline）
+   * 
+   * 数据来源：业务规则定义（由 Facts API 计算）或 null
+   * 是否允许为空：是
+   * 空值含义：无预期状态（可能是终态，或尚未定义预期）
+   * 
+   * ⚠️ Behavior Timeline：
+   * - 用于判断是否偏离预期轨迹
+   * - 与 previous_state 和 current_state（status）一起构成行为时间线
+   * - ViewModel 应使用此字段判断偏离，而非判断"异常"
+   */
+  next_expected_state: string | null
 
   /**
    * 订单创建时间
@@ -189,12 +220,43 @@ export type AssetFactContract = {
   asset_id: string
 
   /**
-   * 资产当前状态
+   * 资产当前状态（当前状态）
    * 
    * 数据来源：gas_cylinders.status 或 devices.status
    * 是否允许为空：否
+   * 
+   * ⚠️ Behavior Timeline：
+   * - 此字段对应 BehaviorTimelineState.current_state
+   * - 与 previous_state 和 next_expected_state 一起构成行为时间线
    */
   status: string
+
+  /**
+   * 前一个状态（Behavior Timeline）
+   * 
+   * 数据来源：trace_logs（从操作历史推断）或 null
+   * 是否允许为空：是
+   * 空值含义：初始状态（无前一个状态）
+   * 
+   * ⚠️ Behavior Timeline：
+   * - 用于判断状态变化轨迹
+   * - 与 current_state（status）和 next_expected_state 一起构成行为时间线
+   */
+  previous_state: string | null
+
+  /**
+   * 下一个预期状态（Behavior Timeline）
+   * 
+   * 数据来源：业务规则定义（由 Facts API 计算）或 null
+   * 是否允许为空：是
+   * 空值含义：无预期状态（可能是终态，或尚未定义预期）
+   * 
+   * ⚠️ Behavior Timeline：
+   * - 用于判断是否偏离预期轨迹
+   * - 与 previous_state 和 current_state（status）一起构成行为时间线
+   * - ViewModel 应使用此字段判断偏离，而非判断"异常"
+   */
+  next_expected_state: string | null
 
   /**
    * 最后一次操作类型

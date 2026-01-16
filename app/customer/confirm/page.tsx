@@ -20,6 +20,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { getOrderStatusLabel } from "@/lib/types/order"
 import Link from "next/link"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 export default function CustomerConfirmPage() {
   const router = useRouter()
@@ -156,7 +157,7 @@ export default function CustomerConfirmPage() {
           .order("install_date", { ascending: false })
 
         if (devicesError) {
-          console.error("查询设备失败:", devicesError)
+          logBusinessWarning('客户确认', '查询设备失败', devicesError)
           setError("查询设备失败")
           setIsLoading(false)
           return
@@ -181,7 +182,7 @@ export default function CustomerConfirmPage() {
           setDevice(devicesData[0])
         }
       } catch (err: any) {
-        console.error("加载信息失败:", err)
+        logBusinessWarning('客户确认', '加载信息失败', err)
         setError(err.message || "加载失败")
       } finally {
         setIsLoading(false)
@@ -268,7 +269,7 @@ export default function CustomerConfirmPage() {
         }
       }, 3000)
     } catch (err: any) {
-      console.error("确认验收失败:", err)
+      logBusinessWarning('客户确认', '确认验收失败', err)
       setError(err.message || "确认验收失败")
     } finally {
       setIsSubmitting(false)

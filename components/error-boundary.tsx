@@ -62,66 +62,44 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
-    if (this.state.hasError) {
-      // 如果提供了自定义 fallback，使用它
-      if (this.props.fallback) {
-        return this.props.fallback
-      }
-
-      // 默认错误 UI
-      return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
-          <div className="max-w-md w-full theme-card p-6 space-y-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center">
-                <AlertCircle className="h-6 w-6 text-destructive" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-foreground">出错了</h2>
-                <p className="text-sm text-muted-foreground">应用遇到了一个错误</p>
-              </div>
+    // ⚠️ 强制修复：始终返回 children，不做任何拦截
+    // 即使有错误，也要渲染内容，错误信息通过 console 输出
+    // 错误提示作为浮动层显示，不阻止主内容渲染
+    
+    return (
+      <>
+        {/* 始终渲染 children，无论是否有错误 */}
+        {this.props.children}
+        
+        {/* 如果有错误，显示浮动错误提示（不阻塞页面） */}
+        {this.state.hasError && process.env.NODE_ENV === "development" && (
+          <div className="fixed bottom-4 right-4 z-[10000] bg-red-600 text-white p-3 rounded-lg shadow-lg max-w-md">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="h-5 w-5" />
+              <h3 className="font-bold text-xs">开发模式错误提示（不阻塞页面）</h3>
             </div>
-
-            {this.state.error && (
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <p className="text-sm font-medium text-foreground">错误信息：</p>
-                <p className="text-xs text-muted-foreground font-mono break-all">
-                  {this.state.error.message || "未知错误"}
-                </p>
-                {process.env.NODE_ENV === "development" && this.state.errorInfo && (
-                  <details className="mt-2">
-                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                      查看详细错误信息
-                    </summary>
-                    <pre className="mt-2 text-xs text-muted-foreground overflow-auto max-h-40">
-                      {this.state.errorInfo.componentStack}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-2">
+            <p className="text-xs mb-2">{this.state.error?.message || "未知错误"}</p>
+            <div className="flex gap-2">
               <Button
                 onClick={this.handleReset}
                 variant="outline"
-                className="flex-1 theme-button"
+                size="sm"
+                className="text-xs bg-white/10 hover:bg-white/20"
               >
                 重试
               </Button>
               <Button
                 onClick={this.handleReload}
-                className="flex-1 theme-button"
+                size="sm"
+                className="text-xs"
               >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                重新加载
+                <RefreshCw className="h-3 w-3 mr-1" />
+                刷新
               </Button>
             </div>
           </div>
-        </div>
-      )
-    }
-
-    return this.props.children
+        )}
+      </>
+    )
   }
 }

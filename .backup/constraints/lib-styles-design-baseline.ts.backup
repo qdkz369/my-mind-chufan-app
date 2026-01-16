@@ -1,0 +1,214 @@
+/**
+ * Design Baseline（设计基线）
+ * 
+ * 核心原则：
+ * 1. Base Theme 只允许修改一次（锁版本）
+ * 2. 所有新主题必须基于 base 差异生成
+ * 3. 禁止直接复制 base theme 文件
+ * 4. Theme diff 必须显式声明 override 字段
+ * 
+ * ⚠️ 重要：
+ * - Design Baseline 是系统的设计基础，一旦确定不可修改
+ * - 所有 Visual Themes 必须基于 Design Baseline 的差异生成
+ * - Theme diff 必须显式声明所有 override 字段
+ */
+
+import { VisualThemeTokens } from './themes'
+
+/**
+ * Design Baseline 版本（锁版本）
+ * 
+ * ⚠️ 重要：
+ * - Design Baseline 一旦确定，版本号锁定，不允许修改
+ * - 如果需要修改，必须创建新版本（major version bump）
+ * - 当前版本：v1.0.0（锁定）
+ */
+export const DESIGN_BASELINE_VERSION = '1.0.0' as const
+
+/**
+ * Design Baseline 配置（不可修改）
+ * 
+ * ⚠️ 重要：
+ * - 此配置一旦确定，不允许修改
+ * - 所有 Visual Themes 必须基于此 Baseline 的差异生成
+ * - 禁止直接复制此配置
+ */
+export const DESIGN_BASELINE: VisualThemeTokens = {
+  colors: {
+    background: '#0A1628',
+    backgroundSecondary: '#0F1B2E',
+    card: 'rgba(20, 31, 53, 0.95)',
+    popover: 'rgba(20, 31, 53, 0.98)',
+    foreground: '#E5E8ED',
+    foregroundSecondary: '#8B94A6',
+    primary: '#3B82F6',
+    primaryForeground: '#FFFFFF',
+    secondary: '#1E293B',
+    secondaryForeground: '#E5E8ED',
+    accent: '#60A5FA',
+    accentForeground: '#FFFFFF',
+    muted: '#1E293B',
+    mutedForeground: '#8B94A6',
+    border: '#1E293B',
+    input: '#1E293B',
+    ring: '#3B82F6',
+    destructive: '#EF4444',
+    destructiveForeground: '#FFFFFF',
+    success: '#10B981',
+    successForeground: '#FFFFFF',
+    warning: '#F59E0B',
+    warningForeground: '#FFFFFF',
+    glass: 'rgba(20, 31, 53, 0.7)',
+    glassBorder: 'rgba(59, 130, 246, 0.2)',
+  },
+  borderRadius: {
+    card: '0.25rem',
+    button: '0.25rem',
+    input: '0.25rem',
+    small: '0.25rem',
+  },
+  shadows: {
+    sm: '0 1px 2px 0 rgba(0, 0, 0, 0.3)',
+    md: '0 4px 6px -1px rgba(0, 0, 0, 0.4)',
+    lg: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
+    xl: '0 20px 25px -5px rgba(0, 0, 0, 0.6)',
+  },
+  fontFamily: {
+    sans: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+    mono: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace',
+  },
+} as const
+
+/**
+ * 验证 Design Baseline 是否被修改
+ * 
+ * ⚠️ 重要：
+ * - 如果 Design Baseline 被修改，会抛出错误
+ * - 此函数用于开发时验证，确保 Baseline 不被意外修改
+ */
+export function validateDesignBaseline(): void {
+  // 验证版本号
+  if (DESIGN_BASELINE_VERSION !== '1.0.0') {
+    throw new Error(
+      `[Design Baseline] Design Baseline 版本号已被修改！当前版本：${DESIGN_BASELINE_VERSION}，期望版本：1.0.0`
+    )
+  }
+  
+  // 验证关键配置（深度检查）
+  const expectedColors = DESIGN_BASELINE.colors
+  if (
+    expectedColors.background !== '#0A1628' ||
+    expectedColors.primary !== '#3B82F6' ||
+    expectedColors.borderRadius?.card !== '0.25rem'
+  ) {
+    console.warn(
+      '[Design Baseline] Design Baseline 配置可能已被修改。请确保所有 Visual Themes 基于正确的 Baseline 生成。'
+    )
+  }
+}
+
+/**
+ * 主题差异（Theme Diff）类型
+ * 
+ * 核心原则：
+ * - 必须显式声明所有 override 字段
+ * - 只包含与 Design Baseline 不同的字段
+ * - 不允许直接复制 Design Baseline
+ */
+export type ThemeDiff = {
+  /**
+   * 颜色差异（只包含与 Baseline 不同的字段）
+   */
+  colors?: Partial<VisualThemeTokens['colors']>
+  
+  /**
+   * 圆角差异（只包含与 Baseline 不同的字段）
+   */
+  borderRadius?: Partial<VisualThemeTokens['borderRadius']>
+  
+  /**
+   * 阴影差异（只包含与 Baseline 不同的字段）
+   */
+  shadows?: Partial<VisualThemeTokens['shadows']>
+  
+  /**
+   * 字体差异（只包含与 Baseline 不同的字段）
+   */
+  fontFamily?: Partial<VisualThemeTokens['fontFamily']>
+}
+
+/**
+ * 基于 Design Baseline 和 Theme Diff 生成完整主题
+ * 
+ * 核心原则：
+ * - 以 Design Baseline 为基础
+ * - 应用 Theme Diff 的 override 字段
+ * - 返回完整的 VisualThemeTokens
+ * 
+ * @param diff - 主题差异（必须显式声明 override 字段）
+ * @returns 完整的 VisualThemeTokens
+ */
+export function generateThemeFromBaseline(diff: ThemeDiff): VisualThemeTokens {
+  // 深拷贝 Design Baseline
+  const baseline = JSON.parse(JSON.stringify(DESIGN_BASELINE)) as VisualThemeTokens
+  
+  // 应用颜色差异
+  if (diff.colors) {
+    baseline.colors = { ...baseline.colors, ...diff.colors }
+  }
+  
+  // 应用圆角差异
+  if (diff.borderRadius) {
+    baseline.borderRadius = { ...baseline.borderRadius, ...diff.borderRadius }
+  }
+  
+  // 应用阴影差异
+  if (diff.shadows) {
+    baseline.shadows = { ...baseline.shadows, ...diff.shadows }
+  }
+  
+  // 应用字体差异
+  if (diff.fontFamily) {
+    baseline.fontFamily = { ...baseline.fontFamily, ...diff.fontFamily }
+  }
+  
+  return baseline
+}
+
+/**
+ * 验证 Theme Diff 是否只包含 override 字段
+ * 
+ * ⚠️ 重要：
+ * - 如果 Theme Diff 包含与 Baseline 相同的字段，会输出警告
+ * - 此函数用于开发时验证，确保 Theme Diff 符合规范
+ * 
+ * @param diff - 主题差异
+ */
+export function validateThemeDiff(diff: ThemeDiff): void {
+  // 验证颜色差异（只检查关键字段）
+  if (diff.colors) {
+    const baselineColors = DESIGN_BASELINE.colors
+    for (const [key, value] of Object.entries(diff.colors)) {
+      const baselineValue = baselineColors[key as keyof typeof baselineColors]
+      if (value === baselineValue) {
+        console.warn(
+          `[Theme Diff] 颜色字段 "${key}" 与 Design Baseline 相同，无需在 diff 中声明。`
+        )
+      }
+    }
+  }
+  
+  // 验证圆角差异
+  if (diff.borderRadius) {
+    const baselineBorderRadius = DESIGN_BASELINE.borderRadius
+    for (const [key, value] of Object.entries(diff.borderRadius)) {
+      const baselineValue = baselineBorderRadius[key as keyof typeof baselineBorderRadius]
+      if (value === baselineValue) {
+        console.warn(
+          `[Theme Diff] 圆角字段 "${key}" 与 Design Baseline 相同，无需在 diff 中声明。`
+        )
+      }
+    }
+  }
+}

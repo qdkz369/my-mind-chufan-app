@@ -32,7 +32,7 @@ export function IoTDashboardOffline() {
   return (
     <div className="space-y-4">
       {/* 主要燃料监控卡片 - 离线状态 */}
-      <Card className="theme-card p-6">
+      <Card semanticLevel="primary_fact" className="glass-breath p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-muted/50 rounded-xl flex items-center justify-center shadow-lg" style={{ borderRadius: 'var(--radius-button)' }}>
@@ -110,7 +110,7 @@ export function IoTDashboardOffline() {
 
       {/* 设备状态监控 */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="theme-card p-4">
+        <Card className="glass-breath p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-foreground">我的设备</span>
             <Badge className="bg-muted/20 text-muted-foreground border-muted/30 text-xs">未绑定</Badge>
@@ -122,7 +122,7 @@ export function IoTDashboardOffline() {
           </div>
         </Card>
 
-        <Card className="theme-card p-4">
+        <Card className="glass-breath p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-foreground">设备绑定</span>
             <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">待完成</Badge>

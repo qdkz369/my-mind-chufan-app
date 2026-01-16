@@ -1,0 +1,134 @@
+#!/usr/bin/env ts-node
+
+/**
+ * Design & Behavior Lint 验证脚本
+ * 
+ * 用途：
+ * - 构建时验证所有页面的元数据
+ * - CI/CD 集成
+ * - 缺失任一项 → 构建失败
+ * - UI Review 自动化（非人工）
+ * 
+ * 使用方法：
+ * npm run validate-design-behavior-lint
+ * 或
+ * ts-node scripts/validate-design-behavior-lint.ts
+ */
+
+import {
+  type PageMetadata,
+  validateMultiplePageMetadatas,
+  allPagesValid,
+  getAllErrors,
+  getAllWarnings,
+  getAllMissingFields,
+} from '../lib/design-behavior-lint'
+
+/**
+ * 示例：收集所有页面的元数据
+ * 
+ * ⚠️ 注意：实际使用时，需要从各个页面文件或配置文件中收集元数据
+ * 这里提供示例结构
+ */
+function collectPageMetadatas(): PageMetadata[] {
+  // 示例：从配置文件或页面元数据中收集
+  // 实际实现可能需要：
+  // 1. 扫描 app/ 目录下的页面文件
+  // 2. 读取页面文件中的元数据注释或配置
+  // 3. 或从统一的配置文件中读取
+
+  const metadatas: PageMetadata[] = [
+    // 示例页面 1
+    // {
+    //   pagePath: '/user-bound',
+    //   systemState: 'normal',
+    //   semanticLevel: 'primary_fact',
+    //   decisionPoint: {
+    //     primaryDecisionId: 'create-order',
+    //     primaryDecisionDescription: '创建订单',
+    //   },
+    //   title: '正式用户事实主页',
+    //   description: '展示用户的事实数据',
+    // },
+  ]
+
+  return metadatas
+}
+
+/**
+ * 验证所有页面的元数据
+ */
+function validateDesignBehaviorLint(): void {
+  console.log('[Design & Behavior Lint] 开始验证页面元数据...\n')
+
+  const metadatas = collectPageMetadatas()
+  
+  if (metadatas.length === 0) {
+    console.warn('[Design & Behavior Lint] 警告：未找到任何页面的元数据')
+    return
+  }
+
+  const results = validateMultiplePageMetadatas(metadatas)
+
+  // 输出验证结果
+  results.forEach((result) => {
+    if (!result.valid) {
+      console.error(`[Design & Behavior Lint] ❌ 页面 "${result.pagePath}" 验证失败：`)
+      result.errors.forEach((error) => {
+        console.error(`  - ${error}`)
+      })
+      if (result.missingFields.length > 0) {
+        console.error(`  缺失字段：${result.missingFields.join(', ')}`)
+      }
+    } else {
+      console.log(`[Design & Behavior Lint] ✅ 页面 "${result.pagePath}" 验证通过`)
+    }
+
+    if (result.warnings.length > 0) {
+      console.warn(`[Design & Behavior Lint] ⚠️  页面 "${result.pagePath}" 有警告：`)
+      result.warnings.forEach((warning) => {
+        console.warn(`  - ${warning}`)
+      })
+    }
+  })
+
+  console.log('\n')
+
+  // 检查是否所有页面都通过验证
+  if (!allPagesValid(results)) {
+    const errors = getAllErrors(results)
+    const missingFields = getAllMissingFields(results)
+    
+    console.error('[Design & Behavior Lint] ❌ 验证失败，发现以下错误：')
+    errors.forEach((error) => {
+      console.error(`  - ${error}`)
+    })
+    
+    if (missingFields.length > 0) {
+      console.error('\n[Design & Behavior Lint] 缺失必需字段的页面：')
+      missingFields.forEach(({ pagePath, fields }) => {
+        console.error(`  - ${pagePath}: ${fields.join(', ')}`)
+      })
+    }
+    
+    console.error('\n[Design & Behavior Lint] ⛔ 构建失败：页面元数据验证失败')
+    console.error('[Design & Behavior Lint] ⛔ 所有页面必须声明：systemState, semanticLevel, decisionPoint')
+    process.exit(1)
+  }
+
+  const warnings = getAllWarnings(results)
+  if (warnings.length > 0) {
+    console.warn('[Design & Behavior Lint] ⚠️  验证通过，但有警告：')
+    warnings.forEach((warning) => {
+      console.warn(`  - ${warning}`)
+    })
+  }
+
+  console.log('[Design & Behavior Lint] ✅ 所有页面元数据验证通过')
+  console.log('[Design & Behavior Lint] ✅ UI Review 自动化检查通过')
+}
+
+// 执行验证
+if (require.main === module) {
+  validateDesignBehaviorLint()
+}

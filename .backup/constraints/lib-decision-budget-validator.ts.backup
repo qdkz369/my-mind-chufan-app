@@ -1,0 +1,123 @@
+/**
+ * Decision Budget 验证器
+ * 
+ * 职责：
+ * - 验证页面的决策预算是否符合规则
+ * - 确保 primary_decision 数量 ≤ 1
+ * - 检查次要操作是否视觉降权
+ */
+
+import {
+  type PageDecisionBudget,
+  type DecisionBudgetValidationResult,
+} from './types'
+
+/**
+ * 验证页面决策预算
+ * 
+ * @param budget - 页面决策预算
+ * @returns 验证结果
+ */
+export function validateDecisionBudget(
+  budget: PageDecisionBudget
+): DecisionBudgetValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  const primaryDecisionCount = budget.primaryDecisions.length
+  const secondaryActionCount = budget.secondaryActions.length
+
+  // 验证规则 1：primary_decision 数量必须 ≤ 1
+  if (primaryDecisionCount > 1) {
+    errors.push(
+      `页面 "${budget.pagePath}" 有 ${primaryDecisionCount} 个 primary_decision，超过限制（最大 1 个）。主要决策：${budget.primaryDecisions.map(d => d.id).join(', ')}`
+    )
+  }
+
+  // 验证规则 2：primary_decision 数量应该 = 1（警告）
+  if (primaryDecisionCount === 0) {
+    warnings.push(
+      `页面 "${budget.pagePath}" 没有 primary_decision，建议至少定义 1 个主要决策`
+    )
+  }
+
+  // 验证规则 3：检查是否有重复的决策ID
+  const allDecisionIds = [
+    ...budget.primaryDecisions.map(d => d.id),
+    ...budget.secondaryActions.map(d => d.id),
+  ]
+  const duplicateIds = allDecisionIds.filter(
+    (id, index) => allDecisionIds.indexOf(id) !== index
+  )
+  if (duplicateIds.length > 0) {
+    errors.push(
+      `页面 "${budget.pagePath}" 有重复的决策ID：${duplicateIds.join(', ')}`
+    )
+  }
+
+  // 验证规则 4：次要操作应该有描述（警告）
+  budget.secondaryActions.forEach((action) => {
+    if (!action.description) {
+      warnings.push(
+        `次要操作 "${action.id}" 缺少描述，建议添加描述以提高可维护性`
+      )
+    }
+  })
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    pagePath: budget.pagePath,
+    primaryDecisionCount,
+    secondaryActionCount,
+  }
+}
+
+/**
+ * 验证多个页面的决策预算
+ * 
+ * @param budgets - 页面决策预算列表
+ * @returns 验证结果列表
+ */
+export function validateMultipleDecisionBudgets(
+  budgets: PageDecisionBudget[]
+): DecisionBudgetValidationResult[] {
+  return budgets.map(validateDecisionBudget)
+}
+
+/**
+ * 检查是否所有页面都通过验证
+ * 
+ * @param results - 验证结果列表
+ * @returns 是否所有页面都通过验证
+ */
+export function allPagesValid(
+  results: DecisionBudgetValidationResult[]
+): boolean {
+  return results.every(result => result.valid)
+}
+
+/**
+ * 获取所有验证错误
+ * 
+ * @param results - 验证结果列表
+ * @returns 所有错误消息列表
+ */
+export function getAllErrors(
+  results: DecisionBudgetValidationResult[]
+): string[] {
+  return results.flatMap(result => result.errors)
+}
+
+/**
+ * 获取所有验证警告
+ * 
+ * @param results - 验证结果列表
+ * @returns 所有警告消息列表
+ */
+export function getAllWarnings(
+  results: DecisionBudgetValidationResult[]
+): string[] {
+  return results.flatMap(result => result.warnings)
+}

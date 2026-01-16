@@ -1,0 +1,114 @@
+/**
+ * Decision Budget（决策预算）系统
+ * 
+ * 核心原则：
+ * 1. 每个页面标记：
+ *    - primary_decision（主要决策）
+ *    - secondary_action（次要操作）
+ * 2. 超过 1 个 primary_decision 禁止上线
+ * 3. 次要操作必须视觉降权
+ * 
+ * ⚠️ 重要：
+ * - 每个页面只能有 1 个 primary_decision
+ * - 次要操作必须在视觉上降权（降低视觉权重）
+ * - 构建时/运行时验证 primary_decision 数量
+ */
+
+/**
+ * 决策类型
+ */
+export type DecisionType = 'primary_decision' | 'secondary_action'
+
+/**
+ * 决策元素标识
+ */
+export type DecisionElement = {
+  /**
+   * 决策ID（唯一标识）
+   */
+  id: string
+
+  /**
+   * 决策类型
+   */
+  type: DecisionType
+
+  /**
+   * 决策描述（用于调试和日志）
+   */
+  description?: string
+
+  /**
+   * 关联的元素选择器（用于验证）
+   */
+  selector?: string
+
+  /**
+   * 元素标签（用于验证）
+   */
+  label?: string
+}
+
+/**
+ * 页面决策预算
+ */
+export type PageDecisionBudget = {
+  /**
+   * 页面路径（用于标识页面）
+   */
+  pagePath: string
+
+  /**
+   * 主要决策列表（必须 ≤ 1）
+   */
+  primaryDecisions: DecisionElement[]
+
+  /**
+   * 次要操作列表
+   */
+  secondaryActions: DecisionElement[]
+
+  /**
+   * 页面元数据（可选）
+   */
+  metadata?: {
+    title?: string
+    description?: string
+    lastValidated?: string
+  }
+}
+
+/**
+ * 决策预算验证结果
+ */
+export type DecisionBudgetValidationResult = {
+  /**
+   * 是否通过验证
+   */
+  valid: boolean
+
+  /**
+   * 验证错误列表
+   */
+  errors: string[]
+
+  /**
+   * 验证警告列表
+   */
+  warnings: string[]
+
+  /**
+   * 页面路径
+   */
+  pagePath: string
+
+  /**
+   * 主要决策数量
+   */
+  primaryDecisionCount: number
+
+  /**
+   * 次要操作数量
+   */
+  secondaryActionCount: number
+}

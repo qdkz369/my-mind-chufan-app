@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { ProductType, getProductTypeLabel, OrderStatus } from "@/lib/types/order"
 import Link from "next/link"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 // 产品类型配置
 const productTypes = [
@@ -150,7 +151,7 @@ export default function CustomerOrderPage() {
         router.push("/orders")
       }, 3000)
     } catch (err: any) {
-      console.error("创建订单失败:", err)
+      logBusinessWarning('客户订单', '创建订单失败', err)
       setError(err.message || "创建订单失败")
     } finally {
       setIsSubmitting(false)

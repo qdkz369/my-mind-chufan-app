@@ -12,6 +12,7 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { canViewFinancialViewClient } from "@/lib/financial/permissions"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 /**
  * 检查客户端用户是否有权限查看金融视图
@@ -66,7 +67,7 @@ export function useFinancialViewPermission() {
 
         setCanView(hasPermission)
       } catch (error) {
-        console.error("[金融视图权限检查] 错误:", error)
+        logBusinessWarning('金融视图权限检查', '错误', error)
         // 出错时默认不可见（安全策略）
         setCanView(false)
       } finally {

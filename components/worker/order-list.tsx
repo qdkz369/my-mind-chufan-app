@@ -17,6 +17,7 @@ import {
   Truck,
 } from "lucide-react"
 import { ProductType, getProductTypeLabel } from "@/lib/types/order"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 // 获取配送订单状态的中文显示
 function getDeliveryOrderStatusLabel(status: string): string {
@@ -121,7 +122,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
 
       if (!response.ok || result.error) {
         const errorMsg = result.error || result.details || "加载订单失败"
-        console.error("[订单列表] API错误:", errorMsg, "完整响应:", result)
+        logBusinessWarning('订单列表', 'API错误', { errorMsg, fullResponse: result })
         throw new Error(errorMsg)
       }
 
@@ -152,7 +153,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
                 console.warn("[订单列表] 餐厅信息查询失败:", restaurantResult.error)
               }
             } catch (err) {
-              console.error("[订单列表] 获取餐厅信息异常:", err)
+              logBusinessWarning('订单列表', '获取餐厅信息异常', err)
             }
           }
           return order
@@ -166,7 +167,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
         setError("")
       }
     } catch (err: any) {
-      console.error("[订单列表] 加载订单失败:", err)
+      logBusinessWarning('订单列表', '加载订单失败', err)
       // 加载失败时，保留现有订单列表，只显示错误信息
       // 不清空订单列表，避免用户看到空列表
       setError(err.message || "加载订单失败")
@@ -219,7 +220,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
         const errorMsg = result.error || "接单失败"
         const errorDetails = result.details || ""
         const fullErrorMsg = errorDetails ? `${errorMsg}：${errorDetails}` : errorMsg
-        console.error("[接单] 接单失败详情:", {
+        logBusinessWarning('接单', '接单失败详情', {
           error: result.error,
           details: result.details,
           currentOrder: result.currentOrder
@@ -233,7 +234,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
       // 调用回调
       onAcceptOrder?.(orderId)
     } catch (err: any) {
-      console.error("[接单] 接单失败:", err)
+      logBusinessWarning('接单', '接单失败', err)
       // 接单失败时，不清空订单列表，只显示错误信息
       setError(err.message || "接单失败")
       // 注意：不调用 loadOrders()，保持当前订单列表不变

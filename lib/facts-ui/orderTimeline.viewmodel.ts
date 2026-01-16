@@ -6,14 +6,18 @@
  * - 完成时间格式化
  * - 完成语义转换（状态代码 → 中文标签）
  * - 不暴露任何 Fact 原始字段名给 UI
+ * - 根据 View Perspective 决定展示字段、文案语气、系统字段
  * 
  * 原则：
  * - 不引入业务判断
  * - 不进行数据库查询
  * - 仅做字段映射、格式化、语义转换
+ * - Facts Adapter 输出的是"中性事实"
+ * - ViewModel 根据 perspective 决定展示字段、文案语气、是否显示系统字段
  */
 
 import { OrderFactContract, TraceFactContract } from "@/lib/facts/contracts/order.fact"
+import { ViewPerspective, getViewPerspectiveConfig } from "@/lib/view-perspective"
 
 /**
  * 时间线节点类型
@@ -69,7 +73,13 @@ export type TimelineNode = {
  */
 export type OrderTimelineViewModel = {
   /**
+   * View Perspective（视图视角）
+   */
+  perspective: ViewPerspective
+
+  /**
    * 订单ID（已映射，不暴露 order_id）
+   * 注意：根据 perspective.showSystemFields 决定是否显示
    */
   orderId: string
 
@@ -80,16 +90,50 @@ export type OrderTimelineViewModel = {
 }
 
 /**
- * 订单状态显示映射（语义转换）
+ * 根据 View Perspective 获取订单状态标签
+ * 
+ * 示例：
+ * - user: "配送中"
+ * - worker: "当前任务"
+ * - admin: "order_status = delivering"
  */
-const statusLabelMap: Record<string, string> = {
-  pending: "待接单",
-  accepted: "已接单",
-  delivering: "配送中",
-  completed: "已完成",
-  exception: "异常",
-  rejected: "已拒绝",
-  cancelled: "已取消",
+function getOrderStatusLabel(status: string, perspective: ViewPerspective): string {
+  const perspectiveConfig = getViewPerspectiveConfig(perspective)
+  
+  // Admin 视角：显示系统字段格式
+  if (perspectiveConfig.showSystemFields) {
+    return `order_status = ${status}`
+  }
+  
+  // 基础状态映射（用于 user、worker、supplier）
+  const baseStatusLabelMap: Record<string, string> = {
+    pending: "待接单",
+    accepted: "已接单",
+    delivering: "配送中",
+    completed: "已完成",
+    exception: "异常",
+    rejected: "已拒绝",
+    cancelled: "已取消",
+  }
+  
+  const baseLabel = baseStatusLabelMap[status] || status
+  
+  // Worker 视角：针对特定状态使用操作相关文案
+  if (perspective === 'worker') {
+    const workerStatusLabelMap: Record<string, string> = {
+      pending: "待接单",
+      accepted: "当前任务",
+      delivering: "当前任务",
+      completed: "已完成",
+      exception: "异常",
+      rejected: "已拒绝",
+      cancelled: "已取消",
+    }
+    return workerStatusLabelMap[status] || baseLabel
+  }
+  
+  // User 和 Supplier 视角：使用基础映射
+  return baseLabel
 }
 
 /**
@@ -155,62 +199,82 @@ function formatTimeDisplay(timestamp: string): string {
  * 
  * @param order - 订单事实契约
  * @param traces - 溯源记录数组
+ * @param perspective - 视图视角（决定展示字段、文案语气、系统字段）
  * @returns 订单时间线 ViewModel
  */
 export function convertOrderFactsToTimelineViewModel(
   order: OrderFactContract,
-  traces: TraceFactContract[]
+  traces: TraceFactContract[],
+  perspective: ViewPerspective = 'user'
 ): OrderTimelineViewModel {
+  const perspectiveConfig = getViewPerspectiveConfig(perspective)
   const nodes: TimelineNode[] = []
 
   // 1. 添加订单创建节点
+  const statusLabel = getOrderStatusLabel(order.status, perspective)
   nodes.push({
     id: `order-created-${order.order_id}`,
     nodeType: "order_status",
-    label: `订单创建：${statusLabelMap[order.status] || order.status}`,
+    label: perspectiveConfig.showSystemFields 
+      ? `订单创建：order_status = ${order.status}`
+      : `订单创建：${statusLabel}`,
     timeDisplay: formatTimeDisplay(order.created_at),
     timestamp: order.created_at,
-    relatedOrderId: order.order_id,
+    relatedOrderId: perspectiveConfig.showSystemFields ? order.order_id : undefined,
   })
 
   // 2. 添加订单状态变化节点（从 audit_logs 获取的事实）
   // 注意：按照"不推断"原则，只显示实际存在的状态变化记录
   // 使用 null 检查，因为 OrderFactContract 使用 null 表示事实不存在
   if (order.accepted_at !== null && order.accepted_at !== undefined) {
+    const acceptedLabel = perspectiveConfig.showSystemFields
+      ? "订单已接单：order_status = accepted"
+      : perspective === 'worker'
+        ? "当前任务"
+        : "订单已接单"
+    
     nodes.push({
       id: `order-accepted-${order.order_id}-${order.accepted_at}`,
       nodeType: "order_status",
-      label: "订单已接单",
-      operatorId: order.worker_id || undefined,
+      label: acceptedLabel,
+      operatorId: perspectiveConfig.showSystemFields ? order.worker_id || undefined : undefined,
       timeDisplay: formatTimeDisplay(order.accepted_at),
       timestamp: order.accepted_at,
-      relatedOrderId: order.order_id,
+      relatedOrderId: perspectiveConfig.showSystemFields ? order.order_id : undefined,
     })
   }
 
   if (order.completed_at !== null && order.completed_at !== undefined) {
+    const completedLabel = perspectiveConfig.showSystemFields
+      ? "订单已完成：order_status = completed"
+      : "订单已完成"
+    
     nodes.push({
       id: `order-completed-${order.order_id}-${order.completed_at}`,
       nodeType: "order_status",
-      label: "订单已完成",
-      operatorId: order.worker_id || undefined,
+      label: completedLabel,
+      operatorId: perspectiveConfig.showSystemFields ? order.worker_id || undefined : undefined,
       timeDisplay: formatTimeDisplay(order.completed_at),
       timestamp: order.completed_at,
-      relatedOrderId: order.order_id,
+      relatedOrderId: perspectiveConfig.showSystemFields ? order.order_id : undefined,
     })
   }
 
   // 3. 添加溯源记录节点
   traces.forEach((trace) => {
+    const actionLabel = perspectiveConfig.showSystemFields
+      ? `action_type = ${trace.action_type}`
+      : actionTypeLabelMap[trace.action_type] || trace.action_type
+    
     nodes.push({
       id: trace.id,
       nodeType: "trace",
-      label: actionTypeLabelMap[trace.action_type] || trace.action_type,
-      operatorId: trace.operator_id,
+      label: actionLabel,
+      operatorId: perspectiveConfig.showSystemFields ? trace.operator_id : undefined,
       timeDisplay: formatTimeDisplay(trace.created_at),
       timestamp: trace.created_at,
-      relatedOrderId: trace.order_id || undefined,
-      relatedAssetId: trace.asset_id,
+      relatedOrderId: perspectiveConfig.showSystemFields ? (trace.order_id || undefined) : undefined,
+      relatedAssetId: perspectiveConfig.showSystemFields ? trace.asset_id : undefined,
     })
   })
 
@@ -222,7 +286,8 @@ export function convertOrderFactsToTimelineViewModel(
   })
 
   return {
-    orderId: order.order_id, // 字段映射：order_id → orderId
+    perspective,
+    orderId: order.order_id, // 字段映射：order_id → orderId（根据 perspective.showSystemFields 决定是否显示）
     timeline: nodes,
   }
 }

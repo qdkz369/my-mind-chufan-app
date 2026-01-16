@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { apiRequest } from "@/lib/api-client"
+import { logBusinessWarning } from "@/lib/utils/logger"
 import {
   Wrench,
   MapPin,
@@ -114,7 +115,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
           )
           .subscribe()
       } catch (error) {
-        console.error("[工人端] 设置实时推送失败:", error)
+        logBusinessWarning('工人端', '设置实时推送失败', error)
       }
     }
 
@@ -187,7 +188,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
       }
 
     } catch (err: any) {
-      console.error("[工人端] 加载维修工单失败:", err)
+      logBusinessWarning('工人端', '加载维修工单失败', err)
       setError(err.message || "加载维修工单失败")
       alert(`加载维修工单失败: ${err.message || "未知错误"}`)
     } finally {
@@ -234,7 +235,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
       // 刷新列表
       await loadRepairs()
     } catch (err: any) {
-      console.error("[工人端] 接收维修工单失败:", err)
+      logBusinessWarning('工人端', '接收维修工单失败', err)
       setError(err.message || "接收维修工单失败")
     } finally {
       setIsUpdating(false)
@@ -291,7 +292,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
       setSelectedRepair(null)
       setRepairAmount("")
     } catch (err: any) {
-      console.error("[工人端] 完成维修工单失败:", err)
+      logBusinessWarning('工人端', '完成维修工单失败', err)
       setError(err.message || "完成维修工单失败")
     } finally {
       setIsCompleting(false)

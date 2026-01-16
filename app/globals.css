@@ -1,8 +1,251 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "../lib/styles/base/density.css";
+/* === UI CANVAS: MIDNIGHT (Single Source of Truth) === */
+
+:root {
+  --background: oklch(0.12 0.03 250);
+  --foreground: oklch(0.98 0.01 250);
+  --card: oklch(0.1 0.08 250 / 0.3);
+  --card-foreground: oklch(0.95 0.01 250);
+  --popover: oklch(0.20 0.05 250);
+  --popover-foreground: oklch(0.95 0.01 250);
+  --primary: oklch(0.55 0.20 250);
+  --primary-foreground: oklch(0.98 0.01 0);
+  --secondary: oklch(0.25 0.04 250);
+  --secondary-foreground: oklch(0.90 0.01 250);
+  --muted: oklch(0.25 0.04 250);
+  --muted-foreground: oklch(0.60 0.02 250);
+  --accent: oklch(0.65 0.18 240);
+  --accent-foreground: oklch(0.98 0.01 0);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0.01 0);
+  --border: oklch(0.30 0.05 250);
+  --input: oklch(0.22 0.04 250);
+  --ring: oklch(0.60 0.20 250);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.12 0.03 250);
+  --foreground: oklch(0.98 0.01 250);
+  --card: oklch(0.1 0.08 250 / 0.3);
+  --card-foreground: oklch(0.95 0.01 250);
+  --popover: oklch(0.20 0.05 250);
+  --popover-foreground: oklch(0.95 0.01 250);
+  --primary: oklch(0.55 0.20 250);
+  --primary-foreground: oklch(0.98 0.01 0);
+  --secondary: oklch(0.25 0.04 250);
+  --secondary-foreground: oklch(0.90 0.01 250);
+  --muted: oklch(0.25 0.04 250);
+  --muted-foreground: oklch(0.60 0.02 250);
+  --accent: oklch(0.65 0.18 240);
+  --accent-foreground: oklch(0.98 0.01 0);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0.01 0);
+  --border: oklch(0.30 0.05 250);
+  --input: oklch(0.22 0.04 250);
+  --ring: oklch(0.60 0.20 250);
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  
+  /* 应用 Midnight UI Canvas 到 data-ui="midnight" 的元素 */
+  [data-ui="midnight"] {
+    --background: oklch(0.12 0.03 250);
+    --foreground: oklch(0.98 0.01 250);
+    --card: oklch(0.1 0.08 250 / 0.3);
+    --card-foreground: oklch(0.95 0.01 250);
+    --popover: oklch(0.20 0.05 250);
+    --popover-foreground: oklch(0.95 0.01 250);
+    --primary: oklch(0.55 0.20 250);
+    --primary-foreground: oklch(0.98 0.01 0);
+    --secondary: oklch(0.25 0.04 250);
+    --secondary-foreground: oklch(0.90 0.01 250);
+    --muted: oklch(0.25 0.04 250);
+    --muted-foreground: oklch(0.60 0.02 250);
+    --accent: oklch(0.65 0.18 240);
+    --accent-foreground: oklch(0.98 0.01 0);
+    --destructive: oklch(0.55 0.22 25);
+    --destructive-foreground: oklch(0.98 0.01 0);
+    --border: oklch(0.30 0.05 250);
+    --input: oklch(0.22 0.04 250);
+    --ring: oklch(0.60 0.20 250);
+    --radius: 0.5rem;
+  }
+}
+
+/* ========================================
+ * 直连 UI 注入：厨房 UI 样式规范
+ * 
+ * ⚠️ 重要：
+ * - 这是"当前唯一视觉规范"
+ * - 不依赖 data-theme、ThemeProvider、Tailwind 颜色 token
+ * - 直接作用于 html / body / 常用组件标签
+ * - 不要生成任何新主题、不注册到 VISUAL_THEMES
+ * ======================================== */
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+}
+
+@theme inline {
+  --font-sans: 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ========================================
+ * 原有主题系统（保留，但被上方直连 UI 注入覆盖）
+ * ======================================== */
+
+@import "../lib/styles/base/density.css";
 
 /**
  * CSS 加载顺序锁死
@@ -29,9 +272,10 @@
  * - 层级（z-index）→ 设计系统基础变量（不属于 Theme）
  * 
  * Base Theme（:root）：
- * - 工业蓝背景，硬朗直线，小圆角(4px)，高对比度
+ * - 深蓝科技感背景，适中圆角(8px)，高对比度
  * - 这是不可变的基础 UI，删除 localStorage 后必须回到这个状态
  * - 包含视觉样式的默认值（颜色、字体、阴影、圆角）
+ * - 使用 oklch 色彩空间，确保颜色感知均匀性
  * - 也包含设计系统基础变量（font-size、line-height、spacing、z-index），但这些不属于 Theme
  */
 
@@ -114,96 +358,103 @@
    * - 圆角（border-radius）
    * ======================================== */
   
-  /* DefaultTheme：默认主题（不可删除、不可关闭）
+  /* 深蓝科技感主题：默认主题（不可删除、不可关闭）
    * 
    * 设计原则：
-   * - 背景、卡片、分隔区必须有明确亮度层级
-   * - 不使用 Apple 风格的纯白/灰阶
-   * - 保留深色渐变背景
-   * - 卡片允许使用轻微透明度（rgba）或 gradient
+   * - 深蓝色系为主，营造深邃科技感
+   * - 使用 oklch 色彩空间，确保颜色感知均匀性
+   * - 背景、卡片、分隔区有明确亮度层级
+   * - 高对比度文字，确保可读性
+   * - 蓝色系主色调，配合亮蓝青色强调
    * 
    * 亮度层级（从暗到亮）：
-   * 1. 背景层（最暗）：#0A1628 → #0F1B2E
-   * 2. 卡片层（稍亮）：rgba(20, 31, 53, 0.95) 或 gradient
-   * 3. 分隔区（更亮）：#1E293B
+   * 1. 背景层（最暗）：oklch(0.12 0.05 250) - 深邃深蓝
+   * 2. 卡片层（稍亮）：oklch(0.18 0.05 250) - 深蓝灰
+   * 3. 分隔区（更亮）：oklch(0.25 0.04 250) - 深蓝灰分隔区
    * 
    * ⚠️ 重要：
-   * - DefaultTheme 对应 Base Theme 的视觉样式
-   * - 所有用户首次进入系统时强制使用 DefaultTheme
-   * - DefaultTheme 不可删除、不可关闭
-   * - 仅恢复"原始 UI 的层次感"，不追求效果增强
+   * - 深蓝科技感主题对应 Base Theme 的视觉样式
+   * - 所有用户首次进入系统时强制使用此主题
+   * - 主题不可删除、不可关闭
+   * - 使用 oklch 色彩空间，确保颜色一致性
    */
   
-  /* 背景色（最暗层） */
-  --background: #0A1628; /* 深色背景（非纯黑，偏蓝灰） */
-  --background-secondary: #0F1B2E; /* 次要背景（稍亮，用于渐变） */
+  /* 背景色（最暗层）- 深蓝科技感 */
+  --background: oklch(0.12 0.05 250); /* 深邃深蓝背景，科技感基础 */
+  --background-secondary: oklch(0.15 0.06 250); /* 次要背景，稍亮的深蓝 */
   
-  /* 卡片色（稍亮层）- 使用 rgba 保持层次感 */
-  --card: rgba(20, 31, 53, 0.95); /* 卡片背景（轻微透明度，保持层次） */
-  --card-foreground: #E5E8ED; /* 卡片文字（高对比） */
-  --popover: rgba(20, 31, 53, 0.98); /* 弹出层（更不透明） */
-  --popover-foreground: #E5E8ED;
+  /* ⚠️ 强制测试：直接在 :root 下写核心变量，测试是否变蓝 */
+  --background: oklch(0.12 0.03 250) !important; /* 深空蓝色基调 */
+  --foreground: oklch(0.98 0.01 250) !important; /* 高亮白蓝文字 */
+  --card: oklch(0.1 0.08 250 / 0.3) !important;  /* 半透明卡片背景 */
+  --border: oklch(0.6 0.2 250 / 0.2) !important;  /* 亮蓝色微光边框 */
   
-  /* 前景色（文字） */
-  --foreground: #E5E8ED; /* 主文字（高对比） */
-  --foreground-secondary: #8B94A6; /* 次要文字 */
+  /* 卡片色（稍亮层）- 深蓝科技感 */
+  --card: oklch(0.1 0.08 250 / 0.3); /* 深蓝灰卡片背景，30% 透明度 */
+  --card-foreground: oklch(0.95 0.01 250); /* 高对比文字，带微蓝调 */
+  --popover: oklch(0.20 0.05 250); /* 弹出层，稍亮于卡片 */
+  --popover-foreground: oklch(0.95 0.01 250);
   
-  /* 主色 */
-  --primary: #3B82F6; /* 蓝色主色（高对比） */
-  --primary-foreground: #FFFFFF;
+  /* 前景色（文字）- 深蓝科技感 */
+  --foreground: oklch(0.95 0.01 250); /* 主文字，高对比白色带微蓝 */
+  --foreground-secondary: oklch(0.65 0.02 250); /* 次要文字，蓝灰色 */
+  
+  /* 主色 - 深蓝科技感 */
+  --primary: oklch(0.55 0.20 250); /* 深蓝主色，科技感强 */
+  --primary-foreground: oklch(0.98 0.01 0);
   
   /* 次要色（分隔区层，更亮） */
-  --secondary: #1E293B; /* 次要背景（分隔区，比卡片稍亮） */
-  --secondary-foreground: #E5E8ED;
+  --secondary: oklch(0.25 0.04 250); /* 次要背景，深蓝灰分隔区 */
+  --secondary-foreground: oklch(0.90 0.01 250);
   
-  /* 强调色 */
-  --accent: #60A5FA; /* 蓝色强调色 */
-  --accent-foreground: #FFFFFF;
+  /* 强调色 - 深蓝科技感 */
+  --accent: oklch(0.65 0.18 240); /* 亮蓝青色强调，科技感 */
+  --accent-foreground: oklch(0.98 0.01 0);
   
   /* 静音色 */
-  --muted: #1E293B; /* 静音背景（与分隔区同层） */
-  --muted-foreground: #8B94A6;
+  --muted: oklch(0.25 0.04 250); /* 静音背景，与分隔区同层 */
+  --muted-foreground: oklch(0.60 0.02 250);
   
   /* 边框（分隔区层） */
-  --border: #1E293B; /* 边框（与分隔区同层，保持层次） */
-  --input: #1E293B; /* 输入框背景 */
-  --ring: #3B82F6; /* 焦点环 */
+  --border: oklch(0.30 0.05 250); /* 边框，深蓝灰带微蓝调 */
+  --input: oklch(0.22 0.04 250); /* 输入框背景，深蓝灰 */
+  --ring: oklch(0.60 0.20 250); /* 焦点环，亮蓝色科技感 */
   
-  /* 状态色 */
-  --destructive: #EF4444; /* 红色（高对比） */
-  --destructive-foreground: #FFFFFF;
-  --success: #10B981; /* 绿色（高对比） */
-  --success-foreground: #FFFFFF;
-  --warning: #F59E0B; /* 橙色（高对比） */
-  --warning-foreground: #FFFFFF;
+  /* 状态色 - 保持高对比 */
+  --destructive: oklch(0.55 0.22 25); /* 红色（高对比） */
+  --destructive-foreground: oklch(0.98 0.01 0);
+  --success: oklch(0.65 0.18 150); /* 绿色（高对比） */
+  --success-foreground: oklch(0.98 0.01 0);
+  --warning: oklch(0.70 0.18 75); /* 橙色（高对比） */
+  --warning-foreground: oklch(0.98 0.01 0);
   
-  /* 毛玻璃效果 */
-  --glass: rgba(20, 31, 53, 0.7); /* 毛玻璃背景 */
-  --glass-border: rgba(59, 130, 246, 0.2); /* 毛玻璃边框 */
+  /* 毛玻璃效果 - 深蓝科技感 */
+  --glass: oklch(0.18 0.05 250 / 0.7); /* 毛玻璃背景，深蓝透明 */
+  --glass-border: oklch(0.55 0.20 250 / 0.3); /* 毛玻璃边框，蓝色光晕 */
   
-  /* 圆角规范：DefaultTheme 使用小圆角（最少装饰） */
-  --radius-card: 0.25rem; /* 4px - 最小圆角，减少装饰 */
-  --radius-button: 0.25rem;
-  --radius-input: 0.25rem;
-  --radius-small: 0.25rem;
-  --radius: 0.25rem;
+  /* 圆角规范：深蓝科技感 - 适中圆角，保持科技感 */
+  --radius-card: 0.5rem; /* 8px - 适中圆角，科技感 */
+  --radius-button: 0.5rem;
+  --radius-input: 0.5rem;
+  --radius-small: 0.375rem; /* 6px */
+  --radius: 0.5rem;
   
-  /* 图表颜色 */
-  --chart-1: #3B82F6;
-  --chart-2: #60A5FA;
-  --chart-3: #10B981;
-  --chart-4: #F59E0B;
-  --chart-5: #EF4444;
+  /* 图表颜色 - 深蓝科技感配色 */
+  --chart-1: oklch(0.55 0.20 250); /* 深蓝 */
+  --chart-2: oklch(0.65 0.18 240); /* 亮蓝青 */
+  --chart-3: oklch(0.65 0.18 150); /* 绿色 */
+  --chart-4: oklch(0.70 0.18 75); /* 橙色 */
+  --chart-5: oklch(0.55 0.22 25); /* 红色 */
   
   /* 侧边栏（与卡片同层，保持层次感） */
-  --sidebar: rgba(20, 31, 53, 0.95); /* 侧边栏（与卡片同层） */
-  --sidebar-foreground: #E5E8ED;
-  --sidebar-primary: #3B82F6;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1E293B; /* 侧边栏强调（分隔区层） */
-  --sidebar-accent-foreground: #E5E8ED;
-  --sidebar-border: #1E293B; /* 侧边栏边框（分隔区层） */
-  --sidebar-ring: #3B82F6;
+  --sidebar: oklch(0.18 0.05 250); /* 侧边栏，与卡片同层 */
+  --sidebar-foreground: oklch(0.95 0.01 250);
+  --sidebar-primary: oklch(0.55 0.20 250);
+  --sidebar-primary-foreground: oklch(0.98 0.01 0);
+  --sidebar-accent: oklch(0.25 0.04 250); /* 侧边栏强调，分隔区层 */
+  --sidebar-accent-foreground: oklch(0.90 0.01 250);
+  --sidebar-border: oklch(0.30 0.05 250); /* 侧边栏边框 */
+  --sidebar-ring: oklch(0.60 0.20 250);
   
   /* 字体族（DefaultTheme 字体配置） */
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -212,96 +463,7 @@
 }
 }
 
-/**
- * Layer 2: Visual Theme - Apple White（可切换）
- * 
- * ✅ AppleTheme 只能改变：
- * - 字体（SF 系）- 只改变 font-family，不改变 font-size
- * - 圆角（更大）- 只改变视觉样式，不改变卡片高度
- * - 阴影（更柔）- 只改变视觉样式，不改变布局结构
- * - 色彩（更浅）- 只改变颜色值，不改变语义
- * 
- * ⛔ AppleTheme 禁止修改：
- * - 卡片高度（card height）- 必须与 DefaultTheme 完全一致
- * - 数据字号层级（font-size hierarchy）- 必须与 DefaultTheme 完全一致
- * - 信息密度（information density）- 必须与 DefaultTheme 完全一致
- * - 模块拆分方式（module structure）- 必须与 DefaultTheme 完全一致
- * 
- * ⛔ 严格禁止：
- * - 严禁修改 spacing、layout、组件结构
- * - 严禁修改 fontSize、lineHeight、zIndex
- * - 严禁覆盖结构变量（--spacing-*, --layout-*, --font-size-*, --line-height-*, --z-index-*）
- * - 严禁修改 padding、gap、margin 等影响布局的变量
- * 
- * 核心原则：
- * - 只覆盖视觉样式（颜色、圆角、阴影、字体）
- * - 禁止修改布局比例和组件结构
- * - 禁止修改组件语义色含义（primary 还是 primary，destructive 还是 destructive）
- * - 确保同一页面在 DefaultTheme 与 AppleTheme 下，信息数量与位置完全一致
- * 
- * ⚠️ 重要：Visual Theme 作为覆盖层叠加在 Base Theme 之上
- * ⚠️ 重要：Visual Theme 通过 data-theme 属性应用，可以被 JavaScript 动态切换
- */
 @layer visual-theme {
-[data-theme="apple-white"] {
-  /* 只覆盖颜色变量，不改变布局比例 */
-  --background: #F2F2F7;
-  --background-secondary: #FFFFFF;
-  --foreground: #1D1D1F;
-  --foreground-secondary: #86868B;
-  --card: #FFFFFF;
-  --card-foreground: #1D1D1F;
-  --popover: #FFFFFF;
-  --popover-foreground: #1D1D1F;
-  --primary: #007AFF; /* 语义色含义不变：primary 还是 primary */
-  --primary-foreground: #FFFFFF;
-  --secondary: #F5F5F7;
-  --secondary-foreground: #1D1D1F;
-  --accent: #007AFF;
-  --accent-foreground: #FFFFFF;
-  --muted: #F5F5F7;
-  --muted-foreground: #86868B;
-  --border: #E5E5EA;
-  --input: #E5E5EA;
-  --ring: #007AFF;
-  --destructive: #FF3B30; /* 语义色含义不变：destructive 还是 destructive */
-  --destructive-foreground: #FFFFFF;
-  --success: #34C759; /* 语义色含义不变：success 还是 success */
-  --success-foreground: #FFFFFF;
-  --warning: #FF9500; /* 语义色含义不变：warning 还是 warning */
-  --warning-foreground: #FFFFFF;
-  --glass: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.18);
-  
-  /* ⚠️ 重要：AppleTheme 只能改变圆角大小（视觉样式），不能改变卡片高度
-   * - 圆角通过 --radius-* 变量覆盖
-   * - 圆角只影响视觉样式，不改变布局结构（卡片高度、内容区域等）
-   * - 确保同一页面在两种主题下信息数量和位置完全一致
-   */
-  --radius-card: 1.5rem; /* 24px - 更大圆角（Squircle感），但不改变卡片高度 */
-  --radius-button: 1.5rem;
-  --radius-input: 1.5rem;
-  --radius-small: 1rem;
-  --radius: 1.5rem;
-  
-  /* 图表颜色（只改变颜色值，不改变语义） */
-  --chart-1: #007AFF;
-  --chart-2: #5AC8FA;
-  --chart-3: #34C759;
-  --chart-4: #FF9500;
-  --chart-5: #FF3B30;
-  
-  /* 侧边栏（只改变颜色值，不改变语义） */
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #1D1D1F;
-  --sidebar-primary: #007AFF;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F5F5F7;
-  --sidebar-accent-foreground: #1D1D1F;
-  --sidebar-border: #E5E5EA;
-  --sidebar-ring: #007AFF;
-}
-
 /* Industrial Dark Theme：深色工业风格（基于图片UI效果） */
 [data-theme="industrial-dark"] {
   /* 背景色（深蓝灰渐变，最暗层） */
@@ -315,7 +477,7 @@
   --popover-foreground: #E5E8ED;
   
   /* 前景色（文字）- 高对比 */
-  --foreground: #E5E8ED; /* 主文字（高对比） */
+  --foreground: #ffffff; /* 主文字（高对比，白色） */
   --foreground-secondary: #8B94A6; /* 次要文字 */
   
   /* 主色 - 高对比蓝色 */
@@ -389,7 +551,7 @@
   --popover-foreground: #E5E8ED;
   
   /* 前景色（文字）- 高对比 */
-  --foreground: #E5E8ED; /* 主文字（高对比） */
+  --foreground: #ffffff; /* 主文字（高对比，白色） */
   --foreground-secondary: #8B94A6; /* 次要文字 */
   
   /* 主色 - 高对比蓝色 */
@@ -462,15 +624,122 @@
   /* 当前不实现 */
 }
 
+/* ========================================
+ * 深蓝呼吸（Deep Blue Breath）主题样式
+ * ======================================== */
+
+/* .dark 选择器：深蓝色调主题（直接替换变量，确保色彩带有明显的蓝色调） */
+.dark {
+  --background: oklch(0.12 0.03 250); /* 深空蓝色基调 */
+  --foreground: oklch(0.98 0.01 250); /* 高亮白蓝文字 */
+  --card: oklch(0.1 0.08 250 / 0.3);  /* 半透明卡片背景 */
+  --border: oklch(0.6 0.2 250 / 0.2);  /* 亮蓝色微光边框 */
+}
+
+/* 核心呼吸动画：深蓝科技感发光效果 */
+@keyframes blue-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px oklch(0.6 0.2 240 / 0.2);
+    border-color: oklch(0.6 0.2 240 / 0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px oklch(0.6 0.2 240 / 0.5);
+    border-color: oklch(0.6 0.2 240 / 0.6);
+  }
+}
+
+/* 呼吸感主题类（保留兼容性） */
+.theme-breath {
+  animation: blue-glow 4s ease-in-out infinite;
+}
+
+/* 强力呼吸动画：使用 drop-shadow 滤镜 */
+@keyframes pulse-blue {
+  0%, 100% {
+    filter: drop-shadow(0 0 5px oklch(0.6 0.2 250 / 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 15px oklch(0.6 0.2 250 / 0.6));
+  }
+}
+
+/* 强力呼吸动画类 */
+.theme-pulse {
+  animation: pulse-blue 4s ease-in-out infinite;
+}
+
+/* 呼吸玻璃卡片：深蓝科技感核心样式 */
+.glass-breath {
+  background: oklch(1 0 0 / 0.05) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid oklch(0.7 0.1 230 / 0.2) !important;
+  box-shadow: 0 0 20px oklch(0.5 0.15 240 / 0.1) !important;
+  animation: blue-glow 4s ease-in-out infinite;
+}
+
+/* 强化玻璃态效果 */
+.theme-glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background-color: var(--glass);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.1);
+}
+
+/* Deep Blue Breath 主题专用动画和效果（保留兼容性） */
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 0 20px rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 0 30px rgba(59, 130, 246, 0.4);
+  }
+}
+
+/* ========================================
+ * UI Semantic Layer（语义层）样式
+ * 
+ * 核心原则：
+ * - 所有 Card / Section / Panel 组件必须声明 semanticLevel
+ * - 禁止组件通过颜色自行表达重要性
+ * - 语义层级决定视觉样式（颜色、对比度、边框等）
+ * ======================================== */
+
+/* TEMPORARILY_DISABLED: 语义层级样式规范和约束已暂时停用 */
+/* 等需要时再恢复以下内容 */
+/* 注意：CSS 不支持嵌套注释，因此以下所有内容都被注释掉 */
+/* 如需恢复，请取消注释并确保内部没有嵌套的注释符号 */
+/*
+[data-semantic-level="primary_fact"] { ... }
+[data-semantic-level="secondary_fact"] { ... }
+[data-semantic-level="action"] { ... }
+[data-semantic-level="financial"] { ... }
+[data-semantic-level="system_hint"] { ... }
+.semantic-primary-fact { ... }
+.semantic-secondary-fact { ... }
+.semantic-action { ... }
+.semantic-financial { ... }
+.semantic-system-hint { ... }
+*/
+
 @theme inline {
   /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
   --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "SF Pro Text", sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-  --color-background: var(--background);
+  
+  /* 强制覆盖 white 和 black 为语义颜色 */
+  --color-white: var(--foreground);
+  --color-black: var(--background);
+  
+  /* 深蓝科技感：直接设置颜色值（不再使用 CSS 变量引用） */
+  --color-background: oklch(0.12 0.03 250);
   --color-background-secondary: var(--background-secondary);
-  --color-foreground: var(--foreground);
+  --color-foreground: oklch(0.98 0.01 250);
   --color-foreground-secondary: var(--foreground-secondary);
-  --color-card: var(--card);
+  --color-card: oklch(0.18 0.06 250 / 0.4);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
@@ -515,55 +784,64 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply text-foreground;
+    /* 全局背景动画：深空蓝色径向渐变 */
+    background: radial-gradient(circle at 50% -20%, oklch(0.3 0.15 250), oklch(0.1 0.05 255) 75%) fixed !important;
+    color: oklch(0.98 0.01 250);
     /* 全局主题切换平滑过渡（像 iOS 切换深色模式一样顺滑） */
     transition: background-color 0.4s ease, color 0.4s ease, background 0.4s ease;
     min-height: 100vh;
   }
-  
-  /* 工业蓝主题：应用从 #0A1628 到 #060E1A 的深邃渐变背景 */
-  /* 视觉优化：增强渐变层次，提升视觉深度 */
-  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) 选择器 */
-  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) body {
-    background: linear-gradient(135deg, var(--background) 0%, #060E1A 50%, #0A1628 100%);
-    background-attachment: fixed;
-    background-color: var(--background); /* 回退色 */
+
+  [data-theme] * {
+    color: inherit;
   }
   
-  /* 苹果白主题：应用从 #F2F2F7 到 #FFFFFF 的极淡渐变背景 */
-  [data-theme="apple-white"] body {
-    background: linear-gradient(to bottom, var(--background) 0%, #FFFFFF 100%);
+  /* 深蓝科技感主题：应用深邃蓝色渐变背景 */
+  /* 视觉优化：增强渐变层次，提升科技感视觉深度 */
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="industrial-dark"]) 选择器 */
+  /* 临时注释：使用 CSS 变量替代渐变背景 */
+  /*
+  :root:not([data-theme="industrial-dark"]) body {
+    background: linear-gradient(135deg, var(--background) 0%, oklch(0.10 0.04 250) 50%, var(--background) 100%);
     background-attachment: fixed;
-    background-color: var(--background); /* 回退色 */
+    background-color: var(--background);
   }
+  */
   
   /* Industrial Dark 主题：应用从 #0A1628 到 #0F1B2E 的深蓝灰渐变背景 */
+  /* 临时注释：使用 CSS 变量替代渐变背景 */
+  /*
   [data-theme="industrial-dark"] body {
     background: linear-gradient(135deg, var(--background) 0%, #0F1B2E 50%, #0A1628 100%);
     background-attachment: fixed;
-    background-color: var(--background); /* 回退色 */
+    background-color: var(--background);
   }
+  */
   
   /* 确保所有页面容器继承背景 */
   #__next,
-  [data-nextjs-scroll-focus-boundary] {
+  [data-nextjs-scroll-focus-boundary],
+  main {
     min-height: 100vh;
     background: inherit;
   }
   
-  /* 主题化卡片 - 使用主题变量 */
+  /* 主题化卡片 - 使用主题变量，添加玻璃态效果 */
   .theme-card {
     border-radius: var(--radius-card);
     background-color: var(--card);
     color: var(--card-foreground);
     border: 1px solid var(--border);
+    /* 玻璃态效果：毛玻璃模糊 */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     /* 阴影：所有模式都使用阴影，让卡片有'浮动'的高级感 */
     box-shadow: var(--theme-shadow, none);
   }
   
   /* DefaultTheme：卡片使用 gradient 保持层次感 */
   /* 仅恢复"原始 UI 的层次感"，不追求效果增强 */
-  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) .theme-card {
+  :root:not([data-theme="industrial-dark"]) .theme-card {
     /* 卡片背景渐变（基于 --card 颜色，保持层次感） */
     background: linear-gradient(135deg, var(--card) 0%, rgba(15, 23, 42, 0.95) 100%);
     background-color: var(--card); /* 回退色（rgba 透明度） */
@@ -584,15 +862,6 @@
     /* 阴影（保持层次感） */
     --theme-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 1px rgba(59, 130, 246, 0.1);
     box-shadow: var(--theme-shadow);
-  }
-  
-  /* 苹果白主题：柔和长阴影，让卡片从背景中'浮'起来 */
-  [data-theme="apple-white"] .theme-card {
-    --theme-shadow: 0 8px 40px -10px rgba(0, 0, 0, 0.08);
-    --shadow-theme-lg: 0 8px 40px -10px rgba(0, 0, 0, 0.08);
-    box-shadow: var(--theme-shadow);
-    /* 层级隔离：极细的浅灰色描边 */
-    border: 0.5px solid rgba(0, 0, 0, 0.05);
   }
   
   /* ========================================
@@ -636,39 +905,12 @@
     transform: scale(0.95);
   }
   
-  /* Apple White 模式下的按钮样式 */
-  [data-theme="apple-white"] .theme-button {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  }
-  
-  /* Apple White 模式下：按钮应为浅色底+深色字，或品牌蓝底+白字 */
-  [data-theme="apple-white"] button:not([class*="bg-primary"]):not([class*="bg-success"]):not([class*="bg-destructive"]):not([class*="bg-warning"]) {
-    background-color: var(--secondary);
-    color: var(--secondary-foreground);
-  }
-  
-  [data-theme="apple-white"] button[class*="bg-primary"],
-  [data-theme="apple-white"] button[class*="bg-success"],
-  [data-theme="apple-white"] button[class*="bg-destructive"],
-  [data-theme="apple-white"] button[class*="bg-warning"] {
-    color: var(--primary-foreground);
-  }
-  
-  /* 毛玻璃效果 - 主题化 */
-  .theme-glass {
-    background-color: var(--glass);
-    border: 1px solid var(--glass-border);
-  }
-  
-  /* Apple White 模式：必须使用 backdrop-blur: 20px */
-  [data-theme="apple-white"] .theme-glass {
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-  }
+  /* 毛玻璃效果 - 主题化（基础定义，会被全局 .theme-glass 覆盖） */
+  /* 注意：全局 .theme-glass 定义在 user-overrides 层外，包含完整的 backdrop-filter */
   
   /* Industrial Blue 模式：使用 backdrop-blur: 16px */
-  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) 选择器 */
-  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) .theme-glass {
+  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="industrial-dark"]) 选择器 */
+  :root:not([data-theme="industrial-dark"]) .theme-glass {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
   }
@@ -687,6 +929,44 @@
   }
   
   /* 性能优化：在低性能设备上降低模糊程度 */
+/* 地图标记动画定义 */
+@keyframes marker-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.9;
+  }
+}
+
+@keyframes marker-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* 确保标记动画始终可用 */
+.marker-pulse {
+  animation: marker-pulse 2s ease-in-out infinite !important;
+}
+
+/* 如果用户偏好减少动画，禁用标记动画 */
+@media (prefers-reduced-motion: reduce) {
+  .marker-pulse,
+  .marker-ripple {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+}
+
   @media (prefers-reduced-motion: reduce) {
     .theme-glass {
       backdrop-filter: blur(8px);
@@ -745,60 +1025,28 @@
     margin-left: 0.25rem;
   }
   
-  /* Apple White 模式：只改变颜色，不改变字体大小 */
-  [data-theme="apple-white"] .data-unit {
-    color: var(--muted-foreground);
-    opacity: 0.6;
-  }
-  
   /* ========== 全站主题自愈：确保所有文字和图标自动适配 ========== */
   
-  /* 苹果白模式：所有正文文字自动变为深灰色 */
-  [data-theme="apple-white"] p,
-  [data-theme="apple-white"] span,
-  [data-theme="apple-white"] div:not([class*="text-"]):not([class*="bg-"]):not([class*="border-"]),
-  [data-theme="apple-white"] h1:not([class*="text-"]),
-  [data-theme="apple-white"] h2:not([class*="text-"]),
-  [data-theme="apple-white"] h3:not([class*="text-"]),
-  [data-theme="apple-white"] h4:not([class*="text-"]),
-  [data-theme="apple-white"] h5:not([class*="text-"]),
-  [data-theme="apple-white"] h6:not([class*="text-"]),
-  [data-theme="apple-white"] label:not([class*="text-"]) {
-    color: var(--foreground) !important;
-  }
-  
-  /* 苹果白模式：所有图标自动变为深灰色（除非明确指定了其他颜色） */
-  [data-theme="apple-white"] svg:not([class*="text-primary"]):not([class*="text-destructive"]):not([class*="text-success"]):not([class*="text-warning"]):not([class*="text-accent"]):not([class*="text-muted"]):not([class*="text-white"]):not([class*="text-black"]) {
+  /* TEMPORARILY_DISABLED: 暂时禁用全局 SVG 样式规则，避免影响二维码显示 */
+  /* 等二维码问题解决后再恢复 */
+  /*
+  工业蓝模式：保持原有样式（使用浅色文字）
+  ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="industrial-dark"]) 选择器
+  排除二维码容器，避免影响二维码显示
+  :root:not([data-theme="industrial-dark"]) :not(.force-qr-colors) svg:not([class*="text-"]) {
     color: var(--foreground);
     stroke: var(--foreground);
     fill: var(--foreground);
   }
   
-  /* 确保所有卡片文字使用主题变量 */
-  [data-theme="apple-white"] .theme-card,
-  [data-theme="apple-white"] [class*="card"]:not([class*="bg-"]):not([class*="text-"]) {
-    color: var(--card-foreground);
-  }
-  
-  /* 确保所有按钮文字使用主题变量 */
-  [data-theme="apple-white"] button:not([class*="text-primary"]):not([class*="text-destructive"]):not([class*="text-success"]):not([class*="text-warning"]) {
-    color: var(--foreground);
-  }
-  
-  /* 工业蓝模式：保持原有样式（使用浅色文字） */
-  /* ⚠️ 注意：Base Theme 不设置 data-theme 属性，使用 :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) 选择器 */
-  :root:not([data-theme="apple-white"]):not([data-theme="industrial-dark"]) svg:not([class*="text-"]) {
+  Industrial Dark 模式：保持原有样式（使用浅色文字）
+  排除二维码容器，避免影响二维码显示
+  [data-theme="industrial-dark"] :not(.force-qr-colors) svg:not([class*="text-"]) {
     color: var(--foreground);
     stroke: var(--foreground);
     fill: var(--foreground);
   }
-  
-  /* Industrial Dark 模式：保持原有样式（使用浅色文字） */
-  [data-theme="industrial-dark"] svg:not([class*="text-"]) {
-    color: var(--foreground);
-    stroke: var(--foreground);
-    fill: var(--foreground);
-  }
+  */
 }
 
 /* 自定义滚动条样式 */
@@ -820,82 +1068,398 @@
   background: #64748b;
 }
 
-/* 呼吸灯动画 - 亮绿色光晕效果（轻微发光，减弱效果） */
-@keyframes breathe-glow {
+
+
+/* ========================================
+ * 金融/租赁视图样式规则
+ * 
+ * 禁止事项：
+ * - 禁止使用霓虹/发光/情绪化视觉
+ * - 禁止模糊边界
+ * ======================================== */
+
+/* 在金融/租赁上下文中，强制移除所有霓虹/发光效果 */
+[data-finance-context="true"] *,
+[data-rental-context="true"] * {
+  /* 禁止霓虹/发光效果 */
+  --primary-glow: transparent !important;
+  --theme-glow: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+  
+  /* 禁止模糊边界 */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 在金融/租赁上下文中，强制使用清晰边界 */
+[data-finance-context="true"] .theme-card,
+[data-rental-context="true"] .theme-card,
+[data-finance-context="true"] .card,
+[data-rental-context="true"] .card {
+  /* 清晰的边界 */
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-card) !important;
+  
+  /* 禁止阴影和发光 */
+  box-shadow: none !important;
+  --theme-shadow: none !important;
+  --theme-glow: none !important;
+  
+  /* 禁止渐变背景 */
+  background: var(--card) !important;
+  background-image: none !important;
+}
+
+/* 在金融/租赁上下文中，禁止使用情绪化颜色 */
+[data-finance-context="true"] .text-blue-400,
+[data-rental-context="true"] .text-blue-400,
+[data-finance-context="true"] .text-cyan-400,
+[data-rental-context="true"] .text-cyan-400,
+[data-finance-context="true"] .text-purple-400,
+[data-rental-context="true"] .text-purple-400 {
+  color: var(--foreground) !important;
+}
+
+/* ========================================
+ * 深蓝科技感：自定义样式和动画
+ * ======================================== */
+
+/* 呼吸动画：box-shadow 在两种强度之间循环 */
+@keyframes blue-breath {
   0%, 100% {
-    transform: scale(1);
-    opacity: 0.05;
+    box-shadow: 0 0 10px oklch(0.6 0.2 240 / 0.2);
   }
   50% {
-    transform: scale(1.2);
-    opacity: 0.12;
+    box-shadow: 0 0 25px oklch(0.6 0.2 240 / 0.5);
   }
 }
 
-/* 滚筒选择器选中项轻微脉冲动画 */
-@keyframes pulse-subtle {
+/* 玻璃效果类：磨砂玻璃和半透明边框 */
+.glass-effect {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid oklch(1 0 0 / 0.1);
+}
+
+/* 呼吸动画：边框 box-shadow 在淡蓝与亮蓝之间平滑切换，营造"传感器正在运行"的呼吸感 */
+/* 呼吸灯动画：边框微弱的明暗变化 */
+@keyframes breathe {
   0%, 100% {
-    transform: scale(1);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 8px oklch(0.5 0.15 240 / 0.2), 0 0 16px oklch(0.5 0.15 240 / 0.1);
   }
   50% {
-    transform: scale(1.05);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 16px oklch(0.7 0.2 250 / 0.4), 0 0 32px oklch(0.7 0.2 250 / 0.2);
   }
 }
 
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s ease-in-out infinite;
+/* Card 组件默认样式：所有 data-slot="card" 的元素自动应用玻璃效果和呼吸动画 */
+[data-slot="card"] {
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  background: oklch(1 0 0 / 0.05) !important;
+  border: 1px solid oklch(1 0 0 / 0.1) !important;
+  transition: all 0.3s ease;
+  animation: breathe 4s infinite !important;
 }
 
-/* 呼吸光点特效 */
-@keyframes breathe-glow {
-  0%, 100% {
-    opacity: 0.6;
-    transform: scale(1);
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3);
+/* 强制二维码颜色：确保二维码在任何主题下都显示为黑白，强光环境下也能扫描 */
+.force-qr-colors {
+  position: relative;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  padding: 16px !important;
+  display: inline-block;
+  isolation: isolate !important; /* 创建新的层叠上下文，隔离外部样式 */
+  border: 2px solid #000000 !important; /* 黑色边框增强对比度 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 4px rgba(255, 255, 255, 0.5) !important; /* 阴影和白色外圈增强可见性 */
+  border-radius: 12px !important;
+}
+
+/* 强制二维码 SVG 背景为白色，确保可见 */
+/* 使用最高优先级覆盖全局 SVG 样式 */
+.force-qr-colors svg {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  /* 覆盖全局 SVG 颜色规则 - 使用 !important 确保优先级最高 */
+  color: #000000 !important;
+  /* 不设置 fill，让 rect 元素使用自己的 fill 属性 */
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+/* 强制二维码 SVG 路径为黑色（二维码使用 path 元素） */
+.force-qr-colors svg path {
+  fill: #000000 !important;
+  stroke: none !important;
+  stroke-width: 0 !important;
+  /* 确保 path 元素不受任何全局样式影响 */
+  color: #000000 !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
+/* 强制所有 path 元素根据 fill 属性值设置颜色 */
+.force-qr-colors svg path[fill="#000000"],
+.force-qr-colors svg path[fill="black"],
+.force-qr-colors svg path[fill="#000"],
+.force-qr-colors svg path[fill="rgb(0,0,0)"],
+.force-qr-colors svg path[fill="rgb(0, 0, 0)"],
+.force-qr-colors svg path[fill^="#000"],
+.force-qr-colors svg path[fill*="0,0,0"] {
+  fill: #000000 !important;
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+.force-qr-colors svg path[fill="#ffffff"],
+.force-qr-colors svg path[fill="white"],
+.force-qr-colors svg path[fill="#fff"],
+.force-qr-colors svg path[fill="#FFFFFF"],
+.force-qr-colors svg path[fill="rgb(255,255,255)"],
+.force-qr-colors svg path[fill="rgb(255, 255, 255)"],
+.force-qr-colors svg path[fill^="#fff"],
+.force-qr-colors svg path[fill*="255,255,255"] {
+  fill: #ffffff !important;
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+/* 确保所有未设置 fill 的 path 默认为黑色（二维码图案） */
+.force-qr-colors svg path:not([fill]),
+.force-qr-colors svg path[fill=""],
+.force-qr-colors svg path[fill="none"] {
+  fill: #000000 !important;
+  stroke: none !important;
+}
+
+/* 最高优先级：覆盖全局 SVG fill 规则，确保二维码 rect 元素使用自己的 fill 属性 */
+.force-qr-colors svg rect {
+  /* 不设置 fill，让下面的具体规则根据 fill 属性值来设置 */
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+/* 强制黑色前景 rect（二维码的黑色部分）- 使用更具体的选择器确保优先级 */
+.force-qr-colors svg rect[fill="#000000"],
+.force-qr-colors svg rect[fill="black"],
+.force-qr-colors svg rect[fill="#000"],
+.force-qr-colors svg rect[fill="rgb(0,0,0)"],
+.force-qr-colors svg rect[fill="rgb(0, 0, 0)"],
+.force-qr-colors svg rect[fill^="#000"],
+.force-qr-colors svg rect[fill*="0,0,0"] {
+  fill: #000000 !important;
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+/* 强制白色背景 rect（二维码的白色部分）- 使用更具体的选择器确保优先级 */
+.force-qr-colors svg rect[fill="#ffffff"],
+.force-qr-colors svg rect[fill="white"],
+.force-qr-colors svg rect[fill="#fff"],
+.force-qr-colors svg rect[fill="#FFFFFF"],
+.force-qr-colors svg rect[fill="rgb(255,255,255)"],
+.force-qr-colors svg rect[fill="rgb(255, 255, 255)"],
+.force-qr-colors svg rect[fill^="#fff"],
+.force-qr-colors svg rect[fill*="255,255,255"] {
+  fill: #ffffff !important;
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+/* 确保所有未设置 fill 的 rect 默认为白色（背景） */
+.force-qr-colors svg rect:not([fill]),
+.force-qr-colors svg rect[fill=""],
+.force-qr-colors svg rect[fill="none"] {
+  fill: #ffffff !important;
+  stroke: none !important;
+}
+
+/* 强制覆盖任何可能影响二维码颜色的全局样式 */
+.force-qr-colors * {
+  color: #000000 !important;
+  background-color: transparent !important;
+}
+
+/* 终极保护：直接覆盖所有可能的 SVG 样式继承 */
+.force-qr-colors svg,
+.force-qr-colors svg * {
+  /* 禁用所有可能影响颜色的属性 */
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+  color-scheme: normal !important;
+}
+
+/* 确保二维码 SVG 的所有子元素都使用正确的颜色 */
+.force-qr-colors svg > * {
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+
+/* 确保二维码容器在深色背景下有足够的对比度 */
+.force-qr-colors::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* ========================================
+ * 强制 CSS 优先级：深蓝 UI 效果激活
+ * ======================================== */
+
+/* 强制所有卡片变量生效 */
+* {
+  /* 暂时让所有卡片强制透明，确认是不是变量没对齐 */
+  --card: oklch(0.1 0.08 250 / 0.3) !important;
+}
+
+/* 强制卡片样式生效 */
+[data-slot="card"] {
+  background-color: var(--card) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important; /* 兼容 Safari */
+}
+
+/* 移除所有容器的背景遮挡，让 body 渐变露出来 */
+main,
+div[class*="bg-background"],
+div[class*="bg-black"],
+div[class*="bg-zinc-950"] {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* 呼吸灯固化：玻璃卡片样式 */
+/* 固化磨砂玻璃类 */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+  animation: breathe 4s infinite !important;
+}
+
+/* 强制所有卡片及内部容器背景透明 */
+[data-slot="card"], 
+[data-slot="card"] > div {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* 统一注入磨砂效果 */
+[data-slot="card"] {
+  background: oklch(1 0 0 / 0.05) !important; /* 极淡的白色半透明 */
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid oklch(1 0 0 / 0.1) !important;
+}
+
+@layer utilities {
+  /* 定义霓虹紫色变量 (根据图片取色调整) */
+  :root {
+    --neon-purple: #a855f7; /* Tailwind purple-500 的 hex 值，一个明亮的紫色 */
+    /* 或者使用更鲜艳的 OKLCH 值: --neon-purple: oklch(0.6 0.18 295); */
   }
-  50% {
-    opacity: 1;
-    transform: scale(1.2);
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.5);
+
+  /* 核心效果：紫色霓虹卡片类 */
+  .neon-card-purple {
+    /* 1. 卡片基础深色背景和磨砂 */
+    background-color: rgba(20, 25, 40, 0.7) !important; /* 深蓝黑色半透明 */
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-radius: 1rem; /* 大圆角 */
+
+    /* 2. 紫色发光边框核心代码 */
+    border: 1px solid var(--neon-purple) !important;
+    /* 使用多重 box-shadow 创建辉光：第一层是紧贴的锐利光，第二层是扩散的柔和光 */
+    box-shadow: 
+      0 0 4px var(--neon-purple),    /* 内层锐利辉光 */
+      0 0 15px rgba(168, 85, 247, 0.5) !important; /* 外层柔和扩散辉光 (使用紫色的半透明版本) */
+    
+    transition: all 0.3s ease; /* 添加一个平滑过渡效果 */
+  }
+
+  /* 可选：鼠标悬停时增强辉光，增加互动感 */
+  .neon-card-purple:hover {
+     box-shadow: 
+      0 0 6px var(--neon-purple),
+      0 0 25px rgba(168, 85, 247, 0.7) !important;
+  }
+
+  /* 维修预警卡片：应用霓虹灯效果 */
+  .repair-warning-card {
+    /* 应用霓虹灯效果 */
+    background-color: rgba(20, 25, 40, 0.7) !important; /* 深蓝黑色半透明 */
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-radius: 1rem; /* 大圆角 */
+
+    /* 紫色发光边框核心代码 */
+    border: 1px solid var(--neon-purple) !important;
+    /* 使用多重 box-shadow 创建辉光：第一层是紧贴的锐利光，第二层是扩散的柔和光 */
+    box-shadow: 
+      0 0 4px var(--neon-purple),    /* 内层锐利辉光 */
+      0 0 15px rgba(168, 85, 247, 0.5) !important; /* 外层柔和扩散辉光 (使用紫色的半透明版本) */
+    
+    transition: all 0.3s ease; /* 添加一个平滑过渡效果 */
+  }
+
+  /* 维修预警卡片：鼠标悬停时增强辉光 */
+  .repair-warning-card:hover {
+     box-shadow: 
+      0 0 6px var(--neon-purple),
+      0 0 25px rgba(168, 85, 247, 0.7) !important;
   }
 }
 
-.animate-breathe-glow {
-  animation: breathe-glow 2s ease-in-out infinite;
+/* ========== UI 免疫区：二维码相关元素保护 ========== */
+/* 仅在 data-ui="midnight" 下生效，确保二维码等媒体元素不受全局样式影响 */
+[data-ui="midnight"] canvas,
+[data-ui="midnight"] video,
+[data-ui="midnight"] img {
+  /* 恢复背景为透明，避免被全局背景覆盖 */
+  background: transparent !important;
+  background-color: transparent !important;
+  
+  /* 禁用可能影响渲染的滤镜和混合模式 */
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  
+  /* 禁用颜色方案继承，确保元素使用默认渲染 */
+  color-scheme: normal !important;
+  
+  /* 确保元素独立渲染，不受父元素影响 */
+  isolation: auto !important;
 }
 
-/* 地图标记呼吸动画 - 夜晚城市灯光效果 */
-@keyframes marker-pulse {
-  0%, 100% {
-    opacity: 0.6;
-    transform: scale(0.9);
-    box-shadow: 0 0 15px rgba(255, 200, 50, 0.6), 0 0 30px rgba(255, 200, 50, 0.4), 0 0 45px rgba(255, 200, 50, 0.2);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.15);
-    box-shadow: 0 0 25px rgba(255, 200, 50, 0.9), 0 0 50px rgba(255, 200, 50, 0.7), 0 0 75px rgba(255, 200, 50, 0.5);
-  }
+/* 二维码 SVG 特殊保护：确保二维码 SVG 不受全局样式影响 */
+[data-ui="midnight"] .force-qr-colors svg {
+  /* 确保 SVG 背景为白色 */
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  
+  /* 禁用可能影响渲染的滤镜和混合模式 */
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  
+  /* 确保 SVG 独立渲染 */
+  isolation: isolate !important;
+  
+  /* 禁用颜色继承 */
+  color: #000000 !important;
 }
 
-.marker-pulse {
-  animation: marker-pulse 2s ease-in-out infinite;
-}
-
-/* 扩散光圈效果 - 夜晚城市灯光扩散 */
-@keyframes marker-ripple {
-  0% {
-    transform: scale(1);
-    opacity: 0.7;
-    box-shadow: 0 0 10px rgba(255, 255, 100, 0.6);
-  }
-  100% {
-    transform: scale(2.5);
-    opacity: 0;
-    box-shadow: 0 0 30px rgba(255, 255, 100, 0.3);
-  }
-}
-
-.marker-ripple {
-  animation: marker-ripple 2s ease-out infinite;
-}

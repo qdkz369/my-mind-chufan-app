@@ -1,0 +1,95 @@
+/**
+ * Design & Behavior Lint 页面元数据注册表
+ * 
+ * 职责：
+ * - 注册页面的元数据
+ * - 提供运行时查询接口
+ * - 支持构建时验证
+ */
+
+import {
+  type PageMetadata,
+  type PageMetadataValidationResult,
+  validatePageMetadata,
+} from './types'
+import { validatePageMetadata as validateMetadata } from './validator'
+
+/**
+ * 页面元数据注册表（运行时）
+ */
+const pageMetadataRegistry = new Map<string, PageMetadata>()
+
+/**
+ * 注册页面元数据
+ * 
+ * @param metadata - 页面元数据
+ * @throws 如果元数据验证失败，在开发环境下会抛出错误
+ */
+export function registerPageMetadata(metadata: PageMetadata): void {
+  // 验证元数据
+  const validation = validateMetadata(metadata)
+  
+  if (!validation.valid) {
+    console.error(
+      `[Design & Behavior Lint] 页面 "${metadata.pagePath}" 的元数据验证失败：`,
+      validation.errors
+    )
+    // ⚠️ 重要：在开发环境下，验证失败会阻止注册（可选）
+    if (process.env.NODE_ENV === 'development') {
+      throw new Error(
+        `[Design & Behavior Lint] 页面 "${metadata.pagePath}" 的元数据验证失败：${validation.errors.join(', ')}`
+      )
+    }
+  }
+
+  pageMetadataRegistry.set(metadata.pagePath, metadata)
+}
+
+/**
+ * 获取页面元数据
+ * 
+ * @param pagePath - 页面路径
+ * @returns 页面元数据（如果存在）
+ */
+export function getPageMetadata(pagePath: string): PageMetadata | undefined {
+  return pageMetadataRegistry.get(pagePath)
+}
+
+/**
+ * 获取所有页面的元数据
+ * 
+ * @returns 所有页面的元数据列表
+ */
+export function getAllPageMetadatas(): PageMetadata[] {
+  return Array.from(pageMetadataRegistry.values())
+}
+
+/**
+ * 验证所有已注册的页面元数据
+ * 
+ * @returns 验证结果列表
+ */
+export function validateAllPageMetadatas(): PageMetadataValidationResult[] {
+  const metadatas = getAllPageMetadatas()
+  return metadatas.map(validateMetadata)
+}
+
+/**
+ * 检查是否所有页面都通过验证
+ * 
+ * @returns 是否所有页面都通过验证
+ */
+export function areAllPagesValid(): boolean {
+  const results = validateAllPageMetadatas()
+  return results.every(result => result.valid)
+}
+
+/**
+ * 获取所有验证错误
+ * 
+ * @returns 所有错误消息列表
+ */
+export function getAllValidationErrors(): string[] {
+  const results = validateAllPageMetadatas()
+  return results.flatMap(result => result.errors)
+}

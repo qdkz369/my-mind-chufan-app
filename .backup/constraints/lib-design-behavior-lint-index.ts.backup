@@ -1,0 +1,27 @@
+/**
+ * Design & Behavior Lint 系统导出
+ */
+
+export {
+  type PageDecisionPoint,
+  type PageMetadata,
+  type PageMetadataValidationResult,
+} from './types'
+
+export {
+  validatePageMetadata,
+  validateMultiplePageMetadatas,
+  allPagesValid,
+  getAllErrors,
+  getAllWarnings,
+  getAllMissingFields,
+} from './validator'
+
+export {
+  registerPageMetadata,
+  getPageMetadata,
+  getAllPageMetadatas,
+  validateAllPageMetadatas,
+  areAllPagesValid,
+  getAllValidationErrors,
+} from './registry'

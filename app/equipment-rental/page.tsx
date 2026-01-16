@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Header } from "@/components/header"
 import { BottomNavigation } from "@/components/bottom-navigation"
+import { RentalUIProvider } from "@/lib/ui-contexts"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +24,7 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs"
+import { logBusinessWarning } from "@/lib/utils/logger"
 import {
   Flame,
   Snowflake,
@@ -167,13 +169,13 @@ export default function EquipmentRentalPage() {
         setCategoriesError(null)
       } else {
         const errorMsg = result.error || "加载分类失败"
-        console.error("[设备租赁] 加载分类失败:", errorMsg)
+        logBusinessWarning('设备租赁', '加载分类失败', errorMsg)
         setCategoriesError(errorMsg)
         setCategories([])
       }
     } catch (err: any) {
       const errorMsg = err.message || "网络请求失败"
-      console.error("[设备租赁] 加载分类失败:", err)
+      logBusinessWarning('设备租赁', '加载分类失败', err)
       setCategoriesError(errorMsg)
       setCategories([])
     }
@@ -207,13 +209,13 @@ export default function EquipmentRentalPage() {
         setEquipmentError(null)
       } else {
         const errorMsg = result.error || "加载设备失败"
-        console.error("[设备租赁] 加载设备失败:", errorMsg)
+        logBusinessWarning('设备租赁', '加载设备失败', errorMsg)
         setEquipmentError(errorMsg)
         setEquipment([])
       }
     } catch (err: any) {
       const errorMsg = err.message || "网络请求失败"
-      console.error("[设备租赁] 加载设备失败:", err)
+      logBusinessWarning('设备租赁', '加载设备失败', err)
       setEquipmentError(errorMsg)
       setEquipment([])
     } finally {
@@ -232,7 +234,7 @@ export default function EquipmentRentalPage() {
         setRentalOrders(result.data || [])
       }
     } catch (err) {
-      console.error("[设备租赁] 加载订单失败:", err)
+      logBusinessWarning('设备租赁', '加载订单失败', err)
     } finally {
       setIsLoading(false)
     }
@@ -308,7 +310,7 @@ export default function EquipmentRentalPage() {
         loadRentalOrders()
       }
     } catch (err: any) {
-      console.error("[设备租赁] 提交失败:", err)
+      logBusinessWarning('设备租赁', '提交失败', err)
       alert(`创建租赁订单失败：${err.message}`)
     } finally {
       setIsSubmitting(false)
@@ -349,8 +351,9 @@ export default function EquipmentRentalPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background pb-20">
-      <Header />
+    <RentalUIProvider>
+      <main className="min-h-screen bg-background pb-20">
+        <Header />
       
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "browse" | "orders")}>
@@ -870,8 +873,9 @@ export default function EquipmentRentalPage() {
         </DialogContent>
       </Dialog>
 
-      <BottomNavigation />
-    </main>
+        <BottomNavigation />
+      </main>
+    </RentalUIProvider>
   )
 }
 

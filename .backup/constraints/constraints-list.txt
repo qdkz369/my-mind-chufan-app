@@ -1,0 +1,23 @@
+项目约束文件列表
+==================
+
+1. 文档类约束文件:
+   - docs/error-policy.md
+
+2. 代码类约束系统:
+   - lib/design-behavior-lint/index.ts
+   - lib/design-behavior-lint/registry.ts
+   - lib/design-behavior-lint/types.ts
+   - lib/design-behavior-lint/validator.ts
+   - lib/decision-budget/index.ts
+   - lib/decision-budget/marker.tsx
+   - lib/decision-budget/page-registry.ts
+   - lib/decision-budget/types.ts
+   - lib/decision-budget/validator.ts
+   - lib/styles/design-baseline.ts
+
+3. 验证脚本:
+   - scripts/validate-design-behavior-lint.ts
+   - scripts/validate-decision-budget.ts
+
+备份时间: 2025-01-14

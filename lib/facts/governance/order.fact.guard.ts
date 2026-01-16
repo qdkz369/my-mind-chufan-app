@@ -20,6 +20,7 @@
  */
 
 import { OrderFactContract, TraceFactContract } from "@/lib/facts/contracts/order.fact"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 /**
  * 事实警告级别
@@ -410,14 +411,16 @@ export function OrderFactGuard(
     })
   }
 
-  // ========== 记录所有警告到 error log ==========
+  // ========== 记录所有警告（使用 logBusinessWarning，不触发错误弹窗）==========
   if (warnings.length > 0) {
-    console.error(
-      `[订单事实治理层] 订单 ${order.order_id} 发现 ${warnings.length} 个事实契约违反：`,
+    logBusinessWarning(
+      '订单事实治理层',
+      `订单 ${order.order_id} 发现 ${warnings.length} 个事实契约违反`,
       warnings
     )
-    console.error(
-      `[订单事实治理层] 结构化警告详情：`,
+    logBusinessWarning(
+      '订单事实治理层',
+      '结构化警告详情',
       JSON.stringify(warningsStructured, null, 2)
     )
   }

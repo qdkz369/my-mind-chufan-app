@@ -5,6 +5,7 @@ import { Html5Qrcode } from "html5-qrcode"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { QrCode, X, Loader2, AlertCircle } from "lucide-react"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 interface QRScannerProps {
   onScanSuccess: (decodedText: string) => void
@@ -17,6 +18,7 @@ export function QRScanner({ onScanSuccess, onClose, title = "扫描二维码" }:
   const [error, setError] = useState("")
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const isStartedRef = useRef<boolean>(false)
 
   useEffect(() => {
     return () => {
@@ -26,16 +28,25 @@ export function QRScanner({ onScanSuccess, onClose, title = "扫描二维码" }:
           .stop()
           .then(() => {
             scannerRef.current = null
+            isStartedRef.current = false
           })
           .catch(() => {
             scannerRef.current = null
+            isStartedRef.current = false
           })
+      } else {
+        isStartedRef.current = false
       }
     }
   }, [])
 
   const startScan = async () => {
     if (!containerRef.current) return
+
+    // 如果已经启动，直接返回
+    if (isStartedRef.current) {
+      return
+    }
 
     setError("")
     setIsScanning(true)
@@ -49,6 +60,11 @@ export function QRScanner({ onScanSuccess, onClose, title = "扫描二维码" }:
         {
           fps: 10,
           qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+          disableFlip: true,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: false
+          }
         },
         (decodedText) => {
           // 扫描成功
@@ -59,10 +75,21 @@ export function QRScanner({ onScanSuccess, onClose, title = "扫描二维码" }:
           // 扫描失败（继续扫描，不显示错误）
         }
       )
+      
+      // 调试代码：检查 video 元素
+      const video = document.querySelector('video');
+      console.log('[QR DEBUG] video element:', video);
+      console.log('[QR DEBUG] video tag name:', video?.tagName);
+      console.log('[QR DEBUG] video width/height:', video?.videoWidth, video?.videoHeight);
+      console.log('[QR DEBUG] video srcObject:', video?.srcObject);
+      
+      // 启动成功后设置锁
+      isStartedRef.current = true
     } catch (err: any) {
-      console.error("启动扫描失败:", err)
+      logBusinessWarning('QR Scanner', '启动扫描失败', err)
       setError(err.message || "启动扫描失败，请检查摄像头权限")
       setIsScanning(false)
+      isStartedRef.current = false
     }
   }
 
@@ -72,9 +99,13 @@ export function QRScanner({ onScanSuccess, onClose, title = "扫描二维码" }:
         await scannerRef.current.stop()
         scannerRef.current = null
         setIsScanning(false)
+        isStartedRef.current = false
       } catch (err) {
-        console.error("停止扫描失败:", err)
+        logBusinessWarning('QR Scanner', '停止扫描失败', err)
+        isStartedRef.current = false
       }
+    } else {
+      isStartedRef.current = false
     }
   }
 

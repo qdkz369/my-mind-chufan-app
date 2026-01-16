@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { logBusinessWarning } from "@/lib/utils/logger"
 import {
   Select,
   SelectContent,
@@ -38,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import type { RentalContract } from "@/lib/rental/types"
+import { RentalUIProvider, FinanceUIProvider } from "@/lib/ui-contexts"
 
 export default function RentalContractsPage() {
   const router = useRouter()
@@ -101,7 +103,7 @@ export default function RentalContractsPage() {
 
         setIsAuthenticated(true)
       } catch (error) {
-        console.error("[租赁合同页面] 权限验证失败:", error)
+        logBusinessWarning('租赁合同页面', '权限验证失败', error)
         setIsAuthenticated(false)
         router.push("/login")
       }
@@ -125,7 +127,7 @@ export default function RentalContractsPage() {
         setError(result.error || "加载失败")
       }
     } catch (err: any) {
-      console.error("[租赁合同页面] 加载失败:", err)
+      logBusinessWarning('租赁合同页面', '加载失败', err)
       setError(err.message || "加载失败")
     } finally {
       setIsLoading(false)
@@ -143,7 +145,7 @@ export default function RentalContractsPage() {
         .order("name")
 
       if (error) {
-        console.error("[租赁合同页面] 加载餐厅列表失败:", error)
+        logBusinessWarning('租赁合同页面', '加载餐厅列表失败', error)
         return
       }
 
@@ -151,7 +153,7 @@ export default function RentalContractsPage() {
         setRestaurants(data)
       }
     } catch (err) {
-      console.error("[租赁合同页面] 加载餐厅列表失败:", err)
+      logBusinessWarning('租赁合同页面', '加载餐厅列表失败', err)
     }
   }
 
@@ -286,7 +288,9 @@ export default function RentalContractsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background pb-20" data-density="dense">
+    <RentalUIProvider>
+      <FinanceUIProvider>
+        <main className="min-h-screen bg-background pb-20" data-density="dense">
       {/* 页面标题 */}
       <div className="container mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-6">
@@ -314,7 +318,7 @@ export default function RentalContractsPage() {
 
         {/* 错误提示 */}
         {error && (
-          <Card className="theme-card p-6 mb-6 border-destructive/30 bg-destructive/10">
+          <Card className="glass-breath p-6 mb-6 border-destructive/30 bg-destructive/10">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-destructive" />
               <div>
@@ -332,7 +336,7 @@ export default function RentalContractsPage() {
             <span className="text-muted-foreground">加载中...</span>
           </div>
         ) : contracts.length === 0 ? (
-          <Card className="theme-card p-8">
+          <Card className="glass-breath p-8">
             <div className="text-center">
               <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-bold text-foreground mb-2">暂无合同</h3>
@@ -342,7 +346,7 @@ export default function RentalContractsPage() {
         ) : (
           <div className="space-y-4">
             {contracts.map((contract) => (
-              <Card key={contract.id} className="theme-card p-6 hover:bg-muted/30 transition-colors">
+              <Card key={contract.id} className="glass-breath p-6 hover:bg-muted/30 transition-colors">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
@@ -573,6 +577,8 @@ export default function RentalContractsPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </main>
+        </main>
+      </FinanceUIProvider>
+    </RentalUIProvider>
   )
 }

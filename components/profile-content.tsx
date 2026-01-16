@@ -14,6 +14,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { loadAMapOnce, isAMapAvailable } from "@/lib/amap-loader"
 import { getCachedAddress, cacheAddress } from "@/lib/geocoding-cache"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 const menuItems = [
   { icon: Package, label: "我的设备", description: "查看已激活的设备", href: "/devices" },
@@ -110,7 +111,7 @@ export function ProfileContent() {
         // 加载统计数据
         await loadRestaurantStats(restaurantId)
       } catch (error) {
-        console.error('[ProfileContent] 加载餐厅信息失败:', error)
+        logBusinessWarning('ProfileContent', '加载餐厅信息失败', error)
         // 发生错误时，清除所有状态
         setRestaurantInfo(null)
         setIsLoginMode(false)
@@ -194,7 +195,7 @@ export function ProfileContent() {
 
         // 添加定位失败事件监听
         geolocationRef.current.on('error', (data: any) => {
-          console.error('[定位] 定位失败事件:', data)
+          logBusinessWarning('定位', '定位失败事件', data)
         })
 
         // 初始化地理编码插件
@@ -205,7 +206,7 @@ export function ProfileContent() {
         setAmapLoaded(true)
         console.log('[定位] 高德地图插件加载成功（全局单例）')
       } catch (error) {
-        console.error('[定位] 加载高德地图插件失败:', error)
+        logBusinessWarning('定位', '加载高德地图插件失败', error)
         setLocationError('地图服务加载失败，请刷新页面重试')
       }
     }
@@ -244,7 +245,7 @@ export function ProfileContent() {
         setPointsBalance(0)
       }
     } catch (error) {
-      console.error('[ProfileContent] 加载统计数据异常:', error)
+      logBusinessWarning('ProfileContent', '加载统计数据异常', error)
       setTotalOrders(0)
       setTotalSpent(0)
       setPointsBalance(0)
@@ -291,7 +292,7 @@ export function ProfileContent() {
           }
         }
       } catch (e) {
-        console.error('[加载餐厅信息] 解析缓存数据失败:', e)
+        logBusinessWarning('加载餐厅信息', '解析缓存数据失败', e)
         // 清除无效缓存
         if (typeof window !== 'undefined') {
           localStorage.removeItem(`restaurant_${restaurantId}`)
@@ -337,7 +338,7 @@ export function ProfileContent() {
           address: data.address || "",
         })
       } else if (error) {
-        console.error("[加载餐厅信息] Supabase查询失败:", error)
+        logBusinessWarning('加载餐厅信息', 'Supabase查询失败', error)
         // 如果 Supabase 查询失败，但已有缓存数据，保持使用缓存
         if (!cachedData) {
           setRestaurantInfo(null)
@@ -353,7 +354,7 @@ export function ProfileContent() {
         setRestaurantInfo(null)
       }
     } catch (error) {
-      console.error("[加载餐厅信息] 异常:", error)
+      logBusinessWarning('加载餐厅信息', '异常', error)
       // 如果发生异常，但已有缓存数据，保持使用缓存
       if (!cachedData) {
         setRestaurantInfo(null)
@@ -464,7 +465,7 @@ export function ProfileContent() {
               }
             })
           } catch (error) {
-            console.error('[定位] 高德逆地理编码异常:', error)
+            logBusinessWarning('定位', '高德逆地理编码异常', error)
             // 即使逆地理编码失败，也保存坐标
             setFormData(prev => ({
               ...prev,
@@ -489,7 +490,7 @@ export function ProfileContent() {
           return
         }
       } catch (error: any) {
-        console.error('[定位] 浏览器原生定位失败:', error)
+        logBusinessWarning('定位', '浏览器原生定位失败', error)
         
         // 根据错误代码提供友好的中文提示
         let errorMessage = "定位失败，请检查定位权限或稍后重试"
@@ -546,7 +547,7 @@ export function ProfileContent() {
     let isCompleted = false
     const timeoutId = setTimeout(() => {
       if (!isCompleted) {
-        console.error('[定位] 定位超时')
+        logBusinessWarning('定位', '定位超时')
         setLocationError("定位超时，请检查网络连接或定位权限")
         setIsLocating(false)
         isCompleted = true
@@ -574,7 +575,7 @@ export function ProfileContent() {
           
           // 验证坐标有效性
           if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
-            console.error('[定位] 坐标无效:', { latitude, longitude })
+            logBusinessWarning('定位', '坐标无效', { latitude, longitude })
             setLocationError("获取的坐标无效，请重试")
             setIsLocating(false)
             if (geolocationRef.current) {
@@ -711,7 +712,7 @@ export function ProfileContent() {
             }
           } catch (error) {
             // 捕获逆地理编码过程中的异常
-            console.error('[定位] 逆地理编码异常:', error)
+            logBusinessWarning('定位', '逆地理编码异常', error)
             setFormData(prev => ({
               ...prev,
               latitude,
@@ -727,7 +728,7 @@ export function ProfileContent() {
             }
           }
         } else {
-          console.error('[定位] 定位数据格式错误:', data)
+          logBusinessWarning('定位', '定位数据格式错误', data)
           setLocationError("定位数据格式错误")
           setIsLocating(false)
           if (geolocationRef.current) {
@@ -741,7 +742,7 @@ export function ProfileContent() {
         if (isCompleted) return // 防止重复处理
         clearTimeout(timeoutId)
         isCompleted = true
-        console.error('[定位] 定位失败:', data)
+        logBusinessWarning('定位', '定位失败', data)
         
         // 将英文错误信息翻译成中文
         let errorMessage = data?.message || data?.info || data?.message || ""
@@ -787,7 +788,7 @@ export function ProfileContent() {
       
     } catch (error) {
       clearTimeout(timeoutId)
-      console.error('[定位] 定位异常:', error)
+      logBusinessWarning('定位', '定位异常', error)
       setLocationError("定位服务异常，请稍后重试")
       setIsLocating(false)
     }
@@ -850,7 +851,7 @@ export function ProfileContent() {
         // 检查 HTTP 状态码
         if (!response.ok) {
           const errorResult = await response.json().catch(() => ({ error: "网络请求失败" }))
-          console.error('[注册表单] 更新失败 - HTTP错误:', response.status, errorResult)
+          logBusinessWarning('注册表单', '更新失败 - HTTP错误', { status: response.status, errorResult })
           
           // 如果返回404，说明记录不存在，清除localStorage并切换到注册模式
           if (response.status === 404) {
@@ -949,7 +950,7 @@ export function ProfileContent() {
           router.refresh()
           setTimeout(() => setSubmitSuccess(false), 3000)
         } else {
-          console.error('[注册表单] 更新失败:', result.error, result.details)
+          logBusinessWarning('注册表单', '更新失败', { error: result.error, details: result.details })
           alert("更新失败: " + (result.error || "未知错误") + (result.details ? `\n详情: ${result.details}` : ""))
         }
       } else {
@@ -973,7 +974,7 @@ export function ProfileContent() {
         // 检查 HTTP 状态码
         if (!response.ok) {
           const errorResult = await response.json().catch(() => ({ error: "网络请求失败" }))
-          console.error('[注册表单] 注册失败 - HTTP错误:', response.status, errorResult)
+          logBusinessWarning('注册表单', '注册失败 - HTTP错误', { status: response.status, errorResult })
           alert(`注册失败 (${response.status}): ${errorResult.error || "网络请求失败"}`)
           return
         }
@@ -1031,12 +1032,12 @@ export function ProfileContent() {
           router.refresh()
           setTimeout(() => setSubmitSuccess(false), 3000)
         } else {
-          console.error('[注册表单] 注册失败:', result.error, result.details)
+          logBusinessWarning('注册表单', '注册失败', { error: result.error, details: result.details })
           alert("注册失败: " + (result.error || "未知错误") + (result.details ? `\n详情: ${result.details}` : ""))
         }
       }
     } catch (error) {
-      console.error("提交失败:", error)
+      logBusinessWarning('注册表单', '提交失败', error)
       const errorMessage = error instanceof Error ? error.message : "未知错误"
       alert(`提交失败: ${errorMessage}\n\n请检查网络连接或稍后重试`)
     } finally {
@@ -1113,7 +1114,7 @@ export function ProfileContent() {
             router.refresh()
       }
     } catch (error: any) {
-      console.error("登录失败:", error)
+      logBusinessWarning('登录', '登录失败', error)
       setLoginError(error.message || "登录失败，请检查手机号是否正确")
     } finally {
       setIsLoggingIn(false)
@@ -1164,7 +1165,7 @@ export function ProfileContent() {
   if (!isRegistered && !isEditing) {
     return (
       <div className="container mx-auto px-4 py-6 space-y-6">
-        <Card className="theme-card p-6">
+        <Card semanticLevel="primary_fact" className="glass-breath p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center">
               <User className="h-5 w-5 text-primary-foreground" />
@@ -1331,7 +1332,7 @@ export function ProfileContent() {
                     </div>
                   )}
                   {formData.address && formData.latitude !== 0 && formData.longitude !== 0 && (
-                    <div className="mt-2 p-3 bg-muted/50 rounded-lg theme-card">
+                    <div className="mt-2 p-3 rounded-lg glass-breath">
                       <div className="flex items-start gap-2">
                         <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
@@ -1380,7 +1381,7 @@ export function ProfileContent() {
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* 登录/注册/编辑表单 */}
       {isEditing ? (
-        <Card className="theme-card p-6">
+        <Card semanticLevel="primary_fact" className="glass-breath p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
               <User className="h-5 w-5 text-primary-foreground" />
@@ -1566,7 +1567,7 @@ export function ProfileContent() {
       ) : isRegistered ? (
         /* 已注册信息展示 */
         <>
-          <Card className="theme-card p-6">
+          <Card semanticLevel="primary_fact" className="glass-breath p-6">
             <div className="flex items-center gap-4">
               <Avatar className="w-16 h-16">
                 <AvatarImage src="/placeholder.svg?height=64&width=64" />
@@ -1608,13 +1609,13 @@ export function ProfileContent() {
           </Card>
 
           <div className="grid grid-cols-3 gap-4">
-            <Card className="p-4 text-center theme-card">
+            <Card semanticLevel="secondary_fact" className="p-4 text-center theme-card">
               <div className="text-2xl font-bold mb-1 text-foreground data-value">
                 {isLoadingStats ? "..." : totalOrders.toLocaleString()}
               </div>
               <div className="text-xs text-muted-foreground data-unit">累计订单</div>
             </Card>
-            <Card className="p-4 text-center theme-card">
+            <Card semanticLevel="secondary_fact" className="p-4 text-center theme-card">
               <div className="text-2xl font-bold mb-1 text-foreground data-value">
                 {isLoadingStats ? "..." : totalSpent >= 1000 
                   ? `¥${(totalSpent / 1000).toFixed(1)}k` 
@@ -1622,7 +1623,7 @@ export function ProfileContent() {
               </div>
               <div className="text-xs text-muted-foreground data-unit">累计消费</div>
             </Card>
-            <Card className="p-4 text-center theme-card">
+            <Card semanticLevel="secondary_fact" className="p-4 text-center theme-card">
               <div className="text-2xl font-bold mb-1 text-foreground data-value">
                 {isLoadingStats ? "..." : pointsBalance.toLocaleString()}
               </div>
@@ -1631,7 +1632,7 @@ export function ProfileContent() {
           </div>
 
           {/* 主题切换器 */}
-          <Card className="theme-card p-4">
+          <Card semanticLevel="secondary_fact" className="theme-card p-4">
             <div className="space-y-4">
               <div>
                 <h3 className="font-medium text-foreground mb-1">主题切换</h3>
@@ -1641,7 +1642,7 @@ export function ProfileContent() {
             </div>
           </Card>
 
-          <Card className="theme-card divide-y divide-border/50">
+          <Card semanticLevel="secondary_fact" className="theme-card divide-y divide-border/50">
             {menuItems.map((item) => (
               <Link
                 key={item.label}
@@ -1661,7 +1662,7 @@ export function ProfileContent() {
             ))}
           </Card>
 
-          <Card className="p-4 theme-card">
+          <Card semanticLevel="secondary_fact" className="p-4 theme-card">
             <button 
               onClick={handleLogout}
               className="w-full text-destructive font-medium hover:text-destructive/80 transition-colors"

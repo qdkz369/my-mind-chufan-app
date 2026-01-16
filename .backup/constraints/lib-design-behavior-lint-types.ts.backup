@@ -1,0 +1,113 @@
+/**
+ * Design & Behavior Lint（设计和行为检查）系统
+ * 
+ * 核心原则：
+ * 1. 新页面必须声明：
+ *    - systemState（系统状态）
+ *    - semanticLevel（语义层级）
+ *    - decisionPoint（决策点）
+ * 2. 缺失任一项 → 构建失败
+ * 3. UI Review 自动化（非人工）
+ * 
+ * ⚠️ 重要：
+ * - 所有页面必须在构建时通过验证
+ * - 缺失任何必需字段会导致构建失败
+ * - 与 System State、Semantic Level、Decision Budget 系统集成
+ */
+
+import { type SystemState } from '@/lib/styles/system-state'
+import { type SemanticLevel } from '@/lib/ui-semantic'
+
+/**
+ * 页面决策点（与 Decision Budget 集成）
+ */
+export type PageDecisionPoint = {
+  /**
+   * 主要决策ID（来自 Decision Budget）
+   */
+  primaryDecisionId: string
+
+  /**
+   * 主要决策描述
+   */
+  primaryDecisionDescription?: string
+}
+
+/**
+ * 页面元数据（必需字段）
+ */
+export type PageMetadata = {
+  /**
+   * 页面路径（唯一标识）
+   */
+  pagePath: string
+
+  /**
+   * 系统状态（必需）
+   * 
+   * 来自 System State 系统
+   * 决定页面的系统状态（normal, focus, warning, risk, success）
+   */
+  systemState: SystemState
+
+  /**
+   * 语义层级（必需）
+   * 
+   * 来自 Semantic Level 系统
+   * 决定页面的信息层级（primary_fact, secondary_fact, action, financial, system_hint）
+   */
+  semanticLevel: SemanticLevel
+
+  /**
+   * 决策点（必需）
+   * 
+   * 来自 Decision Budget 系统
+   * 标识页面的主要决策
+   */
+  decisionPoint: PageDecisionPoint
+
+  /**
+   * 页面标题（可选，用于文档和日志）
+   */
+  title?: string
+
+  /**
+   * 页面描述（可选，用于文档和日志）
+   */
+  description?: string
+
+  /**
+   * 页面元数据版本（可选，用于版本控制）
+   */
+  version?: string
+}
+
+/**
+ * 页面元数据验证结果
+ */
+export type PageMetadataValidationResult = {
+  /**
+   * 是否通过验证
+   */
+  valid: boolean
+
+  /**
+   * 验证错误列表
+   */
+  errors: string[]
+
+  /**
+   * 验证警告列表
+   */
+  warnings: string[]
+
+  /**
+   * 页面路径
+   */
+  pagePath: string
+
+  /**
+   * 缺失的必需字段
+   */
+  missingFields: string[]
+}

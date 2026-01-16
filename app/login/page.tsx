@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Shield, AlertCircle, CheckCircle2 } from "lucide-react"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -58,7 +59,7 @@ export default function LoginPage() {
       })
 
       if (authError) {
-        console.error("[登录页] 登录失败:", authError)
+        logBusinessWarning('登录页', '登录失败', authError)
         throw authError
       }
 
@@ -69,7 +70,7 @@ export default function LoginPage() {
       console.log("[登录页] 登录成功，用户ID:", authData.user.id)
 
       // 检查用户角色
-      const { data: roleData, error: roleError } = await supabase
+      let { data: roleData, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", authData.user.id)
@@ -87,7 +88,7 @@ export default function LoginPage() {
 
       // 如果查询失败或没有角色记录
       if (roleError) {
-        console.error("[登录页] 查询角色失败:", roleError)
+        logBusinessWarning('登录页', '查询角色失败', roleError)
         if (roleError.code === '42501' || roleError.code === 'PGRST301') {
           throw new Error("权限配置错误，请联系系统管理员")
         }
@@ -95,9 +96,60 @@ export default function LoginPage() {
       }
 
       if (!roleData) {
-        console.warn("[登录页] 用户没有角色记录，需要管理员分配")
+        console.warn("[登录页] 用户没有角色记录")
         console.warn("[登录页] 用户ID:", authData.user.id)
-        throw new Error("您还没有被分配角色，请联系系统管理员")
+        console.warn("[登录页] 用户元数据:", authData.user.user_metadata)
+        
+        // 如果用户是由管理员创建的（有 created_by_admin 标记），自动分配 admin 角色
+        if (authData.user.user_metadata?.created_by_admin === true) {
+          console.log("[登录页] 检测到管理员创建的用户，自动分配 admin 角色...")
+          
+          try {
+            const { error: insertRoleError } = await supabase
+              .from("user_roles")
+              .insert({
+                user_id: authData.user.id,
+                role: "admin",
+              })
+
+            if (insertRoleError) {
+              console.error("[登录页] 自动分配角色失败:", insertRoleError)
+              throw new Error("您还没有被分配角色，自动分配失败，请联系系统管理员")
+            }
+
+            console.log("[登录页] 已自动分配 admin 角色，重新查询角色...")
+            
+            // 重新查询角色
+            const { data: newRoleData, error: newRoleError } = await supabase
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", authData.user.id)
+              .maybeSingle()
+
+            if (newRoleError || !newRoleData) {
+              throw new Error("角色分配成功但查询失败，请刷新页面重试")
+            }
+
+            // 使用新分配的角色继续登录流程
+            const actualRole = Array.isArray(newRoleData) ? newRoleData[0]?.role : newRoleData.role
+            console.log("[登录页] 自动分配角色成功，当前角色:", actualRole)
+            
+            // 继续后续的登录流程（跳过角色检查，因为已经分配了）
+            // 注意：这里需要确保 actualRole 是 admin 或 super_admin
+            if (actualRole !== "super_admin" && actualRole !== "admin") {
+              throw new Error(`自动分配的角色无效（${actualRole}），请联系系统管理员`)
+            }
+            
+            // 更新 roleData 以便后续流程继续
+            roleData = newRoleData
+          } catch (autoAssignError: any) {
+            console.error("[登录页] 自动分配角色异常:", autoAssignError)
+            throw new Error(autoAssignError.message || "您还没有被分配角色，请联系系统管理员")
+          }
+        } else {
+          // 不是管理员创建的用户，需要手动分配
+          throw new Error("您还没有被分配角色，请联系系统管理员")
+        }
       }
 
       // 处理可能的数组格式（虽然使用了 maybeSingle，但以防万一）
@@ -139,7 +191,7 @@ export default function LoginPage() {
             verifyRetryCount++
             continue
           }
-          console.error("[登录页] 会话验证失败:", verifyError)
+          logBusinessWarning('登录页', '会话验证失败', verifyError)
           throw new Error("会话验证失败，请重试")
         }
         
@@ -148,6 +200,25 @@ export default function LoginPage() {
       }
 
       console.log("[登录页] 会话已验证，用户:", verifiedUser.email)
+      
+      // 检查是否使用默认密码（通过 user_metadata 或密码是否为 123456）
+      const isDefaultPassword = verifiedUser.user_metadata?.is_default_password === true || 
+                                verifiedUser.user_metadata?.created_by_admin === true
+      
+      if (isDefaultPassword && password === "123456") {
+        // 使用默认密码，需要提醒修改
+        const shouldChangePassword = confirm(
+          "⚠️ 安全提醒\n\n" +
+          "您当前使用的是默认密码（123456），为了账户安全，请立即修改密码。\n\n" +
+          "点击\"确定\"跳转到密码修改页面，点击\"取消\"稍后修改。"
+        )
+        
+        if (shouldChangePassword) {
+          // 跳转到密码修改页面（在管理后台）
+          window.location.href = "/dashboard?action=change-password"
+          return
+        }
+      }
       
       // 显示成功提示
       setSuccess("登录成功！正在跳转到管理后台...")
@@ -164,7 +235,7 @@ export default function LoginPage() {
       }
       
     } catch (err: any) {
-      console.error("[登录页] 登录失败:", err)
+      logBusinessWarning('登录页', '登录失败', err)
       setError(err.message || "登录失败，请检查邮箱和密码")
       setIsLoading(false) // 确保重置加载状态
       isRedirectingRef.current = false // 重置跳转标记

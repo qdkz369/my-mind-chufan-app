@@ -11,6 +11,7 @@ import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 import { requireCapability } from "@/lib/auth/requireCapability"
 import { Capability } from "@/lib/capabilities"
 import { writeAuditLog } from "@/lib/audit"
+import { createOrderStatusNotification } from "@/lib/notifications/create-notification"
 
 /**
  * POST: 配送员派单/开始配送
@@ -131,6 +132,29 @@ export async function POST(request: Request) {
     } catch (auditError) {
       // 审计日志写入失败不影响主流程，只记录日志
       console.error('[派单API] 写入审计日志失败:', auditError)
+    }
+
+    // 创建订单状态变更通知（非阻断）
+    try {
+      const { data: orderDetail } = await supabase
+        .from("delivery_orders")
+        .select("order_number, restaurant_id")
+        .eq("id", orderId)
+        .single()
+
+      if (orderDetail) {
+        await createOrderStatusNotification(
+          orderDetail.restaurant_id,
+          orderId,
+          orderDetail.order_number || orderId.substring(0, 8),
+          currentStatus,
+          "delivering",
+          "delivery"
+        )
+      }
+    } catch (notifyError) {
+      console.error('[派单API] 创建通知失败:', notifyError)
+      // 通知创建失败不影响主流程
     }
 
     return NextResponse.json({

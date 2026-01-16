@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Mic, MicOff, Send, X, Play, Pause } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 export default function RepairCreatePage() {
   const router = useRouter()
@@ -49,7 +50,7 @@ export default function RepairCreatePage() {
       mediaRecorder.start()
       setIsRecording(true)
     } catch (error) {
-      console.error("无法访问麦克风:", error)
+      logBusinessWarning('报修创建', '无法访问麦克风', error)
       alert("无法访问麦克风，请检查权限设置")
     }
   }
@@ -151,7 +152,7 @@ export default function RepairCreatePage() {
         alert(`报修提交失败：${errorData.error || "服务器错误"}`)
       }
     } catch (error) {
-      console.error("[报修提交] 失败:", error)
+      logBusinessWarning('报修提交', '失败', error)
       alert("报修提交失败，请稍后重试")
     } finally {
       setIsSubmitting(false)
@@ -182,7 +183,7 @@ export default function RepairCreatePage() {
           <h1 className="text-2xl font-bold text-foreground">一键报修</h1>
         </div>
 
-        <Card className="theme-card p-6">
+        <Card className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">问题描述</h2>
           <textarea
             value={description}
@@ -193,7 +194,7 @@ export default function RepairCreatePage() {
           />
         </Card>
 
-        <Card className="theme-card p-6">
+        <Card className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">语音录入</h2>
           <div className="space-y-4">
             {!audioUrl ? (
@@ -250,7 +251,7 @@ export default function RepairCreatePage() {
           </div>
         </Card>
 
-        <Card className="theme-card p-6">
+        <Card className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">紧急程度</h2>
           <div className="grid grid-cols-3 gap-3">
             {(["low", "normal", "high"] as const).map((level) => (

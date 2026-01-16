@@ -43,6 +43,7 @@ import { ImageUploader } from "@/components/worker/image-uploader"
 // 不再使用 OrderStatus 枚举，统一使用小写字符串
 import { useOfflineSync } from "@/hooks/use-offline-sync"
 import { apiRequest } from "@/lib/api-client"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 // 设备型号选项
 const DEVICE_MODELS = [
@@ -136,28 +137,28 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
     // 验证表单
     if (deviceList.length === 0) {
       const errorMsg = "请至少添加一个设备到清单"
-      console.error('[安装表单] 验证失败:', errorMsg)
+      logBusinessWarning('安装表单', '验证失败', errorMsg)
       setError(errorMsg)
       return
     }
 
     if (!address.trim()) {
       const errorMsg = "请输入安装地址"
-      console.error('[安装表单] 验证失败:', errorMsg)
+      logBusinessWarning('安装表单', '验证失败', errorMsg)
       setError(errorMsg)
       return
     }
 
     if (!installer.trim()) {
       const errorMsg = "请输入安装人姓名"
-      console.error('[安装表单] 验证失败:', errorMsg)
+      logBusinessWarning('安装表单', '验证失败', errorMsg)
       setError(errorMsg)
       return
     }
 
     if (!customerId) {
       const errorMsg = "请先扫描客户二维码获取客户信息"
-      console.error('[安装表单] 验证失败:', errorMsg)
+      logBusinessWarning('安装表单', '验证失败', errorMsg)
       setError(errorMsg)
       return
     }
@@ -219,7 +220,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
               .eq("device_id", device.deviceId)
 
             if (linkError) {
-              console.error(`关联设备 ${device.deviceId} 到客户失败:`, linkError)
+              logBusinessWarning('安装表单', `关联设备 ${device.deviceId} 到客户失败`, linkError)
               failedDevices.push(device.deviceId)
             } else {
               console.log(`✅ 设备 ${device.deviceId} 已成功关联到客户`)
@@ -227,7 +228,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
             }
           }
         } catch (err: any) {
-          console.error(`处理设备 ${device.deviceId} 失败:`, err)
+          logBusinessWarning('安装表单', `处理设备 ${device.deviceId} 失败`, err)
           failedDevices.push(device.deviceId)
         }
       }
@@ -254,13 +255,13 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
             .eq("id", customerId)
 
           if (statusError) {
-            console.error("更新餐厅状态失败:", statusError)
+            logBusinessWarning('安装表单', '更新餐厅状态失败', statusError)
             // 不阻止流程，只记录错误
           } else {
             console.log("✅ 餐厅状态已更新为已激活")
           }
         } catch (err) {
-          console.error("更新餐厅状态时出错:", err)
+          logBusinessWarning('安装表单', '更新餐厅状态时出错', err)
           // 不阻止流程，只记录错误
         }
       }
@@ -287,7 +288,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
         setSubmitSuccess(false)
       }, 3000)
     } catch (err: any) {
-      console.error('[安装表单] 提交失败:', err)
+      logBusinessWarning('安装表单', '提交失败', err)
       const errorMessage = err.message || "提交失败，请检查网络连接"
       setError(errorMessage)
       alert(`安装失败: ${errorMessage}\n\n请查看浏览器控制台获取详细信息`)
@@ -332,7 +333,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
         console.log("✅ 客户信息已自动填充:", data.restaurant)
       }
     } catch (err: any) {
-      console.error("获取客户信息失败:", err)
+      logBusinessWarning('安装表单', '获取客户信息失败', err)
       setError(err.message || "获取客户信息失败，请重试")
       setCustomerAutoFilled(false)
     } finally {
@@ -980,7 +981,7 @@ function BindDevicePage({ restaurantInfo, onComplete, onBack }: {
           .eq("device_id", deviceId.trim())
 
         if (linkError) {
-          console.error("绑定设备失败:", linkError)
+          logBusinessWarning('设备安装', '绑定设备失败', linkError)
           throw new Error("绑定设备失败: " + linkError.message)
         }
 
@@ -994,7 +995,7 @@ function BindDevicePage({ restaurantInfo, onComplete, onBack }: {
           .eq("id", restaurantInfo.restaurant_id)
 
         if (statusError) {
-          console.error("更新餐厅状态失败:", statusError)
+          logBusinessWarning('设备安装', '更新餐厅状态失败', statusError)
           // 不阻止流程，只记录错误
         }
 
@@ -1199,7 +1200,7 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack, workerId 
           .eq("device_id", deviceId.trim())
 
         if (linkError) {
-          console.error("关联设备到餐厅失败:", linkError)
+          logBusinessWarning('设备安装', '关联设备到餐厅失败', linkError)
           throw new Error("关联设备失败")
         }
 
@@ -1220,7 +1221,7 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack, workerId 
         const orderResult = await orderResponse.json()
 
         if (!orderResponse.ok || orderResult.error) {
-          console.error("创建安装订单失败:", orderResult.error)
+          logBusinessWarning('设备安装', '创建安装订单失败', orderResult.error)
           // 不阻止流程，只记录错误
         } else {
           console.log("安装订单创建成功，订单ID:", orderResult.data?.id)
@@ -1240,7 +1241,7 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack, workerId 
           .eq("id", restaurantInfo.restaurant_id)
 
         if (statusError) {
-          console.error("更新餐厅状态失败:", statusError)
+          logBusinessWarning('设备安装', '更新餐厅状态失败', statusError)
           // 不阻止流程，只记录错误
         }
       }
@@ -1640,7 +1641,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
           
           if (!acceptResponse.ok || acceptResult.error) {
             const errorMsg = acceptResult.error || acceptResult.details || "接单失败，请重试"
-            console.error("[配送流程] 接单失败:", errorMsg, "完整响应:", acceptResult)
+            logBusinessWarning('配送流程', '接单失败', { errorMsg, fullResponse: acceptResult })
             throw new Error(errorMsg)
           }
           console.log("[配送流程] 接单成功，订单状态:", acceptResult.data?.status)
@@ -1700,7 +1701,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
           setSubmitSuccess(false)
         }, 3000)
       } catch (err: any) {
-        console.error("[配送流程] 操作失败:", err)
+        logBusinessWarning('配送流程', '操作失败', err)
         setError(err.message || "提交失败，请检查网络连接")
       } finally {
         setIsSubmitting(false)
@@ -2635,13 +2636,13 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
       }
 
       if (error) {
-        console.error("[设备交付] 加载失败:", error)
+        logBusinessWarning('设备交付', '加载失败', error)
         setPendingRentals([])
       } else {
         setPendingRentals(data || [])
       }
     } catch (err: any) {
-      console.error("[设备交付] 加载失败:", err)
+      logBusinessWarning('设备交付', '加载失败', err)
       setPendingRentals([])
     } finally {
       setIsLoadingRentals(false)
@@ -2719,7 +2720,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
       setSignatureData(null)
       loadPendingRentals()
     } catch (err: any) {
-      console.error("[设备交付] 提交失败:", err)
+      logBusinessWarning('设备交付', '提交失败', err)
       setError(`提交失败: ${err.message}`)
     } finally {
       setIsSubmitting(false)
@@ -3197,7 +3198,7 @@ export default function WorkerPage() {
         //   setProductType(info.product_types[0])
         // }
       } catch (error) {
-        console.error("[工人端] 解析保存的工人信息失败:", error)
+        logBusinessWarning('工人端', '解析保存的工人信息失败', error)
         localStorage.removeItem("workerId")
         localStorage.removeItem("workerInfo")
         setIsLoginDialogOpen(true)
@@ -3317,7 +3318,7 @@ export default function WorkerPage() {
       setLoginWorkerId("")
       setLoginPhone("")
     } catch (error: any) {
-      console.error("[工人端] 登录失败:", error)
+      logBusinessWarning('工人端', '登录失败', error)
       alert(`登录失败: ${error.message || "未知错误"}`)
     } finally {
       setIsLoggingIn(false)
@@ -3570,7 +3571,7 @@ export default function WorkerPage() {
           {currentView === "home" && (
             <div className="space-y-6">
               {/* 欢迎卡片 */}
-              <Card className="theme-card p-6">
+              <Card className="glass-breath p-6">
                 <div className="text-center space-y-2">
                   <div className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mx-auto shadow-lg shadow-primary/30" style={{ borderRadius: '50%' }}>
                     <Package className="h-8 w-8 text-primary-foreground" />

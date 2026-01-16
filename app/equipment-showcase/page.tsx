@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Package, DollarSign, Calendar, CheckCircle2 } from "lucide-react"
 import Image from "next/image"
+import { logBusinessWarning } from "@/lib/utils/logger"
 
 interface EquipmentCatalog {
   id: string
@@ -54,7 +55,7 @@ export default function EquipmentShowcasePage() {
           setFilteredEquipment(result.data)
         }
       } catch (error) {
-        console.error("[设备展示墙] 加载失败:", error)
+        logBusinessWarning('设备展示墙', '加载失败', error)
       } finally {
         setIsLoading(false)
       }
@@ -73,7 +74,7 @@ export default function EquipmentShowcasePage() {
           setCategories(result.data)
         }
       } catch (error) {
-        console.error("[设备展示墙] 加载分类失败:", error)
+        logBusinessWarning('设备展示墙', '加载分类失败', error)
       }
     }
     loadCategories()

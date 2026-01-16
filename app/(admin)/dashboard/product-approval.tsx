@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { logBusinessWarning } from "@/lib/utils/logger"
 import {
   CheckCircle2,
   XCircle,
@@ -83,7 +84,7 @@ export function ProductApproval() {
         setFilteredProducts(result.data)
       }
     } catch (error) {
-      console.error("[产品审核] 加载失败:", error)
+      logBusinessWarning('产品审核', '加载失败', error)
     } finally {
       setIsLoading(false)
     }
@@ -147,7 +148,7 @@ export function ProductApproval() {
         alert(`操作失败: ${result.error}`)
       }
     } catch (error: any) {
-      console.error("[产品审核] 审核失败:", error)
+      logBusinessWarning('产品审核', '审核失败', error)
       alert(`审核失败: ${error.message}`)
     } finally {
       setIsApproving(false)

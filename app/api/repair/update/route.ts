@@ -8,6 +8,7 @@ import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 import { CONFIG_REQUIRE_ASSET_TRACE } from "@/lib/config/asset-trace"
+import { createOrderStatusNotification } from "@/lib/notifications/create-notification"
 
 /**
  * POST: 更新报修工单状态和金额
@@ -201,6 +202,31 @@ export async function POST(request: Request) {
         // 溯源记录写入失败不影响报修工单更新，只记录日志
       } else {
         console.log("[更新报修API] 资产溯源记录已写入，asset_ids:", asset_ids)
+      }
+    }
+
+    // 创建报修状态变更通知（非阻断）
+    if (updatedRepair && repair.status !== status) {
+      try {
+        const { data: repairDetail } = await supabase
+          .from("repair_orders")
+          .select("order_number, restaurant_id")
+          .eq("id", repairId)
+          .single()
+
+        if (repairDetail) {
+          await createOrderStatusNotification(
+            repairDetail.restaurant_id,
+            repairId,
+            repairDetail.order_number || repairId.substring(0, 8),
+            repair.status,
+            status,
+            "repair"
+          )
+        }
+      } catch (notifyError) {
+        console.error('[更新报修API] 创建通知失败:', notifyError)
+        // 通知创建失败不影响主流程
       }
     }
 

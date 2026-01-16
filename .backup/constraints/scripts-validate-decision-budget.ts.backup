@@ -1,0 +1,123 @@
+#!/usr/bin/env ts-node
+
+/**
+ * Decision Budget 验证脚本
+ * 
+ * 用途：
+ * - 构建时验证所有页面的决策预算
+ * - CI/CD 集成
+ * - 超过 1 个 primary_decision 禁止上线
+ * 
+ * 使用方法：
+ * npm run validate-decision-budget
+ * 或
+ * ts-node scripts/validate-decision-budget.ts
+ */
+
+import {
+  type PageDecisionBudget,
+  validateMultipleDecisionBudgets,
+  allPagesValid,
+  getAllErrors,
+  getAllWarnings,
+} from '../lib/decision-budget'
+
+/**
+ * 示例：收集所有页面的决策预算
+ * 
+ * ⚠️ 注意：实际使用时，需要从各个页面文件或配置文件中收集决策预算
+ * 这里提供示例结构
+ */
+function collectPageBudgets(): PageDecisionBudget[] {
+  // 示例：从配置文件或页面元数据中收集
+  // 实际实现可能需要：
+  // 1. 扫描 app/ 目录下的页面文件
+  // 2. 读取页面文件中的决策预算注释或配置
+  // 3. 或从统一的配置文件中读取
+
+  const budgets: PageDecisionBudget[] = [
+    // 示例页面 1
+    // {
+    //   pagePath: '/user-bound',
+    //   primaryDecisions: [
+    //     {
+    //       id: 'create-order',
+    //       type: 'primary_decision',
+    //       description: '创建订单',
+    //     },
+    //   ],
+    //   secondaryActions: [
+    //     {
+    //       id: 'view-details',
+    //       type: 'secondary_action',
+    //       description: '查看详情',
+    //     },
+    //   ],
+    // },
+  ]
+
+  return budgets
+}
+
+/**
+ * 验证所有页面的决策预算
+ */
+function validateDecisionBudgets(): void {
+  console.log('[Decision Budget] 开始验证页面决策预算...\n')
+
+  const budgets = collectPageBudgets()
+  
+  if (budgets.length === 0) {
+    console.warn('[Decision Budget] 警告：未找到任何页面的决策预算')
+    return
+  }
+
+  const results = validateMultipleDecisionBudgets(budgets)
+
+  // 输出验证结果
+  results.forEach((result) => {
+    if (!result.valid) {
+      console.error(`[Decision Budget] ❌ 页面 "${result.pagePath}" 验证失败：`)
+      result.errors.forEach((error) => {
+        console.error(`  - ${error}`)
+      })
+    } else {
+      console.log(`[Decision Budget] ✅ 页面 "${result.pagePath}" 验证通过`)
+    }
+
+    if (result.warnings.length > 0) {
+      console.warn(`[Decision Budget] ⚠️  页面 "${result.pagePath}" 有警告：`)
+      result.warnings.forEach((warning) => {
+        console.warn(`  - ${warning}`)
+      })
+    }
+  })
+
+  console.log('\n')
+
+  // 检查是否所有页面都通过验证
+  if (!allPagesValid(results)) {
+    const errors = getAllErrors(results)
+    console.error('[Decision Budget] ❌ 验证失败，发现以下错误：')
+    errors.forEach((error) => {
+      console.error(`  - ${error}`)
+    })
+    console.error('\n[Decision Budget] ⛔ 禁止上线：页面决策预算验证失败')
+    process.exit(1)
+  }
+
+  const warnings = getAllWarnings(results)
+  if (warnings.length > 0) {
+    console.warn('[Decision Budget] ⚠️  验证通过，但有警告：')
+    warnings.forEach((warning) => {
+      console.warn(`  - ${warning}`)
+    })
+  }
+
+  console.log('[Decision Budget] ✅ 所有页面决策预算验证通过')
+}
+
+// 执行验证
+if (require.main === module) {
+  validateDecisionBudgets()
+}

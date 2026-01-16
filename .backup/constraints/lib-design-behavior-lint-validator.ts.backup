@@ -1,0 +1,162 @@
+/**
+ * Design & Behavior Lint 验证器
+ * 
+ * 职责：
+ * - 验证页面元数据是否符合规则
+ * - 确保所有必需字段都存在
+ * - 缺失任一项 → 构建失败
+ */
+
+import {
+  type PageMetadata,
+  type PageMetadataValidationResult,
+} from './types'
+
+/**
+ * 必需字段列表
+ */
+const REQUIRED_FIELDS: (keyof PageMetadata)[] = [
+  'systemState',
+  'semanticLevel',
+  'decisionPoint',
+]
+
+/**
+ * 验证页面元数据
+ * 
+ * @param metadata - 页面元数据
+ * @returns 验证结果
+ */
+export function validatePageMetadata(
+  metadata: Partial<PageMetadata>
+): PageMetadataValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const missingFields: string[] = []
+
+  const pagePath = metadata.pagePath || 'unknown'
+
+  // 验证规则 1：检查必需字段
+  REQUIRED_FIELDS.forEach((field) => {
+    if (!metadata[field]) {
+      missingFields.push(field)
+      errors.push(
+        `页面 "${pagePath}" 缺少必需字段 "${field}"`
+      )
+    }
+  })
+
+  // 验证规则 2：验证 systemState 值
+  if (metadata.systemState) {
+    const validSystemStates = ['normal', 'focus', 'warning', 'risk', 'success']
+    if (!validSystemStates.includes(metadata.systemState)) {
+      errors.push(
+        `页面 "${pagePath}" 的 systemState 值无效：${metadata.systemState}，必须是以下之一：${validSystemStates.join(', ')}`
+      )
+    }
+  }
+
+  // 验证规则 3：验证 semanticLevel 值
+  if (metadata.semanticLevel) {
+    const validSemanticLevels = ['primary_fact', 'secondary_fact', 'action', 'financial', 'system_hint']
+    if (!validSemanticLevels.includes(metadata.semanticLevel)) {
+      errors.push(
+        `页面 "${pagePath}" 的 semanticLevel 值无效：${metadata.semanticLevel}，必须是以下之一：${validSemanticLevels.join(', ')}`
+      )
+    }
+  }
+
+  // 验证规则 4：验证 decisionPoint 结构
+  if (metadata.decisionPoint) {
+    if (!metadata.decisionPoint.primaryDecisionId) {
+      errors.push(
+        `页面 "${pagePath}" 的 decisionPoint.primaryDecisionId 不能为空`
+      )
+    }
+  }
+
+  // 验证规则 5：建议字段（警告）
+  if (!metadata.title) {
+    warnings.push(
+      `页面 "${pagePath}" 缺少 title 字段，建议添加以提高可维护性`
+    )
+  }
+  if (!metadata.description) {
+    warnings.push(
+      `页面 "${pagePath}" 缺少 description 字段，建议添加以提高可维护性`
+    )
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    pagePath,
+    missingFields,
+  }
+}
+
+/**
+ * 验证多个页面的元数据
+ * 
+ * @param metadatas - 页面元数据列表
+ * @returns 验证结果列表
+ */
+export function validateMultiplePageMetadatas(
+  metadatas: Partial<PageMetadata>[]
+): PageMetadataValidationResult[] {
+  return metadatas.map(validatePageMetadata)
+}
+
+/**
+ * 检查是否所有页面都通过验证
+ * 
+ * @param results - 验证结果列表
+ * @returns 是否所有页面都通过验证
+ */
+export function allPagesValid(
+  results: PageMetadataValidationResult[]
+): boolean {
+  return results.every(result => result.valid)
+}
+
+/**
+ * 获取所有验证错误
+ * 
+ * @param results - 验证结果列表
+ * @returns 所有错误消息列表
+ */
+export function getAllErrors(
+  results: PageMetadataValidationResult[]
+): string[] {
+  return results.flatMap(result => result.errors)
+}
+
+/**
+ * 获取所有验证警告
+ * 
+ * @param results - 验证结果列表
+ * @returns 所有警告消息列表
+ */
+export function getAllWarnings(
+  results: PageMetadataValidationResult[]
+): string[] {
+  return results.flatMap(result => result.warnings)
+}
+
+/**
+ * 获取所有缺失的必需字段
+ * 
+ * @param results - 验证结果列表
+ * @returns 所有缺失字段的页面路径和字段名
+ */
+export function getAllMissingFields(
+  results: PageMetadataValidationResult[]
+): Array<{ pagePath: string; fields: string[] }> {
+  return results
+    .filter(result => result.missingFields.length > 0)
+    .map(result => ({
+      pagePath: result.pagePath,
+      fields: result.missingFields,
+    }))
+}

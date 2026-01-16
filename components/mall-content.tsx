@@ -134,7 +134,7 @@ export function MallContent() {
       </div>
 
       {/* 数据看板 */}
-      <Card className="theme-card bg-gradient-to-br from-primary to-accent border-0 p-4 mb-6 text-primary-foreground">
+      <Card className="glass-breath border-0 p-4 mb-6 text-primary-foreground">
         <div className="grid grid-cols-3 gap-4">
           <div>
             <div className="text-xs opacity-90 mb-1">本月采购</div>
@@ -159,7 +159,7 @@ export function MallContent() {
 
       {/* 分类和商品 */}
       <Tabs defaultValue="fresh" className="w-full">
-        <TabsList className="w-full justify-start overflow-x-auto theme-card mb-4 flex-nowrap">
+        <TabsList className="w-full justify-start overflow-x-auto glass-breath mb-4 flex-nowrap">
           {categories.map((cat) => (
             <TabsTrigger
               key={cat.id}
@@ -182,6 +182,7 @@ export function MallContent() {
                 .map((product) => (
                   <Card
                     key={product.id}
+                    semanticLevel="secondary_fact"
                     className="theme-card overflow-hidden hover:border-primary/50 transition-all cursor-pointer group"
                   >
                     <div className="relative">
