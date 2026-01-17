@@ -19,7 +19,6 @@
 import { useEffect } from "react"
 import { GuestHeader } from "@/components/guest-header"
 import { GuestServices } from "@/components/guest-services"
-import { BottomNavigation } from "@/components/bottom-navigation"
 // THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
 // import { useTheme } from "@/lib/styles/theme-context"
 
@@ -42,7 +41,7 @@ export default function GuestPage() {
       <div className="container mx-auto px-4 py-8 space-y-6">
         <GuestServices />
       </div>
-      <BottomNavigation />
+      {/* 游客页面不显示底部导航，避免显示需要登录的功能（订单、我的等） */}
     </main>
   )
 }
