@@ -141,48 +141,48 @@ export function GuestServices() {
   return (
     <div className="space-y-6">
       {/* Hero区域 - 醒目标题 */}
-      <div className="text-center mb-8 py-8 px-4">
-        <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight break-words">
+      <div className="text-center mb-6 md:mb-8 py-4 md:py-6 lg:py-8 px-2 md:px-4">
+        <h1 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-3 md:mb-4 leading-tight break-words">
           智慧餐饮数字化服务平台
         </h1>
-        <p className="text-lg text-slate-300 mb-2">
+        <p className="text-base md:text-lg text-slate-300 mb-2">
           一站式餐饮后勤服务大厅
         </p>
-        <p className="text-sm text-slate-400">
+        <p className="text-xs md:text-sm text-slate-400 px-2">
           为您的餐厅提供全方位解决方案，助力餐饮企业数字化转型
         </p>
       </div>
 
       {/* 业务矩阵 - iOS风格Grid宫格卡片（毛玻璃、大圆角） */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-6">
         {guestServices.map((service) => (
           <button
             key={service.label}
             onClick={(e) => handleServiceClick(e, service)}
             className="text-left w-full"
           >
-            <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6 hover:scale-[1.02] hover:border-blue-500/30 transition-all cursor-pointer group h-full rounded-2xl">
-              <div className="flex items-start gap-4 mb-4">
+            <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4 md:p-5 lg:p-6 hover:scale-[1.02] hover:border-blue-500/30 transition-all cursor-pointer group h-full rounded-xl md:rounded-2xl">
+              <div className="flex items-start gap-3 md:gap-4 mb-3 md:mb-4">
                 <div
-                  className={`w-14 h-14 bg-gradient-to-br ${service.color} rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor} group-hover:scale-110 transition-transform`}
+                  className={`w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br ${service.color} rounded-lg md:rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor} group-hover:scale-110 transition-transform flex-shrink-0`}
                 >
-                  <service.icon className="h-7 w-7 text-white" />
+                  <service.icon className="h-6 w-6 md:h-7 md:w-7 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-lg font-semibold text-white">{service.label}</h3>
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <h3 className="text-base md:text-lg font-semibold text-white">{service.label}</h3>
                     {service.badge && (
                       <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
                         {service.badge}
                       </Badge>
                     )}
                   </div>
-                  <p className="text-sm text-slate-400 leading-relaxed mb-2">{service.description}</p>
+                  <p className="text-xs md:text-sm text-slate-400 leading-relaxed mb-2">{service.description}</p>
                   {/* 营销文案 */}
                   <p className="text-xs text-blue-400 font-medium leading-relaxed">{service.marketingText}</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-700/50">
+              <div className="flex items-center justify-between mt-3 md:mt-4 pt-3 md:pt-4 border-t border-slate-700/50">
                 <span className="text-xs text-slate-500">点击查看详情</span>
                 <ArrowRight className="h-4 w-4 text-blue-400 group-hover:translate-x-1 transition-transform" />
               </div>
@@ -192,10 +192,10 @@ export function GuestServices() {
       </div>
 
       {/* 注册引导按钮 */}
-      <div className="text-center mt-8">
+      <div className="text-center mt-6 md:mt-8">
         <Link href="/register">
-          <Button className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white px-8 py-6 text-lg shadow-lg shadow-blue-500/30 rounded-xl">
-            <User className="h-5 w-5 mr-2" />
+          <Button className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 text-white px-6 md:px-8 py-4 md:py-6 text-base md:text-lg shadow-lg shadow-blue-500/30 rounded-lg md:rounded-xl">
+            <User className="h-4 w-4 md:h-5 md:w-5 mr-2" />
             注册账户，享受更多服务
           </Button>
         </Link>

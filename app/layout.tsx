@@ -34,6 +34,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // 确保移动端和桌面端的视口行为一致
+  viewportFit: "cover",
 }
 
 export default function RootLayout({
@@ -78,9 +80,12 @@ export default function RootLayout({
         data-ui="midnight"
         className={`${inter.className} antialiased`}
         style={{ 
-          // 使用 CSS radial-gradient 确保移动端背景不变形，使用 bg-cover 行为
-          background: 'radial-gradient(ellipse at 50% -20%, oklch(0.3 0.15 250), oklch(0.1 0.05 255) 75%) fixed',
+          // 使用 CSS radial-gradient 确保移动端和桌面端背景效果一致
+          // 移除 fixed，使用 scroll 确保移动端正常显示
+          background: 'radial-gradient(ellipse at 50% -20%, oklch(0.3 0.15 250), oklch(0.1 0.05 255) 75%)',
+          backgroundAttachment: 'scroll',
           backgroundSize: 'cover',
+          backgroundRepeat: 'no-repeat',
           minHeight: '100vh',
           color: 'white'
         }}
