@@ -32,8 +32,8 @@ export const viewport: Viewport = {
   themeColor: "#1e3a8a",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5,
-  userScalable: true,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 export default function RootLayout({
@@ -78,7 +78,9 @@ export default function RootLayout({
         data-ui="midnight"
         className={`${inter.className} antialiased`}
         style={{ 
-          background: 'radial-gradient(circle at 50% -20%, oklch(0.3 0.15 250), oklch(0.1 0.05 255) 75%) fixed',
+          // 使用 CSS radial-gradient 确保移动端背景不变形，使用 bg-cover 行为
+          background: 'radial-gradient(ellipse at 50% -20%, oklch(0.3 0.15 250), oklch(0.1 0.05 255) 75%) fixed',
+          backgroundSize: 'cover',
           minHeight: '100vh',
           color: 'white'
         }}

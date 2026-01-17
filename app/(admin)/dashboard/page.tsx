@@ -191,7 +191,13 @@ const menuItems = [
 export default function AdminDashboard() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // 移动端默认关闭侧边栏，桌面端默认打开
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth >= 768 // 768px 是 Tailwind 的 md 断点
+    }
+    return true
+  })
   const [activeMenu, setActiveMenu] = useState("dashboard")
   
   // 用户和公司信息（用于多租户数据隔离）
@@ -4401,7 +4407,7 @@ export default function AdminDashboard() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">餐厅管理</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">餐厅管理</h1>
             <p className="text-slate-400">管理所有已注册餐厅的信息和状态</p>
           </div>
           <div className="flex gap-3">
@@ -4419,7 +4425,7 @@ export default function AdminDashboard() {
         <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardContent className="p-6">
             {viewMode === "map" ? (
-              <div className="h-[600px] rounded-lg overflow-hidden border border-slate-800">
+              <div className="h-[300px] md:h-[600px] rounded-lg overflow-hidden border border-slate-800">
                 {restaurants.filter((r) => r.latitude && r.longitude).length === 0 ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="text-center">
@@ -4563,25 +4569,25 @@ export default function AdminDashboard() {
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总餐厅数</CardDescription>
-              <CardTitle className="text-3xl text-white">{stats.totalRestaurants}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-white">{stats.totalRestaurants}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已激活</CardDescription>
-              <CardTitle className="text-3xl text-white">{stats.activatedRestaurants}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-white">{stats.activatedRestaurants}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">待处理订单</CardDescription>
-              <CardTitle className="text-3xl text-yellow-400">{stats.pendingOrders}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-yellow-400">{stats.pendingOrders}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总营收</CardDescription>
-              <CardTitle className="text-3xl text-green-400">¥{stats.totalRevenue.toFixed(2)}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-green-400">¥{stats.totalRevenue.toFixed(2)}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -4795,8 +4801,8 @@ export default function AdminDashboard() {
           <CardContent>
             <div 
               ref={mapContainerRef} 
-              className="w-full h-[600px] rounded-lg overflow-hidden border border-blue-800/30 relative"
-              style={{ width: '100%', height: '600px', minHeight: '600px' }}
+              className="w-full h-[300px] md:h-[600px] rounded-lg overflow-hidden border border-blue-800/30 relative"
+              style={{ width: '100%', minHeight: '300px' }}
             >
               {!mapLoaded && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-30">
@@ -4865,7 +4871,7 @@ export default function AdminDashboard() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">订单管理</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">订单管理</h1>
           <p className="text-slate-400">按业务类型管理所有订单</p>
         </div>
 
@@ -4874,7 +4880,7 @@ export default function AdminDashboard() {
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总订单数</CardDescription>
-              <CardTitle className="text-3xl text-white">{orders.length}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-white">{orders.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
@@ -4886,7 +4892,7 @@ export default function AdminDashboard() {
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">进行中</CardDescription>
-              <CardTitle className="text-3xl text-blue-400">{deliveringOrders.length}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-blue-400">{deliveringOrders.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
@@ -4902,19 +4908,19 @@ export default function AdminDashboard() {
           <Card className="bg-gradient-to-br from-red-900/30 to-red-950/50 border-red-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-red-300">维修服务订单</CardDescription>
-              <CardTitle className="text-2xl text-red-400">{repairOrders.length}</CardTitle>
+              <CardTitle className="text-xl md:text-2xl text-red-400">{repairOrders.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-blue-900/30 to-blue-950/50 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-blue-300">燃料配送订单</CardDescription>
-              <CardTitle className="text-2xl text-blue-400">{deliveryOrders.length}</CardTitle>
+              <CardTitle className="text-xl md:text-2xl text-blue-400">{deliveryOrders.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-purple-900/30 to-purple-950/50 border-purple-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-purple-300">其他订单</CardDescription>
-              <CardTitle className="text-2xl text-purple-400">{otherOrders.length}</CardTitle>
+              <CardTitle className="text-xl md:text-2xl text-purple-400">{otherOrders.length}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -5172,7 +5178,7 @@ export default function AdminDashboard() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">报修管理</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">报修管理</h1>
           <p className="text-slate-400">管理所有报修工单和维修状态</p>
         </div>
 
@@ -5181,25 +5187,25 @@ export default function AdminDashboard() {
           <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总报修数</CardDescription>
-              <CardTitle className="text-3xl text-white">{repairs.length}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-white">{repairs.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-yellow-950/90 border-yellow-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">待处理</CardDescription>
-              <CardTitle className="text-3xl text-yellow-400">{pendingRepairs.length}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-yellow-400">{pendingRepairs.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">处理中</CardDescription>
-              <CardTitle className="text-3xl text-blue-400">{processingRepairs.length}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-blue-400">{processingRepairs.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已完成</CardDescription>
-              <CardTitle className="text-3xl text-green-400">{completedRepairs.length}</CardTitle>
+              <CardTitle className="text-2xl md:text-3xl text-green-400">{completedRepairs.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
@@ -6947,7 +6953,7 @@ export default function AdminDashboard() {
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-slate-300">承租人姓名 *</Label>
                   <Input
@@ -8660,9 +8666,11 @@ export default function AdminDashboard() {
 
   return (
     <div 
-      className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col" 
+      className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col pb-[80px] md:pb-0" 
       data-density="dense"
       style={{ 
+        // 背景使用 CSS radial-gradient 确保移动端不变形
+        background: 'radial-gradient(ellipse at 50% -10%, oklch(0.25 0.15 250), oklch(0.1 0.05 255) 75%), linear-gradient(135deg, rgb(15 23 42), rgb(30 58 138), rgb(15 23 42))',
         // 强制显示：确保不被 Next.js 路由系统的 hidden 状态影响
         display: 'flex !important',
         visibility: 'visible !important',
@@ -8689,12 +8697,26 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
-      <div className="flex flex-1 mt-16">
+      <div className="flex flex-1 mt-16 relative">
+      {/* 移动端遮罩层：当侧边栏打开时显示 */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      
       {/* 侧边栏 */}
-      <div className={`${sidebarOpen ? "w-64" : "w-20"} bg-gradient-to-b from-slate-900 to-blue-950 border-r border-blue-800/50 transition-all duration-300 flex flex-col`}>
+      <div className={`
+        ${sidebarOpen ? "w-64" : "w-20"} 
+        bg-gradient-to-b from-slate-900 to-blue-950 border-r border-blue-800/50 
+        transition-all duration-300 flex flex-col
+        fixed md:relative inset-y-0 left-0 z-50
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+      `}>
         <div className="p-4 border-b border-blue-800/50">
           <div className="flex items-center justify-between">
-            <h2 className={`text-xl font-bold text-white ${!sidebarOpen && "hidden"}`}>
+              <h2 className={`text-base md:text-xl font-bold text-white ${!sidebarOpen && "hidden"}`}>
               管理后台
             </h2>
             <Button
@@ -8784,10 +8806,19 @@ export default function AdminDashboard() {
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 overflow-auto flex flex-col">
+      <div className="flex-1 overflow-auto flex flex-col w-full md:w-auto">
         {/* 顶部用户信息栏 */}
-        <div className="bg-slate-900/50 border-b border-blue-800/50 px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="bg-slate-900/50 border-b border-blue-800/50 px-4 md:px-6 py-3 flex items-center justify-between">
+          {/* 移动端显示菜单按钮 */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(true)}
+            className="text-slate-400 hover:text-white md:hidden mr-2"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <div className="flex items-center gap-3 flex-1">
             <User className="h-5 w-5 text-slate-400" />
             <span className="text-sm text-slate-300">
               {currentUser?.email || '加载中...'}
@@ -8800,11 +8831,11 @@ export default function AdminDashboard() {
             className="text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           >
             <LogOut className="h-4 w-4 mr-2" />
-            退出登录
+            <span className="hidden sm:inline">退出登录</span>
           </Button>
         </div>
         
-        <div className="p-6 flex-1">
+        <div className="p-4 md:p-6 flex-1">
           {activeMenu === "dashboard" && renderDashboard()}
           {activeMenu === "restaurants" && renderRestaurants()}
           {activeMenu === "orders" && renderOrders()}

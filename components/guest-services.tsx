@@ -142,7 +142,7 @@ export function GuestServices() {
     <div className="space-y-6">
       {/* Hero区域 - 醒目标题 */}
       <div className="text-center mb-8 py-8 px-4">
-        <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
+        <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight break-words">
           智慧餐饮数字化服务平台
         </h1>
         <p className="text-lg text-slate-300 mb-2">

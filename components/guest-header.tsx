@@ -23,8 +23,8 @@ export function GuestHeader() {
               <Zap className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-tight text-foreground">智慧餐饮服务平台</h1>
-              <p className="text-xs text-muted-foreground">一站式餐饮后勤服务大厅</p>
+              <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold leading-tight text-foreground break-words">智慧餐饮服务平台</h1>
+              <p className="text-xs md:text-sm text-muted-foreground">一站式餐饮后勤服务大厅</p>
             </div>
           </Link>
           <div className="flex items-center gap-2">
