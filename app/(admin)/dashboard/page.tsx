@@ -88,6 +88,7 @@ import { supabase } from "@/lib/supabase"
 import { ProductApproval } from "./product-approval"
 import { SupplierManagement } from "./supplier-management"
 import { SendNotification } from "./send-notification"
+import { BottomNavigation } from "@/components/bottom-navigation"
 import {
   Line,
   LineChart,
@@ -8666,7 +8667,7 @@ export default function AdminDashboard() {
 
   return (
     <div 
-      className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col pb-[80px] md:pb-0" 
+      className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col pb-20" 
       data-density="dense"
       style={{ 
         // 背景使用 CSS radial-gradient 确保移动端不变形
@@ -9109,6 +9110,9 @@ export default function AdminDashboard() {
         </DialogContent>
       </Dialog>
       </div>
+      
+      {/* 底部导航栏：双导航模式 - 手机端始终显示，电脑端且侧边栏开启时隐藏 */}
+      <BottomNavigation sidebarOpen={sidebarOpen} />
     </div>
   )
 }
