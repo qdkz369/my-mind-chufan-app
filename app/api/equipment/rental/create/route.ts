@@ -87,6 +87,21 @@ export async function POST(request: Request) {
       )
     }
 
+    // 🔧 检查设备租赁状态：只有 available 状态的设备才能被预订
+    if (equipment.rental_status && equipment.rental_status !== "available") {
+      const statusMap: Record<string, string> = {
+        reserved: "已预订",
+        in_use: "使用中",
+        maintenance: "维护中",
+        retired: "已退役",
+      }
+      const statusText = statusMap[equipment.rental_status] || equipment.rental_status
+      return NextResponse.json(
+        { error: `设备当前状态为"${statusText}"，无法创建租赁订单` },
+        { status: 400 }
+      )
+    }
+
     // 验证租期
     if (rental_period < equipment.min_rental_period) {
       return NextResponse.json(
@@ -162,6 +177,95 @@ export async function POST(request: Request) {
         { error: "创建租赁订单失败", details: createError.message },
         { status: 500 }
       )
+    }
+
+    // 🔧 设备状态机：下单成功后，将设备状态改为 reserved，并写入 current_rental_order_id
+    if (rentalOrder && equipment_id) {
+      const { error: equipmentUpdateError } = await supabase
+        .from("equipment")
+        .update({
+          rental_status: "reserved",
+          current_rental_order_id: rentalOrder.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", equipment_id)
+
+      if (equipmentUpdateError) {
+        console.error("[租赁订单API] 更新设备状态失败:", equipmentUpdateError)
+        // 注意：即使设备状态更新失败，订单已创建，这里只记录错误，不阻止返回成功
+        // 可以考虑后续增加补偿机制
+      } else {
+        console.log(`[租赁订单API] ✅ 设备状态已更新：${equipment_id} -> reserved，订单ID: ${rentalOrder.id}`)
+      }
+    }
+
+    // 📝 记录租赁事件：创建订单
+    if (rentalOrder) {
+      const { error: eventError } = await supabase
+        .from("rental_events")
+        .insert({
+          rental_order_id: rentalOrder.id,
+          event_type: "order_created",
+          event_at: new Date().toISOString(),
+          operator_id: currentUserId || null,
+          meta: {
+            order_number: rentalOrder.order_number,
+            equipment_id: equipment_id,
+            quantity: requestedQuantity,
+            rental_period: rental_period,
+            total_amount: totalAmount,
+            payment_method: payment_method,
+            provider_id: finalProviderId,
+          },
+        })
+
+      if (eventError) {
+        console.error("[租赁订单API] 记录事件失败:", eventError)
+        // 事件记录失败不影响主流程
+      } else {
+        console.log(`[租赁订单API] 📝 租赁事件已记录：order_created，订单ID: ${rentalOrder.id}`)
+      }
+
+      // 💰 生成账期记录：为每个订单每月创建一条账期记录
+      const billingCycles: any[] = []
+      const startDateObj = new Date(start_date)
+      
+      for (let i = 0; i < rental_period; i++) {
+        // 计算每个账期的月份和日期
+        const cycleDate = new Date(startDateObj)
+        cycleDate.setMonth(cycleDate.getMonth() + i)
+        
+        // 格式化为 YYYY-MM
+        const cycleMonth = `${cycleDate.getFullYear()}-${String(cycleDate.getMonth() + 1).padStart(2, '0')}`
+        
+        // 计算到期日期：每个账期的到期日期为该月的最后一天，或者从开始日期起算每30天一个周期
+        // 这里采用从开始日期起算，每个账期30天的逻辑
+        const dueDate = new Date(startDateObj)
+        dueDate.setDate(dueDate.getDate() + (i * 30)) // 第一个账期从开始日期，后续每个账期增加30天
+        
+        billingCycles.push({
+          rental_order_id: rentalOrder.id,
+          cycle_number: i + 1,
+          cycle_month: cycleMonth,
+          due_date: dueDate.toISOString().split("T")[0],
+          amount_due: monthlyPrice * requestedQuantity,
+          amount_paid: 0.00,
+          status: "pending",
+        })
+      }
+
+      if (billingCycles.length > 0) {
+        const { error: billingCyclesError } = await supabase
+          .from("rental_billing_cycles")
+          .insert(billingCycles)
+
+        if (billingCyclesError) {
+          console.error("[租赁订单API] 生成账期记录失败:", billingCyclesError)
+          // 账期记录生成失败不影响主流程
+        } else {
+          console.log(`[租赁订单API] 💰 已生成 ${billingCycles.length} 条账期记录，订单ID: ${rentalOrder.id}`)
+        }
+      }
     }
 
     // 更新设备库存（暂时不减少，等订单确认后再减少）

@@ -106,6 +106,16 @@ export async function PATCH(request: Request) {
       }
     }
 
+    // 获取订单当前状态和设备信息（用于状态机判断）
+    const { data: existingOrder } = await supabaseClient
+      .from("rental_orders")
+      .select("order_status, equipment_id")
+      .eq("id", id)
+      .single()
+
+    const previousOrderStatus = existingOrder?.order_status
+    const equipmentId = existingOrder?.equipment_id
+
     // 构建更新数据
     const updateData: any = {}
     if (order_status !== undefined) {
@@ -155,6 +165,58 @@ export async function PATCH(request: Request) {
         },
         { status: 500 }
       )
+    }
+
+    // 🔧 设备状态机：租赁结束（订单状态变为 completed 或 cancelled 时）
+    // 清空 current_rental_order_id，将设备状态改回 available
+    const orderEnded =
+      (order_status === "completed" || order_status === "cancelled") &&
+      previousOrderStatus &&
+      previousOrderStatus !== "completed" &&
+      previousOrderStatus !== "cancelled"
+
+    if (orderEnded && equipmentId) {
+      const { error: equipmentUpdateError } = await supabaseClient
+        .from("equipment")
+        .update({
+          rental_status: "available",
+          current_rental_order_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", equipmentId)
+        .eq("current_rental_order_id", id) // 确保是当前订单占用的设备
+
+      if (equipmentUpdateError) {
+        console.error("[租赁订单更新API] 更新设备状态失败:", equipmentUpdateError)
+        // 注意：即使设备状态更新失败，订单状态已更新，这里只记录错误
+      } else {
+        const actionText = order_status === "completed" ? "租赁结束" : "订单取消"
+        console.log(`[租赁订单更新API] ✅ 设备状态已更新：${equipmentId} -> available，订单ID: ${id}（${actionText}）`)
+      }
+
+      // 📝 记录租赁事件：结束租赁
+      const { error: eventError } = await supabaseClient
+        .from("rental_events")
+        .insert({
+          rental_order_id: id,
+          event_type: "rental_ended",
+          event_at: new Date().toISOString(),
+          operator_id: currentUserId || null,
+          meta: {
+            order_status: order_status,
+            previous_status: previousOrderStatus,
+            equipment_id: equipmentId,
+            reason: order_status === "completed" ? "订单完成" : "订单取消",
+          },
+        })
+
+      if (eventError) {
+        console.error("[租赁订单更新API] 记录事件失败:", eventError)
+        // 事件记录失败不影响主流程
+      } else {
+        const actionText = order_status === "completed" ? "租赁结束" : "订单取消"
+        console.log(`[租赁订单更新API] 📝 租赁事件已记录：rental_ended，订单ID: ${id}（${actionText}）`)
+      }
     }
 
     return NextResponse.json({

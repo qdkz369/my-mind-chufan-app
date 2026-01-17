@@ -33,6 +33,7 @@ import {
   WifiOff,
   Building2,
   Phone,
+  ChevronRight,
 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
@@ -2584,65 +2585,35 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
 
-  // 加载待交付的租赁单
+  // 加载待交付的租赁订单（使用 rental_orders 表）
   const loadPendingRentals = async () => {
-    if (!supabase) {
-      console.error("[设备交付] Supabase 客户端未初始化")
-      setPendingRentals([])
-      return
-    }
-
     setIsLoadingRentals(true)
+    setError("")
     try {
-      // 首先尝试查询 rentals 表
-      let { data, error } = await supabase
-        .from("rentals")
-        .select("*")
-        .eq("status", "pending_delivery")
-        .order("created_at", { ascending: false })
-
-      // 如果表不存在或查询失败，尝试使用 service role key
-      if (error && (error.code === "PGRST116" || error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01")) {
-        console.warn("[设备交付] rentals 表查询失败，尝试使用 service role key:", error.message)
-        
-        // 使用 service role key 创建新的客户端
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-        
-        if (!supabaseUrl || !serviceRoleKey) {
-          console.error("[设备交付] Supabase URL 或 Service Role Key 未配置")
-          setError("服务器配置错误：Supabase 密钥未配置")
-          return
-        }
-        
-        if (serviceRoleKey) {
-          const { createClient } = await import("@supabase/supabase-js")
-          const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
-            auth: {
-              persistSession: false,
-              autoRefreshToken: false,
-            },
-          })
-          
-          const result = await serviceClient
-            .from("rentals")
-            .select("*")
-            .eq("status", "pending_delivery")
-            .order("created_at", { ascending: false })
-          
-          data = result.data
-          error = result.error
-        }
+      const params = new URLSearchParams()
+      if (workerId) {
+        params.append("worker_id", workerId)
+      } else {
+        // 如果没有 worker_id，查询所有待配送的订单
+        params.append("status", "pending,confirmed")
       }
 
-      if (error) {
-        logBusinessWarning('设备交付', '加载失败', error)
-        setPendingRentals([])
+      const response = await fetch(`/api/equipment/rental/worker/list?${params.toString()}`)
+      const result = await response.json()
+
+      if (result.success) {
+        setPendingRentals(result.data || [])
+        setError("")
       } else {
-        setPendingRentals(data || [])
+        const errorMsg = result.error || "加载失败"
+        logBusinessWarning('设备交付', '加载失败', errorMsg)
+        setError(errorMsg)
+        setPendingRentals([])
       }
     } catch (err: any) {
+      const errorMsg = err.message || "网络请求失败"
       logBusinessWarning('设备交付', '加载失败', err)
+      setError(errorMsg)
       setPendingRentals([])
     } finally {
       setIsLoadingRentals(false)
@@ -2659,59 +2630,60 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
     setShowQRScanner(false)
   }
 
-  // 验证设备序列号
-  const handleVerifyDevice = () => {
-    if (!deviceSn.trim()) {
-      setError("请输入或扫描设备序列号")
-      return
-    }
-
-    // 查找匹配的租赁单
-    const rental = pendingRentals.find((r) => r.device_sn === deviceSn.trim())
-    if (!rental) {
-      setError("未找到匹配的租赁单，请检查设备序列号")
-      return
-    }
-
+  // 选择订单（直接选择订单，不需要扫码）
+  const handleSelectRental = (rental: any) => {
     setSelectedRental(rental)
     setStep("photo")
     setError("")
   }
 
-  // 提交交付
+  // 提交交付验证信息
   const handleSubmitDelivery = async () => {
     if (!deliveryPhotoUrl) {
-      setError("请上传设备安放照片")
+      setError("请上传设备到场照片")
       return
     }
 
     if (!signatureData) {
-      setError("请客户完成电子签名")
+      setError("请客户完成电子签名确认")
       return
     }
 
-    if (!supabase || !selectedRental) return
+    if (!selectedRental || !workerId) {
+      setError("缺少必要信息")
+      return
+    }
 
     setIsSubmitting(true)
     setError("")
 
     try {
-      // 更新租赁单状态为 active（租赁中）
-      const { error: updateError } = await supabase
-        .from("rentals")
-        .update({
-          status: "active",
-          notes: selectedRental.notes
-            ? `${selectedRental.notes}\n[交付完成] 交付照片: ${deliveryPhotoUrl}, 签名: 已确认, 交付时间: ${new Date().toLocaleString("zh-CN")}`
-            : `[交付完成] 交付照片: ${deliveryPhotoUrl}, 签名: 已确认, 交付时间: ${new Date().toLocaleString("zh-CN")}`,
-        })
-        .eq("id", selectedRental.id)
+      const response = await fetch("/api/equipment/rental/worker/deliver", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          order_id: selectedRental.id,
+          worker_id: workerId,
+          setup_photo: [deliveryPhotoUrl],
+          delivery_verification: {
+            equipment_type: selectedRental.equipment?.name || "未知",
+            delivery_time: new Date().toISOString(),
+            customer_confirmed: true,
+            customer_signature: signatureData,
+            notes: `设备已送达并安装完成，客户已确认签收`,
+          },
+        }),
+      })
 
-      if (updateError) {
-        throw updateError
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "提交失败")
       }
 
-      alert("设备交付成功！")
+      alert("设备交付验证信息提交成功！")
       // 重置状态
       setStep("list")
       setSelectedRental(null)
@@ -2859,48 +2831,35 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
                 <Card
                   key={rental.id}
                   className="bg-slate-800/50 border-slate-700 p-4 hover:border-cyan-500/50 transition-all cursor-pointer"
-                  onClick={() => {
-                    setSelectedRental(rental)
-                    setDeviceSn(rental.device_sn)
-                    setStep("scan")
-                  }}
+                  onClick={() => handleSelectRental(rental)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">{rental.device_name}</h3>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="text-slate-400">承租人：</span>
-                          <span className="text-white ml-2">{rental.customer_name}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400">联系电话：</span>
-                          <span className="text-white ml-2">{rental.customer_phone}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400">设备序列号：</span>
-                          <span className="text-white ml-2">{rental.device_sn}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400">月租金：</span>
-                          <span className="text-blue-400 font-bold ml-2">
-                            ¥{parseFloat(rental.rent_amount || 0).toFixed(2)}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white">
+                          {rental.equipment?.name || rental.equipment_id || "未知设备"}
+                        </h3>
+                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                          {rental.order_status === "pending" ? "待确认" : "已确认"}
+                        </Badge>
+                      </div>
+                      <div className="space-y-1 text-sm text-slate-400">
+                        <p>订单号：{rental.order_number}</p>
+                        {rental.restaurants && (
+                          <p>餐厅：{rental.restaurants.name}</p>
+                        )}
+                        {rental.restaurants?.address && (
+                          <p>地址：{rental.restaurants.address}</p>
+                        )}
+                        {rental.contact_phone && (
+                          <p>联系电话：{rental.contact_phone}</p>
+                        )}
+                        <p>数量：{rental.quantity} 台</p>
+                        <p>租期：{rental.rental_period} 个月</p>
+                        <p>月租金：¥{rental.monthly_rental_price}</p>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setSelectedRental(rental)
-                        setDeviceSn(rental.device_sn)
-                        setStep("scan")
-                      }}
-                      className="bg-cyan-600 hover:bg-cyan-700 text-white"
-                    >
-                      开始交付
-                    </Button>
+                    <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 mt-1" />
                   </div>
                 </Card>
               ))}
@@ -2992,16 +2951,28 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
       <div className="space-y-6">
         <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Button variant="ghost" size="icon" onClick={() => setStep("scan")} className="text-white">
+            <Button variant="ghost" size="icon" onClick={() => setStep("list")} className="text-white">
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h2 className="text-xl font-bold text-white">拍照存证</h2>
+            <h2 className="text-xl font-bold text-white">上传设备到场照片</h2>
           </div>
 
           {selectedRental && (
             <div className="bg-slate-800/50 p-4 rounded-lg mb-6">
-              <h3 className="text-lg font-semibold text-white mb-2">{selectedRental.device_name}</h3>
-              <p className="text-sm text-slate-400">设备序列号：{selectedRental.device_sn}</p>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                {selectedRental.equipment?.name || selectedRental.equipment_id || "未知设备"}
+              </h3>
+              <div className="space-y-1 text-sm text-slate-400">
+                <p>订单号：{selectedRental.order_number}</p>
+                {selectedRental.restaurants && (
+                  <p>餐厅：{selectedRental.restaurants.name}</p>
+                )}
+                {selectedRental.restaurants?.address && (
+                  <p>地址：{selectedRental.restaurants.address}</p>
+                )}
+                <p>数量：{selectedRental.quantity} 台</p>
+                <p>租期：{selectedRental.rental_period} 个月</p>
+              </div>
             </div>
           )}
 
@@ -3015,7 +2986,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
                 setDeliveryPhotoUrl(null)
               }}
               currentImageUrl={deliveryPhotoUrl}
-              label="设备安放照片 *"
+              label="设备到场照片 *"
             />
 
             {error && (
@@ -3058,8 +3029,18 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
 
           {selectedRental && (
             <div className="bg-slate-800/50 p-4 rounded-lg mb-6">
-              <h3 className="text-lg font-semibold text-white mb-2">{selectedRental.device_name}</h3>
-              <p className="text-sm text-slate-400">承租人：{selectedRental.customer_name}</p>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                {selectedRental.equipment?.name || selectedRental.equipment_id || "未知设备"}
+              </h3>
+              <div className="space-y-1 text-sm text-slate-400">
+                <p>订单号：{selectedRental.order_number}</p>
+                {selectedRental.restaurants && (
+                  <p>餐厅：{selectedRental.restaurants.name}</p>
+                )}
+                {selectedRental.contact_phone && (
+                  <p>联系电话：{selectedRental.contact_phone}</p>
+                )}
+              </div>
             </div>
           )}
 

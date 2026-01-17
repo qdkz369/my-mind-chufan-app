@@ -61,6 +61,8 @@ import {
   AlertTriangle,
   FileText,
   ChevronRight,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -84,6 +86,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { supabase } from "@/lib/supabase"
 import { ProductApproval } from "./product-approval"
 import { SupplierManagement } from "./supplier-management"
@@ -441,6 +444,27 @@ export default function AdminDashboard() {
   const [selectedRentalOrderIds, setSelectedRentalOrderIds] = useState<string[]>([])
   const [isAddRentalOrderDialogOpen, setIsAddRentalOrderDialogOpen] = useState(false)
   const [isUpdatingRentalOrder, setIsUpdatingRentalOrder] = useState(false)
+  // 上传设备相关状态
+  const [isUploadEquipmentDialogOpen, setIsUploadEquipmentDialogOpen] = useState(false)
+  const [isUploadingEquipment, setIsUploadingEquipment] = useState(false)
+  const [uploadedEquipmentImages, setUploadedEquipmentImages] = useState<string[]>([])
+  const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const [equipmentCategories, setEquipmentCategories] = useState<any[]>([])
+  const [newEquipment, setNewEquipment] = useState({
+    name: "",
+    brand: "",
+    model: "",
+    description: "",
+    category_id: "",
+    monthly_rental_price: "",
+    daily_rental_price: "",
+    deposit_amount: "0",
+    min_rental_period: "1",
+    max_rental_period: "",
+    maintenance_included: true,
+    delivery_included: false,
+    notes: "",
+  })
   const [newRentalOrder, setNewRentalOrder] = useState({
     restaurant_id: "",
     equipment_id: "",
@@ -495,6 +519,40 @@ export default function AdminDashboard() {
   })
   const [availableDevices, setAvailableDevices] = useState<any[]>([])
   const [availableRestaurants, setAvailableRestaurants] = useState<any[]>([])
+  
+  // 协议管理相关状态
+  const [agreements, setAgreements] = useState<any[]>([])
+  const [isLoadingAgreements, setIsLoadingAgreements] = useState(false)
+  const [agreementsError, setAgreementsError] = useState<string | null>(null)
+  const [agreementsTypeFilter, setAgreementsTypeFilter] = useState<string>("all")
+  const [agreementsStatusFilter, setAgreementsStatusFilter] = useState<string>("all")
+  const [selectedAgreement, setSelectedAgreement] = useState<any | null>(null)
+  const [isAgreementDetailDialogOpen, setIsAgreementDetailDialogOpen] = useState(false)
+  const [isAddAgreementDialogOpen, setIsAddAgreementDialogOpen] = useState(false)
+  const [isEditingAgreement, setIsEditingAgreement] = useState(false)
+  const [newAgreement, setNewAgreement] = useState({
+    title: "",
+    type: "service",
+    version: "1.0",
+    content: "",
+    content_html: "",
+    status: "draft",
+    is_active: false,
+    effective_date: "",
+    expiry_date: "",
+    description: "",
+  })
+  
+  // 租赁合同管理相关状态（集成到协议管理）
+  const [rentalContracts, setRentalContracts] = useState<any[]>([])
+  const [isLoadingRentalContracts, setIsLoadingRentalContracts] = useState(false)
+  const [rentalContractsError, setRentalContractsError] = useState<string | null>(null)
+  const [selectedRentalContract, setSelectedRentalContract] = useState<any | null>(null)
+  const [isRentalContractDetailDialogOpen, setIsRentalContractDetailDialogOpen] = useState(false)
+  
+  // 租赁订单支付信息相关状态
+  const [contractPaymentInfo, setContractPaymentInfo] = useState<any[]>([])
+  const [isLoadingPaymentInfo, setIsLoadingPaymentInfo] = useState(false)
   
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
@@ -1399,6 +1457,14 @@ export default function AdminDashboard() {
       if (!response.ok) {
         const errorText = await response.text()
         logBusinessWarning('Admin Dashboard', '接口返回错误', { status: response.status, errorText })
+        
+        // 🔐 如果是401未授权错误，自动跳转到登录页面
+        if (response.status === 401) {
+          console.warn("[报修管理] 检测到401未授权错误，跳转到登录页面")
+          window.location.href = "/login"
+          return
+        }
+        
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
       }
       
@@ -1420,6 +1486,12 @@ export default function AdminDashboard() {
         // 直接使用接口返回的数据，不进行任何额外过滤
         setRepairs(repairs)
       } else {
+        // 🔐 如果返回的结果表明未授权，跳转到登录页面
+        if (result.error === "未授权" || result.details?.includes("请先登录")) {
+          console.warn("[报修管理] 检测到未授权错误，跳转到登录页面")
+          window.location.href = "/login"
+          return
+        }
         throw new Error(result.error || "获取维修列表失败")
       }
 
@@ -1427,6 +1499,14 @@ export default function AdminDashboard() {
       logBusinessWarning('Admin Dashboard', '加载报修时出错', error)
       if (error instanceof Error) {
         logBusinessWarning('Admin Dashboard', '错误详情', { message: error.message, stack: error.stack })
+        
+        // 🔐 如果错误信息中包含未授权相关的内容，跳转到登录页面
+        if (error.message.includes("401") || error.message.includes("未授权") || error.message.includes("请先登录")) {
+          console.warn("[报修管理] 检测到未授权错误，跳转到登录页面")
+          window.location.href = "/login"
+          return
+        }
+        
         alert(`加载报修列表失败: ${error.message}`)
       }
       setRepairs([])
@@ -1662,6 +1742,121 @@ export default function AdminDashboard() {
     }
   }, [deviceRentalStatusFilter])
   
+  // 加载设备分类列表（用于上传设备）
+  const loadEquipmentCategories = useCallback(async () => {
+    try {
+      const response = await fetch("/api/equipment/categories")
+      const result = await response.json()
+      if (result.success && result.data) {
+        setEquipmentCategories(result.data)
+      }
+    } catch (err) {
+      logBusinessWarning('设备租赁管理', '加载设备分类失败', err)
+    }
+  }, [])
+
+  // 上传设备图片
+  const handleUploadEquipmentImage = useCallback(async (file: File) => {
+    if (!supabase || !userCompanyId) {
+      alert("请先登录并关联公司")
+      return null
+    }
+
+    setIsUploadingImages(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("company_id", userCompanyId)
+      formData.append("folder", "equipment")
+
+      const response = await fetch("/api/storage/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      const result = await response.json()
+      if (result.success && result.url) {
+        setUploadedEquipmentImages((prev) => [...prev, result.url])
+        return result.url
+      } else {
+        throw new Error(result.error || "上传失败")
+      }
+    } catch (err: any) {
+      logBusinessWarning('设备租赁管理', '上传图片失败', err)
+      alert(`上传图片失败: ${err.message}`)
+      return null
+    } finally {
+      setIsUploadingImages(false)
+    }
+  }, [supabase, userCompanyId])
+
+  // 提交上传设备
+  const handleSubmitUploadEquipment = useCallback(async () => {
+    if (!newEquipment.name || !newEquipment.monthly_rental_price) {
+      alert("请填写设备名称和月租金")
+      return
+    }
+
+    if (!userCompanyId) {
+      alert("请先关联公司")
+      return
+    }
+
+    setIsUploadingEquipment(true)
+    try {
+      const response = await fetch("/api/equipment/catalog/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider_id: userCompanyId,
+          name: newEquipment.name,
+          brand: newEquipment.brand || null,
+          model: newEquipment.model || null,
+          description: newEquipment.description || null,
+          category_id: newEquipment.category_id || null,
+          monthly_rental_price: parseFloat(newEquipment.monthly_rental_price),
+          daily_rental_price: newEquipment.daily_rental_price ? parseFloat(newEquipment.daily_rental_price) : null,
+          deposit_amount: parseFloat(newEquipment.deposit_amount) || 0,
+          min_rental_period: parseInt(newEquipment.min_rental_period) || 1,
+          max_rental_period: newEquipment.max_rental_period ? parseInt(newEquipment.max_rental_period) : null,
+          maintenance_included: newEquipment.maintenance_included,
+          delivery_included: newEquipment.delivery_included,
+          images: uploadedEquipmentImages,
+          notes: newEquipment.notes || null,
+        }),
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        alert("设备上传成功！等待审核通过后即可在客户端显示。")
+        setIsUploadEquipmentDialogOpen(false)
+        setNewEquipment({
+          name: "",
+          brand: "",
+          model: "",
+          description: "",
+          category_id: "",
+          monthly_rental_price: "",
+          daily_rental_price: "",
+          deposit_amount: "0",
+          min_rental_period: "1",
+          max_rental_period: "",
+          maintenance_included: true,
+          delivery_included: false,
+          notes: "",
+        })
+        setUploadedEquipmentImages([])
+      } else {
+        alert(`上传失败: ${result.error}`)
+      }
+    } catch (err: any) {
+      logBusinessWarning('设备租赁管理', '上传设备失败', err)
+      alert(`上传失败: ${err.message}`)
+    } finally {
+      setIsUploadingEquipment(false)
+    }
+  }, [newEquipment, uploadedEquipmentImages, userCompanyId])
+
   // 加载设备和餐厅列表（用于创建设备租赁记录）
   const loadDevicesAndRestaurantsForRental = useCallback(async () => {
     if (!supabase) {
@@ -1953,6 +2148,110 @@ export default function AdminDashboard() {
       setIsLoadingRentals(false)
     }
   }, [supabase, userRole, userCompanyId])
+
+  // 加载协议列表
+  const loadAgreements = useCallback(async () => {
+    setIsLoadingAgreements(true)
+    setAgreementsError(null)
+    try {
+      const params = new URLSearchParams()
+      if (agreementsTypeFilter !== "all") {
+        params.append("type", agreementsTypeFilter)
+      }
+      if (agreementsStatusFilter !== "all") {
+        params.append("status", agreementsStatusFilter)
+      }
+
+      const response = await fetch(`/api/agreements?${params.toString()}`)
+      const result = await response.json()
+
+      if (result.success) {
+        setAgreements(result.data || [])
+        setAgreementsError(null)
+      } else {
+        const errorMsg = result.error || "获取协议列表失败"
+        logBusinessWarning('协议管理', '加载失败', { errorMsg })
+        setAgreementsError(errorMsg)
+        setAgreements([])
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || "网络请求失败"
+      logBusinessWarning('协议管理', '加载失败', err)
+      setAgreementsError(errorMsg)
+      setAgreements([])
+    } finally {
+      setIsLoadingAgreements(false)
+    }
+  }, [agreementsTypeFilter, agreementsStatusFilter])
+
+  // 加载租赁合同列表（关联到协议管理）
+  const loadRentalContracts = useCallback(async () => {
+    setIsLoadingRentalContracts(true)
+    setRentalContractsError(null)
+    try {
+      const response = await fetch("/api/admin/rental/contracts")
+      const result = await response.json()
+
+      if (result.success) {
+        setRentalContracts(result.data || [])
+        setRentalContractsError(null)
+      } else {
+        const errorMsg = result.error || "获取租赁合同列表失败"
+        logBusinessWarning('协议管理', '加载租赁合同失败', { errorMsg })
+        setRentalContractsError(errorMsg)
+        setRentalContracts([])
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || "网络请求失败"
+      logBusinessWarning('协议管理', '加载租赁合同失败', err)
+      setRentalContractsError(errorMsg)
+      setRentalContracts([])
+    } finally {
+      setIsLoadingRentalContracts(false)
+    }
+  }, [])
+
+  // 加载租赁订单支付信息（关联到协议管理）
+  const loadContractPaymentInfo = useCallback(async () => {
+    if (!selectedRentalContract) return
+    
+    setIsLoadingPaymentInfo(true)
+    try {
+      // 查询与该合同相关的租赁订单和支付信息
+      const response = await fetch(`/api/equipment/rental/admin/list`)
+      const result = await response.json()
+
+      if (result.success) {
+        // 筛选与当前合同相关的订单（可以通过合同号、餐厅ID等关联）
+        const relatedOrders = (result.data || []).filter((order: any) => {
+          // 可以根据业务逻辑关联订单和合同
+          // 这里简化处理，可以后续完善关联逻辑
+          return order.restaurant_id === selectedRentalContract.lessee_restaurant_id
+        })
+        setContractPaymentInfo(relatedOrders)
+      }
+    } catch (err: any) {
+      logBusinessWarning('协议管理', '加载支付信息失败', err)
+      setContractPaymentInfo([])
+    } finally {
+      setIsLoadingPaymentInfo(false)
+    }
+  }, [selectedRentalContract])
+
+  // 当切换到协议管理时加载数据
+  useEffect(() => {
+    if (activeMenu === "agreements") {
+      loadAgreements()
+      loadRentalContracts()
+    }
+  }, [activeMenu, agreementsTypeFilter, agreementsStatusFilter, loadAgreements, loadRentalContracts])
+
+  // 当选中租赁合同时加载支付信息
+  useEffect(() => {
+    if (selectedRentalContract && isRentalContractDetailDialogOpen) {
+      loadContractPaymentInfo()
+    }
+  }, [selectedRentalContract, isRentalContractDetailDialogOpen, loadContractPaymentInfo])
 
   // 当切换到租赁工作台时加载数据
   useEffect(() => {
@@ -5826,13 +6125,25 @@ export default function AdminDashboard() {
                   />
                 </div>
               </div>
-              <Button
-                onClick={() => setIsAddDeviceRentalDialogOpen(true)}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                创建租赁记录
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setIsAddDeviceRentalDialogOpen(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  创建租赁记录
+                </Button>
+                <Button
+                  onClick={() => {
+                    setIsUploadEquipmentDialogOpen(true)
+                    loadEquipmentCategories()
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  上传设备
+                </Button>
+              </div>
             </div>
 
             {/* 状态筛选 */}
@@ -6573,6 +6884,255 @@ export default function AdminDashboard() {
                 )}
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* 上传设备对话框 */}
+        <Dialog open={isUploadEquipmentDialogOpen} onOpenChange={setIsUploadEquipmentDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">上传设备</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                上传设备信息，审核通过后将在客户端显示
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* 基本信息 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-white">设备名称 *</Label>
+                  <Input
+                    value={newEquipment.name}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, name: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：商用电磁炉"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">品牌</Label>
+                  <Input
+                    value={newEquipment.brand}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, brand: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：美的"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">型号</Label>
+                  <Input
+                    value={newEquipment.model}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, model: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：MC-EP186"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">设备分类</Label>
+                  <Select
+                    value={newEquipment.category_id}
+                    onValueChange={(value) => setNewEquipment({ ...newEquipment, category_id: value })}
+                  >
+                    <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
+                      <SelectValue placeholder="选择分类" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-600">
+                      {equipmentCategories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id} className="text-white">
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-white">月租金（元） *</Label>
+                  <Input
+                    type="number"
+                    value={newEquipment.monthly_rental_price}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, monthly_rental_price: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">日租金（元）</Label>
+                  <Input
+                    type="number"
+                    value={newEquipment.daily_rental_price}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, daily_rental_price: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：20"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">押金（元）</Label>
+                  <Input
+                    type="number"
+                    value={newEquipment.deposit_amount}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, deposit_amount: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：1000"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">最短租期（月）</Label>
+                  <Input
+                    type="number"
+                    value={newEquipment.min_rental_period}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, min_rental_period: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">最长租期（月）</Label>
+                  <Input
+                    type="number"
+                    value={newEquipment.max_rental_period}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, max_rental_period: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="留空表示无限制"
+                  />
+                </div>
+              </div>
+
+              {/* 描述 */}
+              <div>
+                <Label className="text-white">设备描述</Label>
+                <Textarea
+                  value={newEquipment.description}
+                  onChange={(e) => setNewEquipment({ ...newEquipment, description: e.target.value })}
+                  className="bg-slate-800 border-slate-600 text-white"
+                  placeholder="详细描述设备的功能、特点等"
+                  rows={3}
+                />
+              </div>
+
+              {/* 服务选项 */}
+              <div className="flex gap-6">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="maintenance_included"
+                    checked={newEquipment.maintenance_included}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, maintenance_included: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <Label htmlFor="maintenance_included" className="text-white cursor-pointer">
+                    包含维护服务
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="delivery_included"
+                    checked={newEquipment.delivery_included}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, delivery_included: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <Label htmlFor="delivery_included" className="text-white cursor-pointer">
+                    包含配送服务
+                  </Label>
+                </div>
+              </div>
+
+              {/* 图片上传 */}
+              <div>
+                <Label className="text-white">设备图片</Label>
+                <div className="mt-2 space-y-2">
+                  <div className="flex gap-2 flex-wrap">
+                    {uploadedEquipmentImages.map((url, index) => (
+                      <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-600">
+                        <img src={url} alt={`设备图片 ${index + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => setUploadedEquipmentImages(uploadedEquipmentImages.filter((_, i) => i !== index))}
+                          className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {uploadedEquipmentImages.length < 5 && (
+                      <label className="w-24 h-24 border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-500 transition-colors">
+                        {isUploadingImages ? (
+                          <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                        ) : (
+                          <Upload className="h-6 w-6 text-slate-400" />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              await handleUploadEquipmentImage(file)
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400">最多上传5张图片，支持JPG、PNG格式</p>
+                </div>
+              </div>
+
+              {/* 备注 */}
+              <div>
+                <Label className="text-white">备注</Label>
+                <Textarea
+                  value={newEquipment.notes}
+                  onChange={(e) => setNewEquipment({ ...newEquipment, notes: e.target.value })}
+                  className="bg-slate-800 border-slate-600 text-white"
+                  placeholder="其他需要说明的信息"
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsUploadEquipmentDialogOpen(false)
+                  setNewEquipment({
+                    name: "",
+                    brand: "",
+                    model: "",
+                    description: "",
+                    category_id: "",
+                    monthly_rental_price: "",
+                    daily_rental_price: "",
+                    deposit_amount: "0",
+                    min_rental_period: "1",
+                    max_rental_period: "",
+                    maintenance_included: true,
+                    delivery_included: false,
+                    notes: "",
+                  })
+                  setUploadedEquipmentImages([])
+                }}
+                className="border-slate-600 text-slate-300"
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleSubmitUploadEquipment}
+                disabled={isUploadingEquipment}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isUploadingEquipment ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    上传中...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    提交审核
+                  </>
+                )}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -8550,6 +9110,945 @@ export default function AdminDashboard() {
     )
   }
 
+  // 渲染协议管理
+  const renderAgreements = () => {
+    const agreementTypeOptions = [
+      { value: "service", label: "服务协议" },
+      { value: "payment", label: "支付协议" },
+      { value: "privacy", label: "隐私协议" },
+      { value: "terms", label: "使用条款" },
+    ]
+
+    const agreementStatusOptions = [
+      { value: "draft", label: "草稿" },
+      { value: "published", label: "已发布" },
+      { value: "archived", label: "已归档" },
+    ]
+
+    // 筛选协议
+    const filteredAgreements = agreements.filter((agreement) => {
+      if (agreementsTypeFilter !== "all" && agreement.type !== agreementsTypeFilter) {
+        return false
+      }
+      if (agreementsStatusFilter !== "all" && agreement.status !== agreementsStatusFilter) {
+        return false
+      }
+      return true
+    })
+
+    const getTypeLabel = (type: string) => {
+      const option = agreementTypeOptions.find((opt) => opt.value === type)
+      return option ? option.label : type
+    }
+
+    const getStatusLabel = (status: string) => {
+      const option = agreementStatusOptions.find((opt) => opt.value === status)
+      return option ? option.label : status
+    }
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "draft":
+          return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+        case "published":
+          return "bg-green-500/20 text-green-400 border-green-500/30"
+        case "archived":
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+        default:
+          return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+      }
+    }
+
+    // 提交创建/更新协议
+    const handleSubmitAgreement = async () => {
+      if (!newAgreement.title || !newAgreement.type || !newAgreement.content) {
+        alert("请填写协议标题、类型和内容")
+        return
+      }
+
+      setIsEditingAgreement(true)
+      try {
+        const method = selectedAgreement ? "PUT" : "POST"
+        const url = selectedAgreement ? `/api/agreements/${selectedAgreement.id}` : "/api/agreements"
+        
+        // 获取当前用户ID
+        let userId: string | null = null
+        if (supabase) {
+          const { data: { user } } = await supabase.auth.getUser()
+          userId = user?.id || null
+        }
+
+        const body: any = {
+          ...newAgreement,
+          created_by: selectedAgreement ? undefined : userId,
+          updated_by: selectedAgreement ? userId : undefined,
+        }
+
+        const response = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          alert(selectedAgreement ? "协议更新成功！" : "协议创建成功！")
+          setIsAddAgreementDialogOpen(false)
+          setSelectedAgreement(null)
+          setNewAgreement({
+            title: "",
+            type: "service",
+            version: "1.0",
+            content: "",
+            content_html: "",
+            status: "draft",
+            is_active: false,
+            effective_date: "",
+            expiry_date: "",
+            description: "",
+          })
+          loadAgreements()
+        } else {
+          alert(`操作失败: ${result.error}`)
+        }
+      } catch (err: any) {
+        logBusinessWarning('协议管理', '提交失败', err)
+        alert(`操作失败: ${err.message}`)
+      } finally {
+        setIsEditingAgreement(false)
+      }
+    }
+
+    // 删除协议
+    const handleDeleteAgreement = async (id: string) => {
+      if (!confirm("确定要删除这个协议吗？")) return
+
+      try {
+        const response = await fetch(`/api/agreements/${id}`, {
+          method: "DELETE",
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          alert("协议删除成功！")
+          loadAgreements()
+        } else {
+          alert(`删除失败: ${result.error}`)
+        }
+      } catch (err: any) {
+        logBusinessWarning('协议管理', '删除失败', err)
+        alert(`删除失败: ${err.message}`)
+      }
+    }
+
+    // 发布协议
+    const handlePublishAgreement = async (id: string) => {
+      if (!confirm("确定要发布这个协议吗？发布后将设置为生效版本。")) return
+
+      try {
+        const response = await fetch(`/api/agreements/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "published",
+            is_active: true,
+          }),
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          alert("协议发布成功！")
+          loadAgreements()
+        } else {
+          alert(`发布失败: ${result.error}`)
+        }
+      } catch (err: any) {
+        logBusinessWarning('协议管理', '发布失败', err)
+        alert(`发布失败: ${err.message}`)
+      }
+    }
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">协议管理</h1>
+          <p className="text-slate-400">管理服务协议、支付协议、隐私协议等各类协议内容</p>
+        </div>
+
+        {/* 标签页：协议管理和租赁合同管理 */}
+        <Tabs defaultValue="agreements" className="space-y-4">
+          <TabsList className="bg-slate-800/50 border-slate-700/50">
+            <TabsTrigger value="agreements" className="data-[state=active]:bg-blue-600">
+              协议管理
+            </TabsTrigger>
+            <TabsTrigger value="contracts" className="data-[state=active]:bg-blue-600">
+              租赁合同管理
+            </TabsTrigger>
+          </TabsList>
+
+          {/* 协议管理标签页 */}
+          <TabsContent value="agreements" className="space-y-4">
+            {/* 统计卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className="bg-slate-800/50 border-slate-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">总协议数</CardDescription>
+                  <CardTitle className="text-2xl text-white">{agreements.length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-yellow-800/50 border-yellow-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">草稿</CardDescription>
+                  <CardTitle className="text-2xl text-yellow-400">
+                    {agreements.filter((a) => a.status === "draft").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-green-800/50 border-green-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">已发布</CardDescription>
+                  <CardTitle className="text-2xl text-green-400">
+                    {agreements.filter((a) => a.status === "published").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-blue-800/50 border-blue-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">生效中</CardDescription>
+                  <CardTitle className="text-2xl text-blue-400">
+                    {agreements.filter((a) => a.is_active && a.status === "published").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            {/* 搜索和操作栏 */}
+            <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                  {/* 筛选 */}
+                  <div className="flex gap-2 flex-wrap">
+                    <Select value={agreementsTypeFilter} onValueChange={setAgreementsTypeFilter}>
+                      <SelectTrigger className="w-[150px] bg-slate-800 border-slate-600 text-white">
+                        <SelectValue placeholder="协议类型" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-800 border-slate-600">
+                        <SelectItem value="all" className="text-white">全部类型</SelectItem>
+                        {agreementTypeOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-white">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={agreementsStatusFilter} onValueChange={setAgreementsStatusFilter}>
+                      <SelectTrigger className="w-[150px] bg-slate-800 border-slate-600 text-white">
+                        <SelectValue placeholder="状态" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-800 border-slate-600">
+                        <SelectItem value="all" className="text-white">全部状态</SelectItem>
+                        {agreementStatusOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-white">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    onClick={() => {
+                      setSelectedAgreement(null)
+                      setNewAgreement({
+                        title: "",
+                        type: "service",
+                        version: "1.0",
+                        content: "",
+                        content_html: "",
+                        status: "draft",
+                        is_active: false,
+                        effective_date: "",
+                        expiry_date: "",
+                        description: "",
+                      })
+                      setIsAddAgreementDialogOpen(true)
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    新建协议
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 错误提示 */}
+            {agreementsError && (
+              <Card className="bg-red-900/50 border-red-700/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="h-5 w-5 text-red-400" />
+                    <div className="flex-1">
+                      <p className="text-red-400 font-medium">加载失败</p>
+                      <p className="text-red-300 text-sm mt-1">{agreementsError}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => loadAgreements()}
+                      className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                    >
+                      重试
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 协议列表 */}
+            {isLoadingAgreements ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-400 mr-2" />
+                <span className="text-slate-400">加载中...</span>
+              </div>
+            ) : filteredAgreements.length === 0 ? (
+              <Card className="bg-slate-900/50 border-slate-800 p-8 text-center">
+                <FileText className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+                <p className="text-slate-400 mb-2">暂无协议</p>
+                {agreementsError ? (
+                  <p className="text-sm text-slate-500">加载失败，请点击上方重试按钮</p>
+                ) : (
+                  <p className="text-sm text-slate-500">点击上方"新建协议"按钮创建第一个协议</p>
+                )}
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {filteredAgreements.map((agreement) => (
+                  <Card
+                    key={agreement.id}
+                    className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 cursor-pointer hover:border-blue-500/50 transition-colors"
+                    onClick={() => {
+                      setSelectedAgreement(agreement)
+                      setIsAgreementDetailDialogOpen(true)
+                    }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white">{agreement.title}</h3>
+                            <Badge className={getStatusColor(agreement.status)}>
+                              {getStatusLabel(agreement.status)}
+                            </Badge>
+                            {agreement.is_active && (
+                              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                                生效中
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="space-y-1 text-sm text-slate-400">
+                            <p>类型：{getTypeLabel(agreement.type)}</p>
+                            <p>版本：{agreement.version}</p>
+                            {agreement.effective_date && (
+                              <p>生效日期：{new Date(agreement.effective_date).toLocaleDateString("zh-CN")}</p>
+                            )}
+                            {agreement.expiry_date && (
+                              <p>失效日期：{new Date(agreement.expiry_date).toLocaleDateString("zh-CN")}</p>
+                            )}
+                            {agreement.description && <p>说明：{agreement.description}</p>}
+                          </div>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 mt-1" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* 租赁合同管理标签页 */}
+          <TabsContent value="contracts" className="space-y-4">
+            {/* 统计卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <Card className="bg-slate-800/50 border-slate-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">总合同数</CardDescription>
+                  <CardTitle className="text-2xl text-white">{rentalContracts.length}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-yellow-800/50 border-yellow-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">草稿</CardDescription>
+                  <CardTitle className="text-2xl text-yellow-400">
+                    {rentalContracts.filter((c) => c.status === "draft").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-green-800/50 border-green-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">生效中</CardDescription>
+                  <CardTitle className="text-2xl text-green-400">
+                    {rentalContracts.filter((c) => c.status === "active").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-slate-700/50 border-slate-600/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">已结束</CardDescription>
+                  <CardTitle className="text-2xl text-slate-400">
+                    {rentalContracts.filter((c) => c.status === "ended").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-red-800/50 border-red-700/50">
+                <CardHeader className="pb-3">
+                  <CardDescription className="text-slate-400">违约</CardDescription>
+                  <CardTitle className="text-2xl text-red-400">
+                    {rentalContracts.filter((c) => c.status === "breached").length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            {/* 错误提示 */}
+            {rentalContractsError && (
+              <Card className="bg-red-900/50 border-red-700/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="h-5 w-5 text-red-400" />
+                    <div className="flex-1">
+                      <p className="text-red-400 font-medium">加载失败</p>
+                      <p className="text-red-300 text-sm mt-1">{rentalContractsError}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => loadRentalContracts()}
+                      className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                    >
+                      重试
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 合同列表 */}
+            {isLoadingRentalContracts ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-400 mr-2" />
+                <span className="text-slate-400">加载中...</span>
+              </div>
+            ) : rentalContracts.length === 0 ? (
+              <Card className="bg-slate-900/50 border-slate-800 p-8 text-center">
+                <FileText className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+                <p className="text-slate-400 mb-2">暂无租赁合同</p>
+                <p className="text-sm text-slate-500">租赁合同将从设备租赁订单中自动创建</p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {rentalContracts.map((contract) => {
+                  const getContractStatusColor = (status: string) => {
+                    switch (status) {
+                      case "draft":
+                        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                      case "active":
+                        return "bg-green-500/20 text-green-400 border-green-500/30"
+                      case "ended":
+                        return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+                      case "breached":
+                        return "bg-red-500/20 text-red-400 border-red-500/30"
+                      default:
+                        return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+                    }
+                  }
+
+                  const getContractStatusLabel = (status: string) => {
+                    switch (status) {
+                      case "draft":
+                        return "草稿"
+                      case "active":
+                        return "生效中"
+                      case "ended":
+                        return "已结束"
+                      case "breached":
+                        return "违约"
+                      default:
+                        return status
+                    }
+                  }
+
+                  return (
+                    <Card
+                      key={contract.id}
+                      className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 cursor-pointer hover:border-blue-500/50 transition-colors"
+                      onClick={() => {
+                        setSelectedRentalContract(contract)
+                        setIsRentalContractDetailDialogOpen(true)
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="text-lg font-semibold text-white">合同号：{contract.contract_no}</h3>
+                              <Badge className={getContractStatusColor(contract.status)}>
+                                {getContractStatusLabel(contract.status)}
+                              </Badge>
+                            </div>
+                            <div className="space-y-1 text-sm text-slate-400">
+                              <p>承租人餐厅ID：{contract.lessee_restaurant_id}</p>
+                              <p>出租人类型：{contract.lessor_type}</p>
+                              <p>计费模式：{contract.billing_model}</p>
+                              <p>
+                                合同期限：{new Date(contract.start_at).toLocaleDateString("zh-CN")} 至{" "}
+                                {new Date(contract.end_at).toLocaleDateString("zh-CN")}
+                              </p>
+                            </div>
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 mt-1" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* 协议详情对话框 */}
+        <Dialog open={isAgreementDetailDialogOpen} onOpenChange={setIsAgreementDetailDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">协议详情</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                查看和编辑协议信息
+              </DialogDescription>
+            </DialogHeader>
+            {selectedAgreement && (
+              <div className="space-y-4">
+                <div className="bg-slate-800/50 p-4 rounded-lg space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">标题：</span>
+                    <span className="text-white">{selectedAgreement.title}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">类型：</span>
+                    <span className="text-white">{getTypeLabel(selectedAgreement.type)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">版本：</span>
+                    <span className="text-white">{selectedAgreement.version}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">状态：</span>
+                    <Badge className={getStatusColor(selectedAgreement.status)}>
+                      {getStatusLabel(selectedAgreement.status)}
+                    </Badge>
+                  </div>
+                  {selectedAgreement.effective_date && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">生效日期：</span>
+                      <span className="text-white">
+                        {new Date(selectedAgreement.effective_date).toLocaleDateString("zh-CN")}
+                      </span>
+                    </div>
+                  )}
+                  {selectedAgreement.expiry_date && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">失效日期：</span>
+                      <span className="text-white">
+                        {new Date(selectedAgreement.expiry_date).toLocaleDateString("zh-CN")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 协议内容 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg">
+                  <h4 className="text-lg font-semibold text-white mb-3">协议内容</h4>
+                  <div className="text-slate-300 text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto">
+                    {selectedAgreement.content_html ? (
+                      <div dangerouslySetInnerHTML={{ __html: selectedAgreement.content_html }} />
+                    ) : (
+                      selectedAgreement.content
+                    )}
+                  </div>
+                </div>
+
+                {/* 操作按钮 */}
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedAgreement(null)
+                      setIsAgreementDetailDialogOpen(false)
+                    }}
+                    className="border-slate-600 text-slate-300"
+                  >
+                    关闭
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setNewAgreement({
+                        title: selectedAgreement.title,
+                        type: selectedAgreement.type,
+                        version: selectedAgreement.version,
+                        content: selectedAgreement.content,
+                        content_html: selectedAgreement.content_html || "",
+                        status: selectedAgreement.status,
+                        is_active: selectedAgreement.is_active,
+                        effective_date: selectedAgreement.effective_date || "",
+                        expiry_date: selectedAgreement.expiry_date || "",
+                        description: selectedAgreement.description || "",
+                      })
+                      setIsAgreementDetailDialogOpen(false)
+                      setIsAddAgreementDialogOpen(true)
+                    }}
+                    className="border-blue-600 text-blue-400 hover:bg-blue-500/10"
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    编辑
+                  </Button>
+                  {selectedAgreement.status === "draft" && (
+                    <Button
+                      onClick={() => handlePublishAgreement(selectedAgreement.id)}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      发布
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => handleDeleteAgreement(selectedAgreement.id)}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    删除
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* 创建/编辑协议对话框 */}
+        <Dialog open={isAddAgreementDialogOpen} onOpenChange={setIsAddAgreementDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">
+                {selectedAgreement ? "编辑协议" : "新建协议"}
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                {selectedAgreement ? "修改协议信息" : "创建新的协议内容"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-white">协议标题 *</Label>
+                  <Input
+                    value={newAgreement.title}
+                    onChange={(e) => setNewAgreement({ ...newAgreement, title: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：服务协议"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">协议类型 *</Label>
+                  <Select
+                    value={newAgreement.type}
+                    onValueChange={(value) => setNewAgreement({ ...newAgreement, type: value })}
+                  >
+                    <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
+                      <SelectValue placeholder="选择类型" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-600">
+                      {agreementTypeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-white">
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-white">版本号</Label>
+                  <Input
+                    value={newAgreement.version}
+                    onChange={(e) => setNewAgreement({ ...newAgreement, version: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                    placeholder="例如：1.0"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">状态</Label>
+                  <Select
+                    value={newAgreement.status}
+                    onValueChange={(value) => setNewAgreement({ ...newAgreement, status: value as any })}
+                  >
+                    <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
+                      <SelectValue placeholder="选择状态" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-600">
+                      {agreementStatusOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-white">
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-white">生效日期</Label>
+                  <Input
+                    type="date"
+                    value={newAgreement.effective_date}
+                    onChange={(e) => setNewAgreement({ ...newAgreement, effective_date: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">失效日期</Label>
+                  <Input
+                    type="date"
+                    value={newAgreement.expiry_date}
+                    onChange={(e) => setNewAgreement({ ...newAgreement, expiry_date: e.target.value })}
+                    className="bg-slate-800 border-slate-600 text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-white">协议描述</Label>
+                <Textarea
+                  value={newAgreement.description}
+                  onChange={(e) => setNewAgreement({ ...newAgreement, description: e.target.value })}
+                  className="bg-slate-800 border-slate-600 text-white"
+                  placeholder="协议描述/说明"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <Label className="text-white">协议内容 *</Label>
+                <Textarea
+                  value={newAgreement.content}
+                  onChange={(e) => setNewAgreement({ ...newAgreement, content: e.target.value })}
+                  className="bg-slate-800 border-slate-600 text-white font-mono text-sm"
+                  placeholder="输入协议正文内容（支持Markdown格式）"
+                  rows={15}
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="is_active"
+                  checked={newAgreement.is_active}
+                  onChange={(e) => setNewAgreement({ ...newAgreement, is_active: e.target.checked })}
+                  className="w-4 h-4"
+                  disabled={newAgreement.status !== "published"}
+                />
+                <Label htmlFor="is_active" className="text-white cursor-pointer">
+                  设为生效版本（仅已发布协议可设置）
+                </Label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsAddAgreementDialogOpen(false)
+                  setSelectedAgreement(null)
+                }}
+                className="border-slate-600 text-slate-300"
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleSubmitAgreement}
+                disabled={isEditingAgreement}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isEditingAgreement ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    保存
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 租赁合同详情对话框（包含支付信息） */}
+        <Dialog
+          open={isRentalContractDetailDialogOpen}
+          onOpenChange={setIsRentalContractDetailDialogOpen}
+        >
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">租赁合同详情</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                查看合同信息和关联的支付记录
+              </DialogDescription>
+            </DialogHeader>
+            {selectedRentalContract && (
+              <div className="space-y-4">
+                {/* 合同基本信息 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">合同号：</span>
+                    <span className="text-white font-semibold">{selectedRentalContract.contract_no}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">承租人餐厅ID：</span>
+                    <span className="text-white">{selectedRentalContract.lessee_restaurant_id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">出租人类型：</span>
+                    <span className="text-white">{selectedRentalContract.lessor_type}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">计费模式：</span>
+                    <span className="text-white">{selectedRentalContract.billing_model}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">合同期限：</span>
+                    <span className="text-white">
+                      {new Date(selectedRentalContract.start_at).toLocaleDateString("zh-CN")} 至{" "}
+                      {new Date(selectedRentalContract.end_at).toLocaleDateString("zh-CN")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">状态：</span>
+                    <Badge
+                      className={
+                        selectedRentalContract.status === "active"
+                          ? "bg-green-500/20 text-green-400 border-green-500/30"
+                          : selectedRentalContract.status === "draft"
+                          ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                          : "bg-slate-500/20 text-slate-400 border-slate-500/30"
+                      }
+                    >
+                      {selectedRentalContract.status === "active"
+                        ? "生效中"
+                        : selectedRentalContract.status === "draft"
+                        ? "草稿"
+                        : "已结束"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* 关联的租赁订单和支付信息 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg">
+                  <h4 className="text-lg font-semibold text-white mb-3">关联订单和支付记录</h4>
+                  {isLoadingPaymentInfo ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-5 w-5 animate-spin text-blue-400 mr-2" />
+                      <span className="text-slate-400">加载中...</span>
+                    </div>
+                  ) : contractPaymentInfo.length === 0 ? (
+                    <p className="text-slate-400 text-sm">暂无关联的订单</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {contractPaymentInfo.map((order: any) => {
+                        const monthlyPayments = (order.monthly_payments as any[]) || []
+                        return (
+                          <Card key={order.id} className="bg-slate-900/50 border-slate-700/50">
+                            <CardContent className="p-4">
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="text-white font-semibold">订单号：{order.order_number}</p>
+                                    <p className="text-slate-400 text-sm mt-1">
+                                      设备：{order.equipment?.name || "未知"}
+                                    </p>
+                                    <p className="text-slate-400 text-sm">
+                                      月租金：¥{order.monthly_rental_price} × {order.rental_period} 个月
+                                    </p>
+                                  </div>
+                                  <Badge
+                                    className={
+                                      order.order_status === "active"
+                                        ? "bg-green-500/20 text-green-400 border-green-500/30"
+                                        : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                                    }
+                                  >
+                                    {order.order_status === "active" ? "租赁中" : "待确认"}
+                                  </Badge>
+                                </div>
+
+                                {/* 每月支付记录 */}
+                                {monthlyPayments.length > 0 && (
+                                  <div className="border-t border-slate-700/50 pt-3">
+                                    <p className="text-slate-400 text-sm mb-2">支付记录：</p>
+                                    <div className="space-y-1">
+                                      {monthlyPayments.map((payment: any, index: number) => (
+                                        <div
+                                          key={index}
+                                          className="flex justify-between items-center text-sm bg-slate-800/50 p-2 rounded"
+                                        >
+                                          <span className="text-slate-300">{payment.month}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-white">¥{payment.amount}</span>
+                                            {payment.status === "paid" ? (
+                                              <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                                                已支付
+                                              </Badge>
+                                            ) : (
+                                              <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
+                                                待支付
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedRentalContract(null)
+                      setIsRentalContractDetailDialogOpen(false)
+                    }}
+                    className="border-slate-600 text-slate-300"
+                  >
+                    关闭
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
+
   // 渲染系统设置
   const renderSettings = () => {
     return (
@@ -8850,16 +10349,7 @@ export default function AdminDashboard() {
           {activeMenu === "api" && renderApiConfig()}
           {activeMenu === "fuelPricing" && renderFuelPricing()}
           {activeMenu === "analytics" && renderAnalytics()}
-          {activeMenu === "agreements" && (
-            <div className="p-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>协议管理</CardTitle>
-                  <CardDescription>协议管理功能开发中...</CardDescription>
-                </CardHeader>
-              </Card>
-            </div>
-          )}
+          {activeMenu === "agreements" && renderAgreements()}
           {activeMenu === "settings" && renderSettings()}
         </div>
       </div>
