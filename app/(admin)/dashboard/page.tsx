@@ -189,6 +189,8 @@ const menuItems = [
   { icon: FileText, label: "协议管理", key: "agreements" },
   { icon: Server, label: "API配置", key: "api" },
   { icon: BarChart3, label: "数据统计", key: "analytics" },
+  { icon: DollarSign, label: "财务报表", key: "financeReport" },
+  { icon: AlertTriangle, label: "异常处理", key: "exceptionHandling" },
   { icon: Settings, label: "系统设置", key: "settings" },
 ]
 
@@ -440,6 +442,10 @@ export default function AdminDashboard() {
   const [rentalOrderStatusFilter, setRentalOrderStatusFilter] = useState<string>("all")
   const [selectedRentalOrder, setSelectedRentalOrder] = useState<any | null>(null)
   const [isRentalOrderDetailDialogOpen, setIsRentalOrderDetailDialogOpen] = useState(false)
+  const [isRefundDialogOpen, setIsRefundDialogOpen] = useState(false)
+  const [refundReason, setRefundReason] = useState("")
+  const [refundProof, setRefundProof] = useState("")
+  const [isProcessingRefund, setIsProcessingRefund] = useState(false)
   const [rentalOrderSearchQuery, setRentalOrderSearchQuery] = useState<string>("")
   const [selectedRentalOrderIds, setSelectedRentalOrderIds] = useState<string[]>([])
   const [isAddRentalOrderDialogOpen, setIsAddRentalOrderDialogOpen] = useState(false)
@@ -545,6 +551,23 @@ export default function AdminDashboard() {
   
   // 租赁合同管理相关状态（集成到协议管理）
   const [rentalContracts, setRentalContracts] = useState<any[]>([])
+  
+  // 财务报表相关状态
+  const [reportType, setReportType] = useState<string>("revenue")
+  const [reportData, setReportData] = useState<any>(null)
+  const [isLoadingReport, setIsLoadingReport] = useState(false)
+  const [financeStartDate, setFinanceStartDate] = useState(() => {
+    const date = new Date()
+    date.setDate(date.getDate() - 30)
+    return date.toISOString().split("T")[0]
+  })
+  const [financeEndDate, setFinanceEndDate] = useState(() => new Date().toISOString().split("T")[0])
+  
+  // 异常处理相关状态
+  const [overdueBilling, setOverdueBilling] = useState<any[]>([])
+  const [overdueRentals, setOverdueRentals] = useState<any[]>([])
+  const [isLoadingOverdueBilling, setIsLoadingOverdueBilling] = useState(false)
+  const [isLoadingOverdueRentals, setIsLoadingOverdueRentals] = useState(false)
   const [isLoadingRentalContracts, setIsLoadingRentalContracts] = useState(false)
   const [rentalContractsError, setRentalContractsError] = useState<string | null>(null)
   const [selectedRentalContract, setSelectedRentalContract] = useState<any | null>(null)
@@ -2099,6 +2122,46 @@ export default function AdminDashboard() {
       setIsUpdatingRentalOrder(false)
     }
   }, [newRentalOrder, loadRentalOrders])
+
+  // 处理押金退款
+  const handleRefundDeposit = useCallback(async () => {
+    if (!selectedRentalOrder) return
+    
+    if (!refundReason.trim()) {
+      alert("请输入退款原因")
+      return
+    }
+
+    setIsProcessingRefund(true)
+    try {
+      const response = await fetch("/api/equipment/rental/deposit/refund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rental_order_id: selectedRentalOrder.id,
+          refund_reason: refundReason,
+          refund_proof: refundProof || null,
+        }),
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        alert(result.message || "押金退款成功！")
+        setIsRefundDialogOpen(false)
+        setRefundReason("")
+        setRefundProof("")
+        await loadRentalOrders()
+        // 更新选中的订单状态
+        setSelectedRentalOrder({ ...selectedRentalOrder, payment_status: 'refunded' })
+      } else {
+        alert(`退款失败: ${result.error || result.details}`)
+      }
+    } catch (err: any) {
+      alert(`退款失败: ${err.message}`)
+    } finally {
+      setIsProcessingRefund(false)
+    }
+  }, [selectedRentalOrder, refundReason, refundProof, loadRentalOrders])
 
   // 批量更新状态
   const handleBatchUpdateStatus = useCallback(async () => {
@@ -6681,6 +6744,111 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 </div>
+
+                {/* 操作按钮 */}
+                <div className="flex justify-end gap-2 pt-4 border-t border-slate-700">
+                  {/* 退款按钮：仅当订单已完成或已取消，且未退款时显示 */}
+                  {(selectedRentalOrder.order_status === 'completed' || selectedRentalOrder.order_status === 'cancelled') &&
+                    selectedRentalOrder.payment_status !== 'refunded' &&
+                    parseFloat(selectedRentalOrder.deposit_amount?.toString() || "0") > 0 && (
+                    <Button
+                      onClick={() => setIsRefundDialogOpen(true)}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <DollarSign className="h-4 w-4 mr-2" />
+                      押金退款
+                    </Button>
+                  )}
+                  {selectedRentalOrder.payment_status === 'refunded' && (
+                    <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      押金已退款
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* 押金退款对话框 */}
+        <Dialog open={isRefundDialogOpen} onOpenChange={setIsRefundDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-white">押金退款</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                订单号：{selectedRentalOrder?.order_number}
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedRentalOrder && (
+              <div className="space-y-4 mt-4">
+                {/* 退款金额显示 */}
+                <div className="bg-slate-800/50 p-4 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">退款金额：</span>
+                    <span className="text-green-400 font-bold text-xl">
+                      ¥{selectedRentalOrder.deposit_amount?.toFixed(2) || "0.00"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 退款原因 */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">退款原因 <span className="text-red-400">*</span></Label>
+                  <Textarea
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    placeholder="请输入退款原因，例如：订单完成、设备完好；订单取消等"
+                    className="bg-slate-800 border-slate-700 text-white"
+                    rows={3}
+                  />
+                </div>
+
+                {/* 退款凭证（可选） */}
+                <div className="space-y-2">
+                  <Label className="text-slate-300">退款凭证（可选）</Label>
+                  <Input
+                    value={refundProof}
+                    onChange={(e) => setRefundProof(e.target.value)}
+                    placeholder="退款凭证URL（图片或转账凭证）"
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <p className="text-xs text-slate-500">可以上传退款凭证图片URL或转账凭证</p>
+                </div>
+
+                {/* 操作按钮 */}
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsRefundDialogOpen(false)
+                      setRefundReason("")
+                      setRefundProof("")
+                    }}
+                    className="border-slate-600 text-slate-300"
+                    disabled={isProcessingRefund}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleRefundDeposit}
+                    disabled={isProcessingRefund || !refundReason.trim()}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isProcessingRefund ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        处理中...
+                      </>
+                    ) : (
+                      <>
+                        <DollarSign className="h-4 w-4 mr-2" />
+                        确认退款
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>
@@ -10049,6 +10217,278 @@ export default function AdminDashboard() {
     )
   }
 
+  // 加载财务报表
+  const loadFinanceReport = useCallback(async () => {
+      setIsLoadingReport(true)
+      try {
+        const params = new URLSearchParams({
+          report_type: reportType,
+          start_date: financeStartDate,
+          end_date: financeEndDate,
+        })
+        const response = await fetch(`/api/finance/report?${params}`)
+        const result = await response.json()
+        if (result.success) {
+          setReportData(result.data)
+        } else {
+          alert(result.error || "加载报表失败")
+        }
+      } catch (error: any) {
+        alert(`加载报表失败: ${error.message}`)
+      } finally {
+        setIsLoadingReport(false)
+      }
+    }, [reportType, financeStartDate, financeEndDate])
+  
+  // 加载逾期账期
+  const loadOverdueBillingData = useCallback(async () => {
+    setIsLoadingOverdueBilling(true)
+    try {
+      const response = await fetch("/api/finance/billing/overdue")
+      const result = await response.json()
+      if (result.success) {
+        setOverdueBilling(result.data?.overdue_cycles || [])
+      }
+    } catch (error: any) {
+      logBusinessWarning('异常处理', '加载逾期账期失败', error)
+    } finally {
+      setIsLoadingOverdueBilling(false)
+    }
+  }, [])
+  
+  // 加载逾期设备
+  const loadOverdueRentalsData = useCallback(async () => {
+    setIsLoadingOverdueRentals(true)
+    try {
+      const response = await fetch("/api/cron/check-overdue-rentals?dry_run=true")
+      const result = await response.json()
+      if (result.success) {
+        setOverdueRentals(result.data?.overdue_orders || [])
+      }
+    } catch (error: any) {
+      logBusinessWarning('异常处理', '加载逾期设备失败', error)
+    } finally {
+      setIsLoadingOverdueRentals(false)
+    }
+  }, [])
+  
+  // 渲染财务报表
+  const renderFinanceReport = () => {
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">财务报表</h1>
+          <p className="text-slate-400">查看收入统计、账期分析和逾期统计</p>
+        </div>
+
+        <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white">报表查询</CardTitle>
+            <CardDescription className="text-slate-400">选择报表类型和时间范围</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label className="text-slate-300">报表类型</Label>
+                <Select value={reportType} onValueChange={setReportType}>
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="revenue">收入统计</SelectItem>
+                    <SelectItem value="billing">账期分析</SelectItem>
+                    <SelectItem value="overdue">逾期统计</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-slate-300">开始日期</Label>
+                <Input
+                  type="date"
+                  value={financeStartDate}
+                  onChange={(e) => setFinanceStartDate(e.target.value)}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+              <div>
+                <Label className="text-slate-300">结束日期</Label>
+                <Input
+                  type="date"
+                  value={financeEndDate}
+                  onChange={(e) => setFinanceEndDate(e.target.value)}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+            </div>
+            <Button onClick={loadFinanceReport} disabled={isLoadingReport} className="w-full md:w-auto">
+              {isLoadingReport ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <BarChart3 className="h-4 w-4 mr-2" />}
+              生成报表
+            </Button>
+          </CardContent>
+        </Card>
+
+        {reportData && (
+          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-white">
+                {reportType === "revenue" && "收入统计报表"}
+                {reportType === "billing" && "账期分析报表"}
+                {reportType === "overdue" && "逾期统计报表"}
+              </CardTitle>
+              <CardDescription className="text-slate-400">
+                时间范围: {reportData.period?.start_date} 至 {reportData.period?.end_date}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {reportType === "revenue" && reportData.summary && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">总收入</div>
+                      <div className="text-2xl font-bold text-green-400">¥{reportData.summary.total_revenue?.toFixed(2)}</div>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">押金收入</div>
+                      <div className="text-2xl font-bold text-blue-400">¥{reportData.summary.total_deposit_received?.toFixed(2)}</div>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">账期收入</div>
+                      <div className="text-2xl font-bold text-purple-400">¥{reportData.summary.total_billing_paid?.toFixed(2)}</div>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">订单总数</div>
+                      <div className="text-2xl font-bold text-yellow-400">{reportData.summary.total_orders}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {reportType === "billing" && reportData.summary && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">总账期数</div>
+                      <div className="text-2xl font-bold text-blue-400">{reportData.summary.total_cycles}</div>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">应收总额</div>
+                      <div className="text-2xl font-bold text-green-400">¥{reportData.summary.total_amount_due?.toFixed(2)}</div>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">已收总额</div>
+                      <div className="text-2xl font-bold text-purple-400">¥{reportData.summary.total_amount_paid?.toFixed(2)}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {reportType === "overdue" && reportData.summary && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">逾期账期数</div>
+                      <div className="text-2xl font-bold text-red-400">{reportData.summary.total_overdue_cycles}</div>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-lg">
+                      <div className="text-sm text-slate-400 mb-1">逾期总额</div>
+                      <div className="text-2xl font-bold text-orange-400">¥{reportData.summary.total_overdue_amount?.toFixed(2)}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )
+  }
+
+  // 加载异常处理数据
+  useEffect(() => {
+    if (activeMenu === "exceptionHandling") {
+      loadOverdueBillingData()
+      loadOverdueRentalsData()
+    }
+  }, [activeMenu, loadOverdueBillingData, loadOverdueRentalsData])
+  
+  // 渲染异常处理
+  const renderExceptionHandling = () => {
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">异常处理</h1>
+          <p className="text-slate-400">处理逾期账期、设备未归还等异常情况</p>
+        </div>
+
+        <Card className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+              逾期账期
+            </CardTitle>
+            <CardDescription className="text-slate-400">需要催收的逾期账期列表</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingOverdueBilling ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+              </div>
+            ) : overdueBilling.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">暂无逾期账期</div>
+            ) : (
+              <div className="space-y-2">
+                {overdueBilling.slice(0, 10).map((cycle: any) => (
+                  <div key={cycle.id} className="p-4 bg-slate-800/50 rounded-lg flex justify-between items-center">
+                    <div>
+                      <div className="text-white font-medium">订单: {cycle.order_number || cycle.rental_order_id}</div>
+                      <div className="text-sm text-slate-400">账期: {cycle.cycle_month} | 逾期: {cycle.overdue_days}天</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-red-400 font-bold">¥{(cycle.amount_due - cycle.amount_paid)?.toFixed(2)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-slate-900/90 to-orange-950/90 border-orange-800/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Package className="h-5 w-5 text-orange-400" />
+              逾期设备（未归还）
+            </CardTitle>
+            <CardDescription className="text-slate-400">租期已到但未归还的设备</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingOverdueRentals ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+              </div>
+            ) : overdueRentals.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">暂无逾期设备</div>
+            ) : (
+              <div className="space-y-2">
+                {overdueRentals.slice(0, 10).map((order: any) => (
+                  <div key={order.id} className="p-4 bg-slate-800/50 rounded-lg flex justify-between items-center">
+                    <div>
+                      <div className="text-white font-medium">订单: {order.order_number || order.id}</div>
+                      <div className="text-sm text-slate-400">逾期: {order.overdue_days}天 | 应归还: {order.end_date}</div>
+                    </div>
+                    <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
+                      未归还
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   // 渲染系统设置
   const renderSettings = () => {
     return (
@@ -10349,6 +10789,8 @@ export default function AdminDashboard() {
           {activeMenu === "api" && renderApiConfig()}
           {activeMenu === "fuelPricing" && renderFuelPricing()}
           {activeMenu === "analytics" && renderAnalytics()}
+          {activeMenu === "financeReport" && renderFinanceReport()}
+          {activeMenu === "exceptionHandling" && renderExceptionHandling()}
           {activeMenu === "agreements" && renderAgreements()}
           {activeMenu === "settings" && renderSettings()}
         </div>

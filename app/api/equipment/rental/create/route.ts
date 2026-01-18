@@ -201,6 +201,25 @@ export async function POST(request: Request) {
 
     // 📝 记录租赁事件：创建订单
     if (rentalOrder) {
+      // 💰 记录押金收取到 rental_deposits 表
+      if (depositAmount > 0) {
+        const { error: depositRecordError } = await supabase
+          .from("rental_deposits")
+          .insert({
+            rental_order_id: rentalOrder.id,
+            deposit_type: "received",
+            amount: depositAmount,
+            operator_id: currentUserId || null,
+          })
+
+        if (depositRecordError) {
+          console.error("[租赁订单API] 记录押金收取失败:", depositRecordError)
+          // 押金记录失败不影响主流程，但应该记录警告
+        } else {
+          console.log(`[租赁订单API] 💰 押金收取记录已创建：订单ID: ${rentalOrder.id}，金额: ${depositAmount}`)
+        }
+      }
+
       const { error: eventError } = await supabase
         .from("rental_events")
         .insert({
