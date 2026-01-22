@@ -122,7 +122,7 @@ export default function UserUnboundPage() {
             <h2 className="text-xl font-bold text-foreground mb-2">我们的服务</h2>
             <p className="text-sm text-muted-foreground">绑定设备后可享受更多专属服务</p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             {registeredServices.map((service) => (
               <Link key={service.label} href={service.href}>
                 <Card semanticLevel="secondary_fact" className="glass-breath p-5 hover:scale-[1.02] hover:border-primary/30 transition-all cursor-pointer group h-full">
