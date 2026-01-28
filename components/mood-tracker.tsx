@@ -21,7 +21,7 @@ export function MoodTracker() {
     <section id="mood" className="py-20 px-4 bg-muted/30">
       <div className="container mx-auto max-w-6xl">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <Card className="p-8 shadow-xl order-2 lg:order-1">
+          <Card semanticLevel="action" className="p-8 shadow-xl order-2 lg:order-1">
             <div className="space-y-6">
               <div>
                 <h3 className="text-2xl font-semibold mb-2">今天的心情如何？</h3>

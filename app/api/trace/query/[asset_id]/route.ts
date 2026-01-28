@@ -7,12 +7,12 @@
  * 预留接口：不实现完整业务，仅创建基础路由与最小可运行结构
  */
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { supabase } from "@/lib/supabase"
 
 export async function GET(
-  request: Request,
-  { params }: { params: { asset_id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ asset_id: string }> }
 ) {
   try {
     if (!supabase) {
@@ -22,7 +22,8 @@ export async function GET(
       )
     }
 
-    const { asset_id } = params
+    // Next.js 16: params 现在是 Promise，需要 await
+    const { asset_id } = await params
 
     if (!asset_id) {
       return NextResponse.json(

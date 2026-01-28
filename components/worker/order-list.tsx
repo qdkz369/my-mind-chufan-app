@@ -61,7 +61,7 @@ interface Order {
 }
 
 interface OrderListProps {
-  productType?: ProductType | null // 产品类型筛选
+  productType?: ProductType | string | null // 产品类型筛选（支持枚举值和前端简化名称）
   workerId?: string | null // 配送员ID
   onAcceptOrder?: (orderId: string) => void // 接单回调（可选）
   onSelectOrder?: (order: Order) => void // 选择订单回调（可选，用于直接选择订单进行配送）
@@ -85,8 +85,8 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
     try {
       const params = new URLSearchParams()
       if (productType) {
-        // 产品类型映射：将前端的 "clean" 映射到数据库的 "clean_fuel"
-        let dbProductType = productType
+        // 产品类型映射：将前端的简化名称映射到数据库的完整名称
+        let dbProductType: string = productType
         if (productType === "clean") {
           dbProductType = "clean_fuel"
         } else if (productType === "alcohol") {
@@ -218,12 +218,12 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
       if (!result.success) {
         // 提供更详细的错误信息
         const errorMsg = result.error || "接单失败"
-        const errorDetails = result.details || ""
+        const errorDetails = (result as any).details || ""
         const fullErrorMsg = errorDetails ? `${errorMsg}：${errorDetails}` : errorMsg
         logBusinessWarning('接单', '接单失败详情', {
           error: result.error,
-          details: result.details,
-          currentOrder: result.currentOrder
+          details: (result as any).details,
+          currentOrder: (result as any).currentOrder
         })
         throw new Error(fullErrorMsg)
       }
@@ -255,7 +255,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
 
   if (error) {
     return (
-      <Card className="bg-red-500/10 border-red-500/30 p-4">
+      <Card semanticLevel="system_hint" className="bg-red-500/10 border-red-500/30 p-4">
         <div className="flex items-center gap-3">
           <AlertCircle className="h-5 w-5 text-red-400" />
           <p className="text-sm text-red-400">{error}</p>
@@ -266,7 +266,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
 
   if (orders.length === 0 && !isLoading) {
     return (
-      <Card className="bg-slate-900/50 border-slate-800/50 p-8">
+      <Card semanticLevel="system_hint" className="bg-slate-900/50 border-slate-800/50 p-8">
         <div className="text-center space-y-3">
           <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
           <p className="text-slate-400">暂无待接单订单</p>
@@ -305,6 +305,7 @@ export function WorkerOrderList({ productType, workerId, onAcceptOrder, onSelect
         return (
           <Card
             key={order.id}
+            semanticLevel="secondary_fact"
             className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4"
           >
             <div className="flex items-start justify-between mb-3">

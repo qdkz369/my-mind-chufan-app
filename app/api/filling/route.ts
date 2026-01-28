@@ -20,6 +20,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "数据库连接失败" },
+        { status: 500 }
+      )
+    }
+
     // 解析请求体
     let body
     try {

@@ -180,7 +180,7 @@ export default function CustomerOrderPage() {
       <div className="container mx-auto px-4 py-6 space-y-6">
         {/* 成功提示 */}
         {success && (
-          <Card className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-6">
+          <Card semanticLevel="action" className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-6">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="h-8 w-8 text-green-400" />
               <div>
@@ -194,7 +194,7 @@ export default function CustomerOrderPage() {
 
         {/* 错误提示 */}
         {error && (
-          <Card className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
+          <Card semanticLevel="system_hint" className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-red-400" />
               <p className="text-sm text-red-400">{error}</p>
@@ -203,7 +203,7 @@ export default function CustomerOrderPage() {
         )}
 
         {/* 产品类型选择 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
               <Package className="h-6 w-6 text-white" />
@@ -251,7 +251,7 @@ export default function CustomerOrderPage() {
 
         {/* 数量输入 */}
         {selectedProductType && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
             <div className="space-y-4">
               <div>
                 <Label htmlFor="quantity" className="text-slate-300 mb-2 block">
@@ -296,7 +296,7 @@ export default function CustomerOrderPage() {
 
         {/* 提交按钮 */}
         {!success && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting || !selectedProductType || quantity <= 0}

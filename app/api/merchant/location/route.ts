@@ -25,6 +25,17 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const merchantId = searchParams.get("merchantId") || "default" // 默认商户ID
 
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      return NextResponse.json({
+        merchantId: merchantId,
+        lat: null,
+        lon: null,
+        address: null,
+        city: null,
+      })
+    }
+
     // 从数据库获取商户注册位置
     const { data, error } = await supabase
       .from("merchant_locations")
@@ -86,6 +97,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "缺少必要参数: merchantId, lat, lon" },
         { status: 400 }
+      )
+    }
+
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "数据库连接失败" },
+        { status: 500 }
       )
     }
 

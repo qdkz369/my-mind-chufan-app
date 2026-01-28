@@ -4,9 +4,9 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：设备损坏上报与赔偿流程
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getCurrentUserId } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * POST: 设备损坏上报
@@ -18,8 +18,58 @@ import { getCurrentUserId } from "@/lib/multi-tenant"
  * - damage_photos: 损坏照片URL数组（可选）
  * - estimated_fee: 预估赔偿金额（可选）
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[设备损坏上报API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -86,7 +136,7 @@ export async function POST(request: Request) {
     // 验证订单是否存在
     const { data: order, error: orderError } = await supabaseClient
       .from("rental_orders")
-      .select("id, order_status, equipment_id")
+      .select("id, order_status, equipment_id, restaurant_id, start_date")
       .eq("id", rental_order_id)
       .single()
 
@@ -155,8 +205,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // 获取当前用户ID
-    const currentUserId = await getCurrentUserId(request)
+    // 🔒 统一 company_id 来源：使用 getUserContext
+    const currentUserId = userContext?.userId
 
     // 检查是否已存在 rental_records 记录
     const { data: existingRecord } = await supabaseClient

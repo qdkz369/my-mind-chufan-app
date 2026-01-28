@@ -455,6 +455,8 @@ export default function AdminDashboard() {
   const [isUploadingEquipment, setIsUploadingEquipment] = useState(false)
   const [uploadedEquipmentImages, setUploadedEquipmentImages] = useState<string[]>([])
   const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const [uploadedEquipmentVideo, setUploadedEquipmentVideo] = useState<string | null>(null)
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false)
   const [equipmentCategories, setEquipmentCategories] = useState<any[]>([])
   const [newEquipment, setNewEquipment] = useState({
     name: "",
@@ -551,6 +553,9 @@ export default function AdminDashboard() {
   
   // 租赁合同管理相关状态（集成到协议管理）
   const [rentalContracts, setRentalContracts] = useState<any[]>([])
+  
+  // 协议管理标签页状态
+  const [agreementsTabValue, setAgreementsTabValue] = useState<string>("agreements")
   
   // 财务报表相关状态
   const [reportType, setReportType] = useState<string>("revenue")
@@ -1449,7 +1454,7 @@ export default function AdminDashboard() {
     }
   }, [orderServiceTypeFilter, orderStatusFilter])
 
-  // 加载报修数据 - 直接使用 Supabase 查询（符合官方最佳实践）
+  // 加载报修数据 - 使用 API 路由（绕过 RLS，使用 service role）
   const loadRepairs = useCallback(async () => {
     // 🔒 强化隔离逻辑：如果是供应商但 userCompanyId 为空，禁止请求，防止权限滑坡
     // 注意：如果 userRole 还未加载（为 null），允许查询（可能是超级管理员）
@@ -1475,14 +1480,37 @@ export default function AdminDashboard() {
       
       const url = `/api/repair/list${params.toString() ? `?${params.toString()}` : ''}`
       
-      const response = await fetch(url)
+      const response = await fetch(url, {
+        credentials: 'include', // 确保发送 cookies
+      })
       
       if (!response.ok) {
         const errorText = await response.text()
         logBusinessWarning('Admin Dashboard', '接口返回错误', { status: response.status, errorText })
         
-        // 🔐 如果是401未授权错误，自动跳转到登录页面
+        // 🔐 如果是401未授权错误，先检查用户角色，超级管理员不应该被跳转
         if (response.status === 401) {
+          // 尝试解析错误信息
+          let errorDetails = "未授权"
+          try {
+            const errorData = await response.json()
+            errorDetails = errorData.details || errorData.error || "未授权"
+          } catch {
+            // 忽略 JSON 解析错误
+          }
+          
+          // 如果是超级管理员，可能是 session 问题，尝试重新获取用户信息
+          if (userRole === "super_admin") {
+            console.warn("[报修管理] 超级管理员遇到401错误，可能是session问题，尝试重新获取用户信息")
+            // 尝试重新加载用户信息（通过刷新页面来重新获取 session）
+            // 注意：直接刷新页面，让浏览器重新发送 cookies
+            console.log("[报修管理] 尝试刷新页面以重新获取 session")
+            // 不跳转，而是显示错误提示，让用户手动刷新
+            alert(`获取报修列表失败：${errorDetails}。\n\n请刷新页面（F5）后重试。`)
+            setRepairs([])
+            return
+          }
+          // 非超级管理员才跳转到登录页面
           console.warn("[报修管理] 检测到401未授权错误，跳转到登录页面")
           window.location.href = "/login"
           return
@@ -1509,8 +1537,16 @@ export default function AdminDashboard() {
         // 直接使用接口返回的数据，不进行任何额外过滤
         setRepairs(repairs)
       } else {
-        // 🔐 如果返回的结果表明未授权，跳转到登录页面
+        // 🔐 如果返回的结果表明未授权，先检查用户角色
         if (result.error === "未授权" || result.details?.includes("请先登录")) {
+          // 如果是超级管理员，可能是 session 问题，不跳转
+          if (userRole === "super_admin") {
+            console.warn("[报修管理] 超级管理员遇到未授权错误，可能是session问题")
+            alert("获取报修列表失败：请刷新页面重试")
+            setRepairs([])
+            return
+          }
+          // 非超级管理员才跳转到登录页面
           console.warn("[报修管理] 检测到未授权错误，跳转到登录页面")
           window.location.href = "/login"
           return
@@ -1523,8 +1559,16 @@ export default function AdminDashboard() {
       if (error instanceof Error) {
         logBusinessWarning('Admin Dashboard', '错误详情', { message: error.message, stack: error.stack })
         
-        // 🔐 如果错误信息中包含未授权相关的内容，跳转到登录页面
+        // 🔐 如果错误信息中包含未授权相关的内容，先检查用户角色
         if (error.message.includes("401") || error.message.includes("未授权") || error.message.includes("请先登录")) {
+          // 如果是超级管理员，可能是 session 问题，不跳转
+          if (userRole === "super_admin") {
+            console.warn("[报修管理] 超级管理员遇到未授权错误，可能是session问题")
+            alert("获取报修列表失败：请刷新页面重试")
+            setRepairs([])
+            return
+          }
+          // 非超级管理员才跳转到登录页面
           console.warn("[报修管理] 检测到未授权错误，跳转到登录页面")
           window.location.href = "/login"
           return
@@ -1536,7 +1580,7 @@ export default function AdminDashboard() {
     } finally {
       setIsLoadingRepairs(false)
     }
-  }, [repairStatusFilter, repairServiceTypeFilter])
+  }, [repairStatusFilter, repairServiceTypeFilter, userRole, userCompanyId])
 
   // 更新报修状态 - 直接使用 Supabase 更新（符合官方最佳实践）
   const updateRepairStatus = useCallback(async (repairId: string, status: string, amount?: number, assignedTo?: string) => {
@@ -1585,45 +1629,48 @@ export default function AdminDashboard() {
       }
 
       // 如果状态是 completed，确保金额被设置
-      if (status === "completed" && (!updateData.amount || updateData.amount <= 0)) {
+      if (status === "completed" && (!amount || amount <= 0)) {
         alert("完成报修必须提供有效的维修金额（大于0）")
         setIsUpdatingRepair(false)
         return
       }
 
-      // 如果提供了分配的工人ID，更新 assigned_to 和 worker_id
-      if (assignedTo !== undefined && assignedTo !== null && assignedTo.trim() !== "") {
-        updateData.assigned_to = assignedTo.trim()
-        updateData.worker_id = assignedTo.trim() // 兼容旧字段
-      } else if (assignedTo === null || assignedTo === "") {
-        // 如果明确设置为空，清除分配
-        updateData.assigned_to = null
-        updateData.worker_id = null
-      }
+      // 使用 API 路由更新报修工单（绕过 RLS 限制，使用 service role）
+      const response = await fetch("/api/repair/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: 'include', // 确保发送 cookies
+        body: JSON.stringify({
+          id: repairId,
+          status: status,
+          amount: amount,
+          assigned_to: assignedTo,
+        }),
+      })
 
-      // 直接使用 Supabase 更新 repair_orders 表（报修工单）
-      const { data: updatedRepair, error: updateError } = await retryOnNetworkError(
-        async () => await supabase!
-          .from("repair_orders")
-          .update(updateData)
-          .eq("id", repairId)
-          .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to")
-          .single()
-      )
-
-      if (updateError) {
-        logBusinessWarning('Admin Dashboard', '更新报修失败', updateError)
-        alert(`更新失败: ${updateError.message || "未知错误"}`)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "未知错误" }))
+        logBusinessWarning('Admin Dashboard', '更新报修失败', { 
+          status: response.status, 
+          error: errorData 
+        })
+        alert(`更新失败: ${errorData.error || errorData.details || "未知错误"}`)
         setIsUpdatingRepair(false)
         return
       }
 
-      if (!updatedRepair) {
-        logBusinessWarning('Admin Dashboard', '更新报修后未返回数据')
-        alert("更新失败: 未返回更新后的数据")
+      const result = await response.json()
+      
+      if (!result.success || !result.data) {
+        logBusinessWarning('Admin Dashboard', '更新报修后未返回数据', result)
+        alert(`更新失败: ${result.error || "未返回更新后的数据"}`)
         setIsUpdatingRepair(false)
         return
       }
+
+      const updatedRepair = result.data
 
       // 验证更新结果
       if (status === "completed" && (!updatedRepair.amount || updatedRepair.amount <= 0)) {
@@ -1642,7 +1689,8 @@ export default function AdminDashboard() {
       
       // 显示成功提示
       if (status === "completed") {
-        alert(`报修工单已完成，维修金额: ¥${updateData.amount.toFixed(2)}`)
+        const finalAmount = updatedRepair.amount || amount || 0
+        alert(`报修工单已完成，维修金额: ¥${finalAmount.toFixed(2)}`)
       } else {
         alert(`报修工单状态已更新为: ${status === "pending" ? "待处理" : status === "processing" ? "处理中" : status === "cancelled" ? "已取消" : status}`)
       }
@@ -1813,6 +1861,48 @@ export default function AdminDashboard() {
     }
   }, [supabase, userCompanyId])
 
+  // 上传设备视频
+  const handleUploadEquipmentVideo = useCallback(async (file: File) => {
+    if (!supabase || !userCompanyId) {
+      alert("请先登录并关联公司")
+      return null
+    }
+
+    // 验证文件大小（限制为 100MB）
+    const maxSize = 100 * 1024 * 1024 // 100MB
+    if (file.size > maxSize) {
+      alert("视频文件大小不能超过 100MB")
+      return null
+    }
+
+    setIsUploadingVideo(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("company_id", userCompanyId)
+      formData.append("folder", "equipment-videos")
+
+      const response = await fetch("/api/storage/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      const result = await response.json()
+      if (result.success && result.url) {
+        setUploadedEquipmentVideo(result.url)
+        return result.url
+      } else {
+        throw new Error(result.error || "上传失败")
+      }
+    } catch (err: any) {
+      logBusinessWarning('设备租赁管理', '上传视频失败', err)
+      alert(`上传视频失败: ${err.message}`)
+      return null
+    } finally {
+      setIsUploadingVideo(false)
+    }
+  }, [supabase, userCompanyId])
+
   // 提交上传设备
   const handleSubmitUploadEquipment = useCallback(async () => {
     if (!newEquipment.name || !newEquipment.monthly_rental_price) {
@@ -1845,6 +1935,7 @@ export default function AdminDashboard() {
           maintenance_included: newEquipment.maintenance_included,
           delivery_included: newEquipment.delivery_included,
           images: uploadedEquipmentImages,
+          video_url: uploadedEquipmentVideo || null,
           notes: newEquipment.notes || null,
         }),
       })
@@ -1869,6 +1960,7 @@ export default function AdminDashboard() {
           notes: "",
         })
         setUploadedEquipmentImages([])
+        setUploadedEquipmentVideo(null)
       } else {
         alert(`上传失败: ${result.error}`)
       }
@@ -1878,7 +1970,7 @@ export default function AdminDashboard() {
     } finally {
       setIsUploadingEquipment(false)
     }
-  }, [newEquipment, uploadedEquipmentImages, userCompanyId])
+  }, [newEquipment, uploadedEquipmentImages, uploadedEquipmentVideo, userCompanyId])
 
   // 加载设备和餐厅列表（用于创建设备租赁记录）
   const loadDevicesAndRestaurantsForRental = useCallback(async () => {
@@ -2110,6 +2202,8 @@ export default function AdminDashboard() {
           contact_phone: "",
           notes: "",
           payment_method: "cash",
+          provider_id: "",
+          funding_type: "direct",
         })
         await loadRentalOrders()
         alert("订单创建成功！")
@@ -2212,8 +2306,8 @@ export default function AdminDashboard() {
     }
   }, [supabase, userRole, userCompanyId])
 
-  // 加载协议列表
-  const loadAgreements = useCallback(async () => {
+  // 加载协议列表（带 session 刷新和详细错误处理）
+  const loadAgreements = useCallback(async (retryCount = 0) => {
     setIsLoadingAgreements(true)
     setAgreementsError(null)
     try {
@@ -2225,14 +2319,80 @@ export default function AdminDashboard() {
         params.append("status", agreementsStatusFilter)
       }
 
-      const response = await fetch(`/api/agreements?${params.toString()}`)
+      const response = await fetch(`/api/agreements?${params.toString()}`, {
+        credentials: 'include', // 确保发送认证 cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       const result = await response.json()
+
+      if (!response.ok) {
+        // 处理 HTTP 错误状态码
+        if (response.status === 401) {
+          const errorMsg = result.details || result.error || "未授权，请先登录"
+          
+          // 🔄 尝试刷新 session（最多重试 1 次）
+          if (retryCount === 0 && supabase) {
+            console.log("[协议管理] 401 错误，尝试刷新 session...")
+            try {
+              const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+              if (!refreshError && session) {
+                console.log("[协议管理] Session 刷新成功，重试请求...")
+                // 重试请求
+                return loadAgreements(1)
+              } else {
+                console.error("[协议管理] Session 刷新失败:", refreshError)
+              }
+            } catch (refreshErr) {
+              console.error("[协议管理] Session 刷新异常:", refreshErr)
+            }
+          }
+          
+          // 详细错误信息：区分是 RLS 还是 Middleware 导致的拦截
+          const detailedError = retryCount > 0 
+            ? "认证失败：可能是 RLS 策略或 Middleware 拦截。请检查：1) 是否已登录 2) 用户角色是否正确 3) RLS 策略是否允许访问"
+            : errorMsg
+          
+          logBusinessWarning('协议管理', '加载失败', { 
+            errorMsg: detailedError, 
+            status: response.status,
+            retryCount,
+            cause: result.cause || 'unknown'
+          })
+          setAgreementsError(detailedError)
+          setAgreements([])
+          return
+        }
+        if (response.status === 403) {
+          const errorMsg = result.details || result.error || "权限不足"
+          logBusinessWarning('协议管理', '加载失败', { 
+            errorMsg, 
+            status: response.status,
+            cause: 'RLS 策略或权限验证失败'
+          })
+          setAgreementsError(`权限不足：${errorMsg}`)
+          setAgreements([])
+          return
+        }
+        if (response.status === 500) {
+          const errorMsg = result.details || result.error || "查询协议失败"
+          logBusinessWarning('协议管理', '加载失败', { 
+            errorMsg, 
+            status: response.status,
+            cause: '服务器内部错误，可能是 RLS 策略配置问题'
+          })
+          setAgreementsError(`服务器错误：${errorMsg}`)
+          setAgreements([])
+          return
+        }
+      }
 
       if (result.success) {
         setAgreements(result.data || [])
         setAgreementsError(null)
       } else {
-        const errorMsg = result.error || "获取协议列表失败"
+        const errorMsg = result.error || result.details || "获取协议列表失败"
         logBusinessWarning('协议管理', '加载失败', { errorMsg })
         setAgreementsError(errorMsg)
         setAgreements([])
@@ -2245,21 +2405,87 @@ export default function AdminDashboard() {
     } finally {
       setIsLoadingAgreements(false)
     }
-  }, [agreementsTypeFilter, agreementsStatusFilter])
+  }, [agreementsTypeFilter, agreementsStatusFilter, supabase])
 
-  // 加载租赁合同列表（关联到协议管理）
-  const loadRentalContracts = useCallback(async () => {
+  // 加载租赁合同列表（带 session 刷新和详细错误处理）
+  const loadRentalContracts = useCallback(async (retryCount = 0) => {
     setIsLoadingRentalContracts(true)
     setRentalContractsError(null)
     try {
-      const response = await fetch("/api/admin/rental/contracts")
+      const response = await fetch("/api/admin/rental/contracts", {
+        credentials: 'include', // 确保发送认证 cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       const result = await response.json()
+
+      if (!response.ok) {
+        // 处理 HTTP 错误状态码
+        if (response.status === 401) {
+          const errorMsg = result.details || result.error || "未授权，请先登录"
+          
+          // 🔄 尝试刷新 session（最多重试 1 次）
+          if (retryCount === 0 && supabase) {
+            console.log("[租赁合同管理] 401 错误，尝试刷新 session...")
+            try {
+              const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+              if (!refreshError && session) {
+                console.log("[租赁合同管理] Session 刷新成功，重试请求...")
+                // 重试请求
+                return loadRentalContracts(1)
+              } else {
+                console.error("[租赁合同管理] Session 刷新失败:", refreshError)
+              }
+            } catch (refreshErr) {
+              console.error("[租赁合同管理] Session 刷新异常:", refreshErr)
+            }
+          }
+          
+          // 详细错误信息：区分是 RLS 还是 Middleware 导致的拦截
+          const detailedError = retryCount > 0 
+            ? "认证失败：可能是 RLS 策略或 Middleware 拦截。请检查：1) 是否已登录 2) 用户角色是否正确（需要 admin 或 super_admin）3) RLS 策略是否允许访问"
+            : errorMsg
+          
+          logBusinessWarning('协议管理', '加载租赁合同失败', { 
+            errorMsg: detailedError, 
+            status: response.status,
+            retryCount,
+            cause: result.cause || 'unknown'
+          })
+          setRentalContractsError(detailedError)
+          setRentalContracts([])
+          return
+        }
+        if (response.status === 403) {
+          const errorMsg = result.details || result.error || "权限不足，仅管理员可访问"
+          logBusinessWarning('协议管理', '加载租赁合同失败', { 
+            errorMsg, 
+            status: response.status,
+            cause: 'RLS 策略或权限验证失败（需要 admin 或 super_admin 角色）'
+          })
+          setRentalContractsError(`权限不足：${errorMsg}`)
+          setRentalContracts([])
+          return
+        }
+        if (response.status === 500) {
+          const errorMsg = result.details || result.error || "查询租赁合同失败"
+          logBusinessWarning('协议管理', '加载租赁合同失败', { 
+            errorMsg, 
+            status: response.status,
+            cause: '服务器内部错误，可能是 RLS 策略配置问题'
+          })
+          setRentalContractsError(`服务器错误：${errorMsg}`)
+          setRentalContracts([])
+          return
+        }
+      }
 
       if (result.success) {
         setRentalContracts(result.data || [])
         setRentalContractsError(null)
       } else {
-        const errorMsg = result.error || "获取租赁合同列表失败"
+        const errorMsg = result.error || result.details || "获取租赁合同列表失败"
         logBusinessWarning('协议管理', '加载租赁合同失败', { errorMsg })
         setRentalContractsError(errorMsg)
         setRentalContracts([])
@@ -2272,7 +2498,7 @@ export default function AdminDashboard() {
     } finally {
       setIsLoadingRentalContracts(false)
     }
-  }, [])
+  }, [supabase])
 
   // 加载租赁订单支付信息（关联到协议管理）
   const loadContractPaymentInfo = useCallback(async () => {
@@ -2308,6 +2534,19 @@ export default function AdminDashboard() {
       loadRentalContracts()
     }
   }, [activeMenu, agreementsTypeFilter, agreementsStatusFilter, loadAgreements, loadRentalContracts])
+
+  // 🔄 当切换标签页时重新加载数据
+  useEffect(() => {
+    if (activeMenu === "agreements") {
+      if (agreementsTabValue === "agreements") {
+        // 切换到协议管理标签页时重新加载
+        loadAgreements()
+      } else if (agreementsTabValue === "contracts") {
+        // 切换到租赁合同管理标签页时重新加载
+        loadRentalContracts()
+      }
+    }
+  }, [agreementsTabValue, activeMenu, loadAgreements, loadRentalContracts])
 
   // 当选中租赁合同时加载支付信息
   useEffect(() => {
@@ -2993,6 +3232,7 @@ export default function AdminDashboard() {
         
         if (authError || !user) {
           console.warn("[Dashboard] 未获取到用户信息，以访客模式运行")
+          setCurrentUser(null)
           setUserRole(null)
           setUserCompanyId(null)
           setForceRender(true)
@@ -3000,6 +3240,10 @@ export default function AdminDashboard() {
           setIsAuthenticated(true) // 允许访问，但不加载数据
           return
         }
+
+        // 立即设置用户信息，避免一直显示"加载中..."
+        setCurrentUser({ email: user.email || undefined })
+        console.log("[Dashboard] 用户信息已加载:", user.email)
 
         // 获取用户角色
         const { data: roleData, error: roleError } = await supabase
@@ -3106,6 +3350,17 @@ export default function AdminDashboard() {
         setIsAuthenticated(true)
       } catch (error: any) {
         console.error("[Dashboard] 加载用户信息异常:", error)
+        // 即使出错，也尝试设置用户信息（如果之前已获取到）
+        try {
+          if (supabase) {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              setCurrentUser({ email: user.email || undefined })
+            }
+          }
+        } catch {
+          // 忽略错误
+        }
         setForceRender(true)
         setIsLoading(false)
         setIsAuthenticated(true) // 即使出错也允许访问
@@ -3180,6 +3435,11 @@ export default function AdminDashboard() {
     }
   }, [isAuthenticated, isLoading, userRole, userCompanyId, loadRestaurants, loadWorkers, loadRecentOrdersCount, loadRecentOrders, loadDevices, loadServicePoints, supabase, isRecentOrdersExpanded])
 
+  // 进入「数据统计」时拉取订单，供维度分析/图表使用
+  useEffect(() => {
+    if (activeMenu !== "analytics" || !isAuthenticated) return
+    loadRecentOrders()
+  }, [activeMenu, isAuthenticated, loadRecentOrders])
 
   // 格式化时间
   const formatTime = (dateString: string) => {
@@ -3760,10 +4020,8 @@ export default function AdminDashboard() {
         const isValidLat = !isNaN(lat) && isFinite(lat) && lat >= -90 && lat <= 90
         const isValidLng = !isNaN(lng) && isFinite(lng) && lng >= -180 && lng <= 180
         
-        // 如果有有效的经纬度，直接创建标记（即使24小时内不进行地理编码，也要使用已有的经纬度）
-        if (isValidLat && isValidLng) {
-          // 经纬度有效，继续创建标记（下面的代码会处理）
-        } else {
+        // 如果坐标无效，跳过创建标记，避免 Pixel(NaN, NaN) 错误
+        if (!isValidLat || !isValidLng) {
           invalidCount++
           // 如果没有有效的经纬度，检查24小时缓存后再决定是否进行地理编码
           // 重要：即使是新餐厅，也要遵循24小时缓存规则，防止频繁调用API造成账单消费
@@ -3886,6 +4144,13 @@ export default function AdminDashboard() {
         
         // 坐标验证通过，增加有效计数
         validCount++
+        
+        // 再次验证坐标，确保不是 NaN（防止 Pixel(NaN, NaN) 错误）
+        if (isNaN(lat) || isNaN(lng) || !isFinite(lat) || !isFinite(lng)) {
+          invalidCount++
+          console.warn(`[Map] ⚠️ 餐厅 ${restaurant.name} 的坐标包含 NaN 或 Infinity: [${lng}, ${lat}]，跳过创建标记`)
+          return
+        }
         
         // 调试日志：确认使用已有的经纬度创建标记
         console.log(`[Map] ✅ 准备创建标记: ${restaurant.name} (lat: ${lat}, lng: ${lng})`)
@@ -4785,7 +5050,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardContent className="p-6">
             {viewMode === "map" ? (
               <div className="h-[300px] md:h-[600px] rounded-lg overflow-hidden border border-slate-800">
@@ -4929,25 +5194,25 @@ export default function AdminDashboard() {
       <div className="space-y-6">
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总餐厅数</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-white">{stats.totalRestaurants}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已激活</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-white">{stats.activatedRestaurants}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">待处理订单</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-yellow-400">{stats.pendingOrders}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="financial" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总营收</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-green-400">¥{stats.totalRevenue.toFixed(2)}</CardTitle>
@@ -4956,7 +5221,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 最新订单 - 折叠消息条目提醒 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">最新订单</CardTitle>
             <CardDescription className="text-slate-400">实时订单动态</CardDescription>
@@ -5099,7 +5364,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* 实时地图看板 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -5240,25 +5505,25 @@ export default function AdminDashboard() {
 
         {/* 订单统计 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总订单数</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-white">{orders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">待处理</CardDescription>
               <CardTitle className="text-3xl text-yellow-400">{pendingOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">进行中</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-blue-400">{deliveringOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已完成</CardDescription>
               <CardTitle className="text-3xl text-green-400">{completedOrders.length}</CardTitle>
@@ -5268,19 +5533,19 @@ export default function AdminDashboard() {
 
         {/* 业务类型统计 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-red-900/30 to-red-950/50 border-red-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-red-900/30 to-red-950/50 border-red-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-red-300">维修服务订单</CardDescription>
               <CardTitle className="text-xl md:text-2xl text-red-400">{repairOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-blue-900/30 to-blue-950/50 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-blue-900/30 to-blue-950/50 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-blue-300">燃料配送订单</CardDescription>
               <CardTitle className="text-xl md:text-2xl text-blue-400">{deliveryOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-purple-900/30 to-purple-950/50 border-purple-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-purple-900/30 to-purple-950/50 border-purple-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-purple-300">其他订单</CardDescription>
               <CardTitle className="text-xl md:text-2xl text-purple-400">{otherOrders.length}</CardTitle>
@@ -5289,7 +5554,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 筛选器 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">筛选条件</CardTitle>
           </CardHeader>
@@ -5329,7 +5594,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* 订单列表 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">
               {orderServiceTypeFilter === "all" ? "所有订单" : orderServiceTypeFilter === "维修服务" ? "维修服务订单" : orderServiceTypeFilter === "燃料配送" ? "燃料配送订单" : "其他订单"}
@@ -5547,31 +5812,31 @@ export default function AdminDashboard() {
 
         {/* 报修统计 */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总报修数</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-white">{repairs.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-yellow-950/90 border-yellow-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-yellow-950/90 border-yellow-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">待处理</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-yellow-400">{pendingRepairs.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">处理中</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-blue-400">{processingRepairs.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已完成</CardDescription>
               <CardTitle className="text-2xl md:text-3xl text-green-400">{completedRepairs.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已取消</CardDescription>
               <CardTitle className="text-3xl text-red-400">{cancelledRepairs.length}</CardTitle>
@@ -5580,7 +5845,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 筛选器 - 优化布局 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-white text-lg">筛选条件</CardTitle>
           </CardHeader>
@@ -5650,7 +5915,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* 报修列表 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">报修工单列表</CardTitle>
             <CardDescription className="text-slate-400">点击工单查看详情和更新状态</CardDescription>
@@ -5723,15 +5988,26 @@ export default function AdminDashboard() {
                             )}
                           </div>
                           {/* 渲染语音播放器：检查 audio_url 字段，如果有值，必须显示 HTML5 音频播放器 */}
-                          {repair.audio_url && repair.audio_url.trim() !== "" && (
+                          {repair.audio_url && repair.audio_url.trim() !== "" && !repair.audio_url.includes("storage.example.com") && (
                             <div className="ml-6 mt-2 mb-2">
                               <audio 
                                 controls 
                                 src={repair.audio_url}
                                 className="w-full mt-2"
+                                onError={(e) => {
+                                  console.warn("[报修管理] 音频加载失败:", repair.audio_url)
+                                  // 隐藏音频播放器
+                                  e.currentTarget.style.display = 'none'
+                                }}
                               >
                                 您的浏览器不支持音频播放
                               </audio>
+                            </div>
+                          )}
+                          {/* 如果是无效的模拟 URL，显示提示 */}
+                          {repair.audio_url && repair.audio_url.includes("storage.example.com") && (
+                            <div className="ml-6 mt-2 mb-2 text-xs text-slate-500 italic">
+                              [语音报修内容 - 音频文件未上传]
                             </div>
                           )}
                           {/* 处理空描述：如果 description 字段为空，页面上请统一显示 '[语音报修内容]' */}
@@ -5859,15 +6135,26 @@ export default function AdminDashboard() {
                   <Label className="text-slate-300">问题描述</Label>
                   <div className="bg-slate-800/50 p-3 rounded-lg">
                     {/* 渲染语音播放器：检查 audio_url 字段，如果有值，必须显示 HTML5 音频播放器 */}
-                    {selectedRepair.audio_url && selectedRepair.audio_url.trim() !== "" && (
+                    {selectedRepair.audio_url && selectedRepair.audio_url.trim() !== "" && !selectedRepair.audio_url.includes("storage.example.com") && (
                       <div className="mb-3">
                         <audio 
                           controls 
                           src={selectedRepair.audio_url}
                           className="w-full mt-2"
+                          onError={(e) => {
+                            console.warn("[报修管理] 音频加载失败:", selectedRepair.audio_url)
+                            // 隐藏音频播放器
+                            e.currentTarget.style.display = 'none'
+                          }}
                         >
                           您的浏览器不支持音频播放
                         </audio>
+                      </div>
+                    )}
+                    {/* 如果是无效的模拟 URL，显示提示 */}
+                    {selectedRepair.audio_url && selectedRepair.audio_url.includes("storage.example.com") && (
+                      <div className="mb-3 text-xs text-slate-500 italic">
+                        [语音报修内容 - 音频文件未上传]
                       </div>
                     )}
                     {/* 处理空描述：如果 description 字段为空，页面上请统一显示 '[语音报修内容]' */}
@@ -6142,7 +6429,7 @@ export default function AdminDashboard() {
         </div>
         
         {/* 设备租赁基础功能区域 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white text-xl flex items-center gap-2">
               <Package className="h-5 w-5" />
@@ -6155,19 +6442,19 @@ export default function AdminDashboard() {
           <CardContent className="space-y-4">
             {/* 统计卡片 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="bg-slate-800/50 border-slate-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-slate-800/50 border-slate-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">总租赁记录</CardDescription>
                   <CardTitle className="text-2xl text-white">{deviceRentals.length}</CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-green-800/50 border-green-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-green-800/50 border-green-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">租赁中</CardDescription>
                   <CardTitle className="text-2xl text-green-400">{activeDeviceRentals.length}</CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-slate-700/50 border-slate-600/50">
+              <Card semanticLevel="secondary_fact" className="bg-slate-700/50 border-slate-600/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">已结束</CardDescription>
                   <CardTitle className="text-2xl text-slate-400">{endedDeviceRentals.length}</CardTitle>
@@ -6230,7 +6517,7 @@ export default function AdminDashboard() {
 
             {/* 错误提示 */}
             {deviceRentalError && (
-              <Card className="bg-red-900/50 border-red-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-red-900/50 border-red-700/50">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <AlertCircle className="h-5 w-5 text-red-400" />
@@ -6258,7 +6545,7 @@ export default function AdminDashboard() {
                 <span className="text-slate-400">加载中...</span>
               </div>
             ) : filteredDeviceRentals.length === 0 ? (
-              <Card className="bg-slate-800/50 border-slate-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-slate-800/50 border-slate-700/50">
                 <CardContent className="p-8 text-center">
                   <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
                   <p className="text-slate-400">
@@ -6271,6 +6558,7 @@ export default function AdminDashboard() {
                 {filteredDeviceRentals.map((rental) => (
                   <Card
                     key={rental.id}
+                    semanticLevel="secondary_fact"
                     className="bg-slate-800/50 border-slate-700/50 hover:border-green-500/50 transition-all cursor-pointer"
                     onClick={() => {
                       setSelectedDeviceRental(rental)
@@ -6343,31 +6631,31 @@ export default function AdminDashboard() {
 
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总订单数</CardDescription>
               <CardTitle className="text-3xl text-white">{rentalOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-yellow-950/90 border-yellow-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-yellow-950/90 border-yellow-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">待确认</CardDescription>
               <CardTitle className="text-3xl text-yellow-400">{pendingOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">租赁中</CardDescription>
               <CardTitle className="text-3xl text-blue-400">{activeOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已完成</CardDescription>
               <CardTitle className="text-3xl text-green-400">{completedOrders.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">已取消</CardDescription>
               <CardTitle className="text-3xl text-red-400">{cancelledOrders.length}</CardTitle>
@@ -6376,7 +6664,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 搜索和操作栏 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardContent className="p-4">
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
               {/* 搜索框 */}
@@ -6425,7 +6713,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* 筛选器 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-white text-lg">筛选条件</CardTitle>
           </CardHeader>
@@ -6452,7 +6740,7 @@ export default function AdminDashboard() {
 
         {/* 错误提示 */}
         {rentalOrderError && (
-          <Card className="bg-gradient-to-br from-red-900/90 to-red-800/90 border-red-700/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-red-900/90 to-red-800/90 border-red-700/50 backdrop-blur-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
@@ -6480,7 +6768,7 @@ export default function AdminDashboard() {
             <span className="text-slate-400">加载中...</span>
           </div>
         ) : filteredOrders.length === 0 ? (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
             <CardContent className="p-8 text-center">
               <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
               <p className="text-slate-400">
@@ -6498,6 +6786,7 @@ export default function AdminDashboard() {
               return (
               <Card
                 key={orderId}
+                semanticLevel="secondary_fact"
                 className={`bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all ${
                   isSelected ? "border-blue-500 ring-2 ring-blue-500/50" : ""
                 }`}
@@ -7245,6 +7534,63 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* 视频上传 */}
+              <div>
+                <Label className="text-white">设备展示视频（可选）</Label>
+                <div className="mt-2 space-y-2">
+                  {uploadedEquipmentVideo ? (
+                    <div className="relative w-full max-w-md rounded-lg overflow-hidden border border-slate-600 bg-slate-800">
+                      <video 
+                        src={uploadedEquipmentVideo} 
+                        controls 
+                        className="w-full h-auto max-h-64"
+                        onError={(e) => {
+                          console.warn("[设备上传] 视频加载失败:", uploadedEquipmentVideo)
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      >
+                        您的浏览器不支持视频播放
+                      </video>
+                      <button
+                        onClick={() => setUploadedEquipmentVideo(null)}
+                        className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 hover:bg-red-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="w-full max-w-md border-2 border-dashed border-slate-600 rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition-colors bg-slate-800/50">
+                      {isUploadingVideo ? (
+                        <>
+                          <Loader2 className="h-8 w-8 animate-spin text-blue-400 mb-2" />
+                          <span className="text-sm text-slate-400">上传中...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-8 w-8 text-slate-400 mb-2" />
+                          <span className="text-sm text-slate-300 mb-1">点击上传视频</span>
+                          <span className="text-xs text-slate-500">支持 MP4、WebM 格式，最大 100MB</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="video/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            await handleUploadEquipmentVideo(file)
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                  <p className="text-xs text-slate-400">
+                    上传设备展示视频，帮助客户更好地了解设备功能和使用场景，提高租赁或购买决策效率
+                  </p>
+                </div>
+              </div>
+
               {/* 备注 */}
               <div>
                 <Label className="text-white">备注</Label>
@@ -7278,6 +7624,7 @@ export default function AdminDashboard() {
                     notes: "",
                   })
                   setUploadedEquipmentImages([])
+                  setUploadedEquipmentVideo(null)
                 }}
                 className="border-slate-600 text-slate-300"
               >
@@ -7485,7 +7832,7 @@ export default function AdminDashboard() {
 
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400 flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />
@@ -7496,7 +7843,7 @@ export default function AdminDashboard() {
               </CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400 flex items-center gap-2">
                 <Package className="h-4 w-4" />
@@ -7508,7 +7855,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 操作栏 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <Button
@@ -7530,7 +7877,7 @@ export default function AdminDashboard() {
             <span className="text-slate-400">加载中...</span>
           </div>
         ) : rentals.length === 0 ? (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
             <CardContent className="p-8 text-center">
               <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
               <p className="text-slate-400">暂无租赁记录</p>
@@ -7545,6 +7892,7 @@ export default function AdminDashboard() {
               return (
                 <Card
                   key={rental.id}
+                  semanticLevel="secondary_fact"
                   className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all"
                 >
                   <CardContent className="p-6">
@@ -7897,7 +8245,7 @@ export default function AdminDashboard() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {devices.map((device) => (
-            <Card key={device.device_id} className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <Card key={device.device_id} semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -7942,7 +8290,7 @@ export default function AdminDashboard() {
         </div>
 
         {devices.length === 0 && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardContent className="p-12 text-center">
               <Wrench className="h-12 w-12 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400">暂无设备</p>
@@ -8090,25 +8438,25 @@ export default function AdminDashboard() {
 
         {/* 工人统计 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">总工人数</CardDescription>
               <CardTitle className="text-3xl text-white">{workers.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-orange-950/90 border-orange-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-orange-950/90 border-orange-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">配送员</CardDescription>
               <CardTitle className="text-3xl text-orange-400">{deliveryWorkers.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-purple-950/90 border-purple-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">维修工</CardDescription>
               <CardTitle className="text-3xl text-purple-400">{repairWorkers.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-slate-900/90 to-cyan-950/90 border-cyan-800/50 backdrop-blur-sm">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-cyan-950/90 border-cyan-800/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
               <CardDescription className="text-slate-400">安装工</CardDescription>
               <CardTitle className="text-3xl text-cyan-400">{installWorkers.length}</CardTitle>
@@ -8118,7 +8466,7 @@ export default function AdminDashboard() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {workers.map((worker) => (
-            <Card key={worker.id} className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <Card key={worker.id} semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -8232,7 +8580,7 @@ export default function AdminDashboard() {
         </div>
 
         {workers.length === 0 && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardContent className="p-12 text-center">
               <Users className="h-12 w-12 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400">暂无工人</p>
@@ -8687,7 +9035,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 添加API配置 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">添加API接口</CardTitle>
             <CardDescription className="text-slate-400">配置新的API端点用于数据传输</CardDescription>
@@ -8761,7 +9109,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* API配置列表 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">已配置的API接口</CardTitle>
             <CardDescription className="text-slate-400">管理所有API接口配置</CardDescription>
@@ -8821,18 +9169,25 @@ export default function AdminDashboard() {
     )
   }
 
-  // 渲染数据统计
+  // 渲染数据统计（维度雷达 / 数据分析）
+  // 防护：仅用原始值渲染，避免「Cannot convert object to primitive value」；orders 空/异常时安全降级
   const renderAnalytics = () => {
-    const chartData = orders
-      .filter((o) => o.created_at)
+    const safeOrders = Array.isArray(orders) ? orders : []
+    const chartData = safeOrders
+      .filter((o) => o != null && o.created_at)
       .map((o) => {
         const date = new Date(o.created_at)
+        const invalid = Number.isNaN(date.getTime())
         return {
-          date: `${date.getMonth() + 1}/${date.getDate()}`,
-          amount: o.amount || 0,
+          date: invalid ? "—" : `${date.getMonth() + 1}/${date.getDate()}`,
+          amount: Number(o.amount) || 0,
         }
       })
       .slice(0, 30)
+
+    const pendingCount = safeOrders.filter((o) => o.status === "pending" || o.status === "待处理").length
+    const deliveringCount = safeOrders.filter((o) => o.status === "delivering" || o.status === "配送中").length
+    const completedCount = safeOrders.filter((o) => o.status === "completed" || o.status === "已完成").length
 
     return (
       <div className="space-y-6">
@@ -8842,63 +9197,71 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-white">订单趋势</CardTitle>
               <CardDescription className="text-slate-400">最近30天订单金额趋势</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="date" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#1e293b",
-                      border: "1px solid #334155",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="amount"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    name="订单金额"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {isLoadingOrders ? (
+                <div className="flex h-[300px] flex-col items-center justify-center gap-3 text-slate-400">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                  <span className="text-sm">加载订单数据…</span>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="date" stroke="#94a3b8" />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1e293b",
+                        border: "1px solid #334155",
+                        borderRadius: "8px",
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="amount"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      name="订单金额"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-white">订单状态分布</CardTitle>
               <CardDescription className="text-slate-400">订单状态统计</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">待处理</span>
-                  <span className="text-yellow-400 font-semibold">
-                    {orders.filter((o) => o.status === "pending" || o.status === "待处理").length}
-                  </span>
+              {isLoadingOrders ? (
+                <div className="flex h-[200px] flex-col items-center justify-center gap-3 text-slate-400">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-sm">加载中…</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">配送中</span>
-                  <span className="text-blue-400 font-semibold">
-                    {orders.filter((o) => o.status === "delivering" || o.status === "配送中").length}
-                  </span>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">待处理</span>
+                    <span className="text-yellow-400 font-semibold">{pendingCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">配送中</span>
+                    <span className="text-blue-400 font-semibold">{deliveringCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">已完成</span>
+                    <span className="text-green-400 font-semibold">{completedCount}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">已完成</span>
-                  <span className="text-green-400 font-semibold">
-                    {orders.filter((o) => o.status === "completed" || o.status === "已完成").length}
-                  </span>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -9057,7 +9420,7 @@ export default function AdminDashboard() {
               // 如果权限还在加载中，显示加载提示
               if (isLoading) {
                 return (
-                  <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm col-span-2">
+                  <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm col-span-2">
                     <CardContent className="p-12 text-center">
                       <Loader2 className="h-16 w-16 text-blue-400 mx-auto mb-4 animate-spin" />
                       <p className="text-slate-400 text-lg mb-2">正在加载燃料品种权限...</p>
@@ -9067,7 +9430,7 @@ export default function AdminDashboard() {
               }
               
               return (
-                <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm col-span-2">
+                <Card semanticLevel="system_hint" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm col-span-2">
                   <CardContent className="p-12 text-center">
                     <Droplet className="h-16 w-16 text-slate-600 mx-auto mb-4" />
                     <p className="text-slate-400 text-lg mb-2">暂无授权的燃料品种</p>
@@ -9093,8 +9456,9 @@ export default function AdminDashboard() {
             const isPriceHigher = priceDiff ? parseFloat(priceDiff) > 0 : false
 
             return (
-              <Card 
+              <Card
                 key={fuel.id}
+                semanticLevel="secondary_fact"
                 className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm"
               >
                 <CardHeader>
@@ -9234,7 +9598,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 说明卡片 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Database className="h-5 w-5 text-cyan-400" />
@@ -9355,10 +9719,27 @@ export default function AdminDashboard() {
         const response = await fetch(url, {
           method,
           headers: { "Content-Type": "application/json" },
+          credentials: 'include', // 确保发送认证 cookies
           body: JSON.stringify(body),
         })
 
         const result = await response.json()
+
+        if (!response.ok) {
+          // 处理 HTTP 错误状态码
+          if (response.status === 401) {
+            alert(`操作失败: 未授权，请先登录`)
+            return
+          }
+          if (response.status === 403) {
+            alert(`操作失败: 权限不足，仅管理员可操作`)
+            return
+          }
+          if (response.status === 500) {
+            alert(`操作失败: ${result.details || result.error || "服务器错误"}`)
+            return
+          }
+        }
 
         if (result.success) {
           alert(selectedAgreement ? "协议更新成功！" : "协议创建成功！")
@@ -9378,7 +9759,7 @@ export default function AdminDashboard() {
           })
           loadAgreements()
         } else {
-          alert(`操作失败: ${result.error}`)
+          alert(`操作失败: ${result.error || result.details || "未知错误"}`)
         }
       } catch (err: any) {
         logBusinessWarning('协议管理', '提交失败', err)
@@ -9395,15 +9776,27 @@ export default function AdminDashboard() {
       try {
         const response = await fetch(`/api/agreements/${id}`, {
           method: "DELETE",
+          credentials: 'include', // 确保发送认证 cookies
         })
 
         const result = await response.json()
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            alert(`删除失败: 未授权，请先登录`)
+            return
+          }
+          if (response.status === 403) {
+            alert(`删除失败: 权限不足，仅管理员可删除`)
+            return
+          }
+        }
 
         if (result.success) {
           alert("协议删除成功！")
           loadAgreements()
         } else {
-          alert(`删除失败: ${result.error}`)
+          alert(`删除失败: ${result.error || result.details || "未知错误"}`)
         }
       } catch (err: any) {
         logBusinessWarning('协议管理', '删除失败', err)
@@ -9416,22 +9809,46 @@ export default function AdminDashboard() {
       if (!confirm("确定要发布这个协议吗？发布后将设置为生效版本。")) return
 
       try {
+        // 获取当前用户ID
+        let userId: string | null = null
+        if (supabase) {
+          const { data: { user } } = await supabase.auth.getUser()
+          userId = user?.id || null
+        }
+
         const response = await fetch(`/api/agreements/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
+          credentials: 'include', // 确保发送认证 cookies
           body: JSON.stringify({
             status: "published",
             is_active: true,
+            updated_by: userId,
           }),
         })
 
         const result = await response.json()
 
+        if (!response.ok) {
+          if (response.status === 401) {
+            alert(`发布失败: 未授权，请先登录`)
+            return
+          }
+          if (response.status === 403) {
+            alert(`发布失败: 权限不足，仅管理员可发布`)
+            return
+          }
+          if (response.status === 500) {
+            alert(`发布失败: ${result.details || result.error || "服务器错误"}`)
+            return
+          }
+        }
+
         if (result.success) {
           alert("协议发布成功！")
           loadAgreements()
         } else {
-          alert(`发布失败: ${result.error}`)
+          alert(`发布失败: ${result.error || result.details || "未知错误"}`)
         }
       } catch (err: any) {
         logBusinessWarning('协议管理', '发布失败', err)
@@ -9447,7 +9864,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 标签页：协议管理和租赁合同管理 */}
-        <Tabs defaultValue="agreements" className="space-y-4">
+        <Tabs value={agreementsTabValue} onValueChange={setAgreementsTabValue} className="space-y-4">
           <TabsList className="bg-slate-800/50 border-slate-700/50">
             <TabsTrigger value="agreements" className="data-[state=active]:bg-blue-600">
               协议管理
@@ -9461,13 +9878,13 @@ export default function AdminDashboard() {
           <TabsContent value="agreements" className="space-y-4">
             {/* 统计卡片 */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card className="bg-slate-800/50 border-slate-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-slate-800/50 border-slate-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">总协议数</CardDescription>
                   <CardTitle className="text-2xl text-white">{agreements.length}</CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-yellow-800/50 border-yellow-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-yellow-800/50 border-yellow-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">草稿</CardDescription>
                   <CardTitle className="text-2xl text-yellow-400">
@@ -9475,7 +9892,7 @@ export default function AdminDashboard() {
                   </CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-green-800/50 border-green-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-green-800/50 border-green-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">已发布</CardDescription>
                   <CardTitle className="text-2xl text-green-400">
@@ -9483,7 +9900,7 @@ export default function AdminDashboard() {
                   </CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-blue-800/50 border-blue-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-blue-800/50 border-blue-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">生效中</CardDescription>
                   <CardTitle className="text-2xl text-blue-400">
@@ -9494,7 +9911,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* 搜索和操作栏 */}
-            <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+            <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
               <CardContent className="p-4">
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                   {/* 筛选 */}
@@ -9556,7 +9973,7 @@ export default function AdminDashboard() {
 
             {/* 错误提示 */}
             {agreementsError && (
-              <Card className="bg-red-900/50 border-red-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-red-900/50 border-red-700/50">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <AlertCircle className="h-5 w-5 text-red-400" />
@@ -9584,7 +10001,7 @@ export default function AdminDashboard() {
                 <span className="text-slate-400">加载中...</span>
               </div>
             ) : filteredAgreements.length === 0 ? (
-              <Card className="bg-slate-900/50 border-slate-800 p-8 text-center">
+              <Card semanticLevel="system_hint" className="bg-slate-900/50 border-slate-800 p-8 text-center">
                 <FileText className="h-12 w-12 text-slate-500 mx-auto mb-4" />
                 <p className="text-slate-400 mb-2">暂无协议</p>
                 {agreementsError ? (
@@ -9598,6 +10015,7 @@ export default function AdminDashboard() {
                 {filteredAgreements.map((agreement) => (
                   <Card
                     key={agreement.id}
+                    semanticLevel="secondary_fact"
                     className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 cursor-pointer hover:border-blue-500/50 transition-colors"
                     onClick={() => {
                       setSelectedAgreement(agreement)
@@ -9643,13 +10061,13 @@ export default function AdminDashboard() {
           <TabsContent value="contracts" className="space-y-4">
             {/* 统计卡片 */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <Card className="bg-slate-800/50 border-slate-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-slate-800/50 border-slate-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">总合同数</CardDescription>
                   <CardTitle className="text-2xl text-white">{rentalContracts.length}</CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-yellow-800/50 border-yellow-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-yellow-800/50 border-yellow-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">草稿</CardDescription>
                   <CardTitle className="text-2xl text-yellow-400">
@@ -9657,7 +10075,7 @@ export default function AdminDashboard() {
                   </CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-green-800/50 border-green-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-green-800/50 border-green-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">生效中</CardDescription>
                   <CardTitle className="text-2xl text-green-400">
@@ -9665,7 +10083,7 @@ export default function AdminDashboard() {
                   </CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-slate-700/50 border-slate-600/50">
+              <Card semanticLevel="secondary_fact" className="bg-slate-700/50 border-slate-600/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">已结束</CardDescription>
                   <CardTitle className="text-2xl text-slate-400">
@@ -9673,7 +10091,7 @@ export default function AdminDashboard() {
                   </CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-red-800/50 border-red-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-red-800/50 border-red-700/50">
                 <CardHeader className="pb-3">
                   <CardDescription className="text-slate-400">违约</CardDescription>
                   <CardTitle className="text-2xl text-red-400">
@@ -9685,7 +10103,7 @@ export default function AdminDashboard() {
 
             {/* 错误提示 */}
             {rentalContractsError && (
-              <Card className="bg-red-900/50 border-red-700/50">
+              <Card semanticLevel="secondary_fact" className="bg-red-900/50 border-red-700/50">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <AlertCircle className="h-5 w-5 text-red-400" />
@@ -9713,7 +10131,7 @@ export default function AdminDashboard() {
                 <span className="text-slate-400">加载中...</span>
               </div>
             ) : rentalContracts.length === 0 ? (
-              <Card className="bg-slate-900/50 border-slate-800 p-8 text-center">
+              <Card semanticLevel="system_hint" className="bg-slate-900/50 border-slate-800 p-8 text-center">
                 <FileText className="h-12 w-12 text-slate-500 mx-auto mb-4" />
                 <p className="text-slate-400 mb-2">暂无租赁合同</p>
                 <p className="text-sm text-slate-500">租赁合同将从设备租赁订单中自动创建</p>
@@ -9754,6 +10172,7 @@ export default function AdminDashboard() {
                   return (
                     <Card
                       key={contract.id}
+                      semanticLevel="secondary_fact"
                       className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 cursor-pointer hover:border-blue-500/50 transition-colors"
                       onClick={() => {
                         setSelectedRentalContract(contract)
@@ -10136,7 +10555,7 @@ export default function AdminDashboard() {
                       {contractPaymentInfo.map((order: any) => {
                         const monthlyPayments = (order.monthly_payments as any[]) || []
                         return (
-                          <Card key={order.id} className="bg-slate-900/50 border-slate-700/50">
+                          <Card key={order.id} semanticLevel="secondary_fact" className="bg-slate-900/50 border-slate-700/50">
                             <CardContent className="p-4">
                               <div className="space-y-3">
                                 <div className="flex justify-between items-start">
@@ -10282,7 +10701,7 @@ export default function AdminDashboard() {
           <p className="text-slate-400">查看收入统计、账期分析和逾期统计</p>
         </div>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-green-950/90 border-green-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">报表查询</CardTitle>
             <CardDescription className="text-slate-400">选择报表类型和时间范围</CardDescription>
@@ -10329,7 +10748,7 @@ export default function AdminDashboard() {
         </Card>
 
         {reportData && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-white">
                 {reportType === "revenue" && "收入统计报表"}
@@ -10420,7 +10839,7 @@ export default function AdminDashboard() {
           <p className="text-slate-400">处理逾期账期、设备未归还等异常情况</p>
         </div>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-red-950/90 border-red-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-400" />
@@ -10453,7 +10872,7 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-orange-950/90 border-orange-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-orange-950/90 border-orange-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Package className="h-5 w-5 text-orange-400" />
@@ -10499,7 +10918,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* 修改密码卡片 */}
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">账户安全</CardTitle>
             <CardDescription className="text-slate-400">修改登录密码</CardDescription>
@@ -10528,7 +10947,7 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
+        <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-blue-950/90 border-blue-800/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">数据库连接</CardTitle>
             <CardDescription className="text-slate-400">Supabase配置状态</CardDescription>
@@ -10612,12 +11031,12 @@ export default function AdminDashboard() {
         // 背景使用 CSS radial-gradient 确保移动端不变形
         background: 'radial-gradient(ellipse at 50% -10%, oklch(0.25 0.15 250), oklch(0.1 0.05 255) 75%), linear-gradient(135deg, rgb(15 23 42), rgb(30 58 138), rgb(15 23 42))',
         // 强制显示：确保不被 Next.js 路由系统的 hidden 状态影响
-        display: 'flex !important',
-        visibility: 'visible !important',
-        opacity: '1 !important',
+        display: 'flex',
+        visibility: 'visible',
+        opacity: 1,
         position: 'relative',
         zIndex: 1
-      }}
+      } as React.CSSProperties}
     >
       {/* 加载覆盖层：显示在内容上方，但不阻止页面结构显示 */}
       {/* 只有真正需要时才显示，超时后自动隐藏 */}
@@ -10677,9 +11096,16 @@ export default function AdminDashboard() {
             let filteredMenuItems = menuItems
             
             // 如果是超级管理员，可以看到所有菜单
-            if (userRole === "super_admin") {
+            // 注意：在角色加载期间（userRole === null），暂时显示所有菜单，避免刷新时闪烁
+            if (userRole === "super_admin" || userRole === null) {
+              // 超级管理员或角色加载中：显示所有菜单
+              if (userRole === "super_admin") {
+                console.log("[Dashboard] 🎯 超级管理员：显示所有菜单项")
+              } else {
+                // 角色加载中，暂时显示所有菜单（避免刷新时只显示 dashboard）
+                console.log("[Dashboard] ⏳ 角色加载中，暂时显示所有菜单项")
+              }
               filteredMenuItems = menuItems
-              console.log("[Dashboard] 🎯 超级管理员：显示所有菜单项")
             } else if (userRole && userCompanyId) {
               // 非超级管理员且有公司ID（供应商/管理员），严格按权限过滤
               // 安全原则：白名单机制，默认只显示 dashboard
@@ -10708,7 +11134,10 @@ export default function AdminDashboard() {
               }
             } else {
               // 非超级管理员但没有 companyId，出于安全考虑，只显示 dashboard
-              console.warn(`[Dashboard] ⚠️ 非超级管理员（角色: ${userRole}）但没有 companyId，仅显示 dashboard（防止权限提升）`)
+              // 注意：只有在角色已加载完成（不为 null）时才显示警告，避免刷新时误报
+              if (userRole !== null) {
+                console.warn(`[Dashboard] ⚠️ 非超级管理员（角色: ${userRole}）但没有 companyId，仅显示 dashboard（防止权限提升）`)
+              }
               filteredMenuItems = menuItems.filter(item => item.key === "dashboard")
             }
             
@@ -10761,7 +11190,14 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3 flex-1">
             <User className="h-5 w-5 text-slate-400" />
             <span className="text-sm text-slate-300">
-              {currentUser?.email || '加载中...'}
+              {currentUser?.email ? (
+                currentUser.email
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  加载中...
+                </span>
+              )}
             </span>
           </div>
           <Button

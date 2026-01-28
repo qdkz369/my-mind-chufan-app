@@ -183,7 +183,7 @@ export default function RepairCreatePage() {
           <h1 className="text-2xl font-bold text-foreground">一键报修</h1>
         </div>
 
-        <Card className="glass-breath p-6">
+        <Card semanticLevel="action" className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">问题描述</h2>
           <textarea
             value={description}
@@ -194,7 +194,7 @@ export default function RepairCreatePage() {
           />
         </Card>
 
-        <Card className="glass-breath p-6">
+        <Card semanticLevel="action" className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">语音录入</h2>
           <div className="space-y-4">
             {!audioUrl ? (
@@ -251,7 +251,7 @@ export default function RepairCreatePage() {
           </div>
         </Card>
 
-        <Card className="glass-breath p-6">
+        <Card semanticLevel="action" className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">紧急程度</h2>
           <div className="grid grid-cols-3 gap-3">
             {(["low", "normal", "high"] as const).map((level) => (

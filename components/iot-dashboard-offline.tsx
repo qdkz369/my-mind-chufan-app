@@ -110,7 +110,7 @@ export function IoTDashboardOffline() {
 
       {/* 设备状态监控 */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="glass-breath p-4">
+        <Card semanticLevel="secondary_fact" className="glass-breath p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-foreground">我的设备</span>
             <Badge className="bg-muted/20 text-muted-foreground border-muted/30 text-xs">未绑定</Badge>
@@ -122,7 +122,7 @@ export function IoTDashboardOffline() {
           </div>
         </Card>
 
-        <Card className="glass-breath p-4">
+        <Card semanticLevel="secondary_fact" className="glass-breath p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-foreground">设备绑定</span>
             <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">待完成</Badge>

@@ -135,7 +135,7 @@ export function OrderList() {
     return (
       <div className="container mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-6 text-foreground">我的订单</h1>
-        <Card className="glass-breath p-6 text-center">
+        <Card semanticLevel="system_hint" className="glass-breath p-6 text-center">
           <p className="text-muted-foreground">请先登录并绑定餐厅</p>
         </Card>
       </div>
@@ -147,7 +147,7 @@ export function OrderList() {
     return (
       <div className="container mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-6 text-foreground">我的订单</h1>
-        <Card className="glass-breath p-6 text-center">
+        <Card semanticLevel="system_hint" className="glass-breath p-6 text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-muted-foreground">加载中...</p>
         </Card>
@@ -160,7 +160,7 @@ export function OrderList() {
     return (
       <div className="container mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-6 text-foreground">我的订单</h1>
-        <Card className="glass-breath p-6 text-center">
+        <Card semanticLevel="system_hint" className="glass-breath p-6 text-center">
           <p className="text-destructive mb-4">{error}</p>
           <Button onClick={loadOrders}>重试</Button>
         </Card>

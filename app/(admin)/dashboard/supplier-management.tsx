@@ -61,6 +61,7 @@ interface UserCompany {
   users?: {
     id: string
     email?: string
+    phone?: string
   }
 }
 
@@ -68,6 +69,7 @@ export function SupplierManagement() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [filteredCompanies, setFilteredCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   
@@ -139,6 +141,12 @@ export function SupplierManagement() {
 
       console.log("[供应商管理] 开始加载公司列表...")
       
+      if (!supabase) {
+        console.error("[供应商管理] Supabase 未初始化")
+        setError("Supabase 未初始化，请刷新页面重试")
+        return
+      }
+      
       const { data, error } = await supabase
         .from("companies")
         .select("*")
@@ -164,6 +172,9 @@ export function SupplierManagement() {
           (data || []).map(async (company) => {
             try {
               // 加载用户数量
+              if (!supabase) {
+                return { ...company, userCount: 0, permCount: 0, fuelCount: 0 }
+              }
               const { count: userCount, error: countError } = await supabase
                 .from("user_companies")
                 .select("*", { count: "exact", head: true })
@@ -541,6 +552,12 @@ export function SupplierManagement() {
         return
       }
 
+      if (!supabase) {
+        alert("Supabase 未初始化，请刷新页面重试")
+        setIsSubmitting(false)
+        return
+      }
+
       // 2. 检查是否已经关联（更详细的检查）
       const { data: existing, error: checkError } = await supabase
         .from("user_companies")
@@ -563,7 +580,7 @@ export function SupplierManagement() {
       }
 
       // 3. 如果设置为主公司，先取消其他主公司标记
-      if (assignUserForm.is_primary) {
+      if (assignUserForm.is_primary && supabase) {
         await supabase
           .from("user_companies")
           .update({ is_primary: false })
@@ -571,6 +588,11 @@ export function SupplierManagement() {
       }
 
       // 4. 创建关联
+      if (!supabase) {
+        alert("Supabase 未初始化，请刷新页面重试")
+        setIsSubmitting(false)
+        return
+      }
       const { error: assignError } = await supabase
         .from("user_companies")
         .insert({
@@ -720,7 +742,7 @@ export function SupplierManagement() {
       </div>
 
       {/* 搜索和筛选 */}
-      <Card className="bg-slate-800/50 border-slate-700/50">
+      <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700/50">
         <CardContent className="p-4">
           <div className="flex gap-4">
             <div className="flex-1 relative">
@@ -754,7 +776,7 @@ export function SupplierManagement() {
           <p className="text-slate-400">加载中...</p>
         </div>
       ) : filteredCompanies.length === 0 ? (
-        <Card className="bg-slate-800/50 border-slate-700/50">
+        <Card semanticLevel="system_hint" className="bg-slate-800/50 border-slate-700/50">
           <CardContent className="p-12 text-center">
             <Building2 className="h-16 w-16 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-400 text-lg">暂无供应商</p>
@@ -772,6 +794,7 @@ export function SupplierManagement() {
           {filteredCompanies.map((company) => (
             <Card
               key={company.id}
+              semanticLevel="secondary_fact"
               className="bg-slate-800/50 border-slate-700/50 hover:border-blue-500/50 transition-all"
             >
               <CardHeader>
@@ -1034,7 +1057,7 @@ export function SupplierManagement() {
           <div className="space-y-4 mt-4">
             {/* 分配新用户 - 只在 showUserAssignment 为 true 时显示 */}
             {showUserAssignment && (
-              <Card className="bg-slate-800/50 border-slate-700">
+              <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700">
               <CardHeader>
                 <CardTitle className="text-white text-lg">分配新用户</CardTitle>
               </CardHeader>
@@ -1112,7 +1135,7 @@ export function SupplierManagement() {
 
             {/* 已分配用户列表 - 只在 showUserAssignment 为 true 时显示 */}
             {showUserAssignment && (
-              <Card className="bg-slate-800/50 border-slate-700">
+              <Card semanticLevel="secondary_fact" className="bg-slate-800/50 border-slate-700">
               <CardHeader>
                 <CardTitle className="text-white text-lg">已分配用户</CardTitle>
               </CardHeader>
@@ -1154,14 +1177,14 @@ export function SupplierManagement() {
                                 className={
                                   uc.role === "owner"
                                     ? "bg-purple-500/20 text-purple-400"
-                                    : uc.role === "admin"
+                                    : uc.role === "platform_admin"
                                     ? "bg-blue-500/20 text-blue-400"
                                     : "bg-slate-500/20 text-slate-400"
                                 }
                               >
                                 {uc.role === "owner"
                                   ? "所有者"
-                                  : uc.role === "admin"
+                                  : uc.role === "platform_admin"
                                   ? "管理员"
                                   : "成员"}
                               </Badge>
@@ -1206,7 +1229,7 @@ export function SupplierManagement() {
 
           <div className="space-y-4 mt-4">
             {/* 主营业务权限配置 */}
-            <Card className="bg-slate-800/50 border-slate-700" data-permissions-card>
+            <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700" data-permissions-card>
               <CardHeader>
                 <CardTitle className="text-white text-lg">
                   主营业务权限配置

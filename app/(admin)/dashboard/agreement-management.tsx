@@ -214,13 +214,13 @@ export function AgreementManagement() {
       </div>
 
       {isLoading ? (
-        <Card className="bg-slate-800/50 border-slate-700">
+        <Card semanticLevel="system_hint" className="bg-slate-800/50 border-slate-700">
           <CardContent className="p-6 text-center text-slate-400">
             加载中...
           </CardContent>
         </Card>
       ) : agreements.length === 0 ? (
-        <Card className="bg-slate-800/50 border-slate-700">
+        <Card semanticLevel="system_hint" className="bg-slate-800/50 border-slate-700">
           <CardContent className="p-6 text-center text-slate-400">
             暂无协议，点击"新建协议"创建第一个协议
           </CardContent>
@@ -230,6 +230,7 @@ export function AgreementManagement() {
           {agreements.map((agreement) => (
             <Card
               key={agreement.id}
+              semanticLevel="secondary_fact"
               className="bg-slate-800/50 border-slate-700 hover:border-slate-600 transition-colors"
             >
               <CardContent className="p-6">

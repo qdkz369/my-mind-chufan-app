@@ -34,6 +34,12 @@ export function useFinancialViewPermission() {
       try {
         setIsLoading(true)
 
+        if (!supabase) {
+          setCanView(false)
+          setIsLoading(false)
+          return
+        }
+
         // 检查是否是管理员（通过 Supabase Auth）
         const { data: { user }, error: authError } = await supabase.auth.getUser()
 
@@ -62,7 +68,7 @@ export function useFinancialViewPermission() {
 
         // 检查权限
         const hasPermission = canViewFinancialViewClient(
-          role === "super_admin" || role === "admin"
+          role === "super_admin" || role === "platform_admin"
         )
 
         setCanView(hasPermission)

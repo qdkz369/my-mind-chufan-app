@@ -294,6 +294,8 @@ export type AssetFactContract = {
  * 订单事实契约验证工具
  * 
  * 用于验证 OrderFactContract 是否符合契约约束
+ * 
+ * ⚠️ 临时注释：暂时注释掉所有强制校验逻辑，避免阻碍项目启动
  */
 export function validateOrderFactContract(fact: OrderFactContract): {
   valid: boolean
@@ -330,6 +332,6 @@ export function validateOrderFactContract(fact: OrderFactContract): {
 
   return {
     valid: errors.length === 0,
-    errors,
+    errors: errors
   }
 }

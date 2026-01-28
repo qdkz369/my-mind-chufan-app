@@ -99,7 +99,7 @@ export function ContractBlock({
   const statusInfo = status ? statusConfig[status] : null
   
   return (
-    <Card className="w-full border border-border shadow-none">
+    <Card semanticLevel="financial" className="w-full border border-border shadow-none">
       <CardHeader className="border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

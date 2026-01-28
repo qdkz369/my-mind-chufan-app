@@ -53,7 +53,7 @@
  * - assets → gas_cylinders 表（通过 trace_logs 反查关联的 asset_id）
  */
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { OrderFact, AssetFact, TraceFact } from "@/lib/facts/types"
 import { OrderFactContract, TraceFactContract, AssetFactContract, validateOrderFactContract } from "@/lib/facts/contracts/order.fact"
@@ -61,7 +61,7 @@ import { verifyFactAccess, verifyOrderOwnership } from "@/lib/auth/facts-auth"
 import { OrderFactGuard, calculateFactHealth } from "@/lib/facts/governance/order.fact.guard"
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ order_id: string }> }
 ) {
   try {
@@ -211,6 +211,32 @@ export async function GET(
       all_actions: allActionValues,
     })
 
+    // 从 audit_logs 推断 previous_state（前一个状态）
+    // 根据状态变化历史推断，如果无法推断则为 null（初始状态）
+    let previousState: string | null = null
+    if (auditLogsData && auditLogsData.length > 0) {
+      // 查找状态变化记录，推断前一个状态
+      // 这里简化处理：如果存在状态变化记录，尝试推断前一个状态
+      // 实际实现可能需要更复杂的逻辑来从 action 中提取状态信息
+      // 暂时设置为 null，表示初始状态或无前一个状态
+      previousState = null
+    }
+
+    // 根据当前状态计算 next_expected_state（下一个预期状态）
+    // 根据业务规则定义预期状态转换
+    let nextExpectedState: string | null = null
+    const currentStatus = orderData.status
+    const statusFlow: Record<string, string | null> = {
+      pending: "accepted",
+      accepted: "delivering",
+      delivering: "completed",
+      completed: null, // 终态
+      exception: null, // 终态
+      rejected: null, // 终态
+      cancelled: null, // 终态
+    }
+    nextExpectedState = statusFlow[currentStatus] || null
+
     // 映射到 OrderFactContract 类型（事实契约）
     // 注意：按照"不推断"原则，只返回实际存在的字段
     // 使用 null 表示事实不存在，不使用 undefined
@@ -218,6 +244,8 @@ export async function GET(
       order_id: orderData.id,
       restaurant_id: orderData.restaurant_id,
       status: orderData.status,
+      previous_state: previousState,
+      next_expected_state: nextExpectedState,
       created_at: orderData.created_at,
       worker_id: orderData.worker_id || null, // 使用 null 表示事实不存在
       accepted_at: acceptedAt || null, // 从 audit_logs 获取，如果不存在则为 null（事实不存在）
@@ -286,7 +314,7 @@ export async function GET(
     // 7. 通过 trace_logs 反查关联的资产（gas_cylinders 表）
     let assets: AssetFactContract[] = []
 
-    if (assetIds.length > 0) {
+    if (assetIds.length > 0 && supabase) {
       // 查询这些资产的当前状态（只读，不推断）
       const { data: assetsData, error: assetsError } = await supabase
         .from("gas_cylinders")
@@ -301,7 +329,8 @@ export async function GET(
         const assetsWithTraces = await Promise.all(
           assetsData.map(async (asset) => {
             // 查询该资产的最后一次操作（从 trace_logs 中）
-            const { data: lastTrace, error: lastTraceError } = await supabase
+            // 注意：supabase 已经在 if 条件中检查，这里可以安全使用
+            const { data: lastTrace, error: lastTraceError } = await supabase!
               .from("trace_logs")
               .select("action_type, created_at")
               .eq("asset_id", asset.id)

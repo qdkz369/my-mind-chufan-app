@@ -14,7 +14,7 @@ export function DataOverview() {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {stats.map((stat) => (
-        <Card key={stat.label} className="p-4">
+        <Card key={stat.label} semanticLevel="primary_fact" className="p-4">
           <div className="flex items-start justify-between mb-2">
             <div className={`w-10 h-10 ${stat.bgColor} rounded-lg flex items-center justify-center`}>
               <stat.icon className={`h-5 w-5 ${stat.color}`} />

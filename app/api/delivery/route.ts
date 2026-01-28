@@ -20,6 +20,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "数据库连接失败" },
+        { status: 500 }
+      )
+    }
+
     // 解析请求体
     let body
     try {
@@ -252,6 +260,14 @@ export async function GET(request: Request) {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       return NextResponse.json(
         { error: "Supabase环境变量未配置" },
+        { status: 500 }
+      )
+    }
+
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "数据库连接失败" },
         { status: 500 }
       )
     }

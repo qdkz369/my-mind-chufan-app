@@ -59,7 +59,7 @@ export function Header() {
             .eq("restaurant_id", rid)
             .limit(1)
 
-          setHasDevices(devicesData && devicesData.length > 0)
+          setHasDevices(Boolean(devicesData && devicesData.length > 0))
         } catch (error) {
           logBusinessWarning('Header', '加载餐厅信息失败', error)
         }

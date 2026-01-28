@@ -189,7 +189,7 @@ export function ProductApproval() {
       </div>
 
       {/* 搜索和筛选 */}
-      <Card className="bg-slate-800/50 border-slate-700/50">
+      <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700/50">
         <CardContent className="p-4">
           <div className="flex gap-4">
             <div className="flex-1 relative">
@@ -222,7 +222,7 @@ export function ProductApproval() {
           <p className="text-slate-400">加载中...</p>
         </div>
       ) : filteredProducts.length === 0 ? (
-        <Card className="bg-slate-800/50 border-slate-700/50">
+        <Card semanticLevel="system_hint" className="bg-slate-800/50 border-slate-700/50">
           <CardContent className="p-12 text-center">
             <Package className="h-16 w-16 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-400 text-lg">暂无产品</p>
@@ -233,6 +233,7 @@ export function ProductApproval() {
           {filteredProducts.map((product) => (
             <Card
               key={product.id}
+              semanticLevel="secondary_fact"
               className="bg-slate-800/50 border-slate-700/50 hover:border-blue-500/50 transition-all cursor-pointer"
               onClick={() => {
                 setSelectedProduct(product)

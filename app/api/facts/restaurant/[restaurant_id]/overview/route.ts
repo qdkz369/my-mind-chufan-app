@@ -56,12 +56,12 @@
  * - last_delivery_at: 最后一次配送完成时间（事实，从 completed 订单的 updated_at 获取）
  */
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { verifyFactAccess } from "@/lib/auth/facts-auth"
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ restaurant_id: string }> }
 ) {
   try {

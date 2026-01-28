@@ -65,7 +65,7 @@ export function QRScanner({ onScanSuccess, onClose, title = "扫描二维码" }:
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: false
           }
-        },
+        } as any,
         (decodedText) => {
           // 扫描成功
           onScanSuccess(decodedText)
@@ -116,7 +116,7 @@ export function QRScanner({ onScanSuccess, onClose, title = "扫描二维码" }:
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <Card className="bg-slate-900/95 border-slate-700/50 p-6 max-w-md w-full">
+      <Card semanticLevel="action" className="bg-slate-900/95 border-slate-700/50 p-6 max-w-md w-full">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">{title}</h3>
           <Button

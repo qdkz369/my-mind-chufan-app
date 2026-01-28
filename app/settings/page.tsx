@@ -27,7 +27,7 @@ export default function SettingsPage() {
         </div>
 
         {/* 主题切换器 */}
-        <Card className="glass-breath p-6 mb-6">
+        <Card semanticLevel="action" className="glass-breath p-6 mb-6">
           <div className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-foreground mb-1">主题切换</h2>
@@ -38,7 +38,7 @@ export default function SettingsPage() {
         </Card>
 
         {/* 其他设置选项可以在这里添加 */}
-        <Card className="glass-breath p-6">
+        <Card semanticLevel="system_hint" className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">其他设置</h2>
           <p className="text-sm text-muted-foreground">更多设置选项即将推出...</p>
         </Card>

@@ -134,7 +134,7 @@ export function MallContent() {
       </div>
 
       {/* 数据看板 */}
-      <Card className="glass-breath border-0 p-4 mb-6 text-primary-foreground">
+      <Card semanticLevel="primary_fact" className="glass-breath border-0 p-4 mb-6 text-primary-foreground">
         <div className="grid grid-cols-3 gap-4">
           <div>
             <div className="text-xs opacity-90 mb-1">本月采购</div>

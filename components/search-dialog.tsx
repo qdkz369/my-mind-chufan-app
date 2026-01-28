@@ -184,6 +184,7 @@ export function SearchDialog({ open, onOpenChange, restaurantId }: SearchDialogP
                       {results.orders.map((item) => (
                         <Card
                           key={item.id}
+                          semanticLevel="action"
                           className="bg-slate-800/50 border-slate-700 p-3 hover:border-blue-500/50 cursor-pointer transition-colors"
                           onClick={() => handleResultClick(item.url)}
                         >
@@ -221,6 +222,7 @@ export function SearchDialog({ open, onOpenChange, restaurantId }: SearchDialogP
                       {results.devices.map((item) => (
                         <Card
                           key={item.id}
+                          semanticLevel="action"
                           className="bg-slate-800/50 border-slate-700 p-3 hover:border-blue-500/50 cursor-pointer transition-colors"
                           onClick={() => handleResultClick(item.url)}
                         >
@@ -253,6 +255,7 @@ export function SearchDialog({ open, onOpenChange, restaurantId }: SearchDialogP
                       {results.repairs.map((item) => (
                         <Card
                           key={item.id}
+                          semanticLevel="action"
                           className="bg-slate-800/50 border-slate-700 p-3 hover:border-blue-500/50 cursor-pointer transition-colors"
                           onClick={() => handleResultClick(item.url)}
                         >

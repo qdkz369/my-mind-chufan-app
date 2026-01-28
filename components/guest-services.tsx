@@ -161,7 +161,7 @@ export function GuestServices() {
             onClick={(e) => handleServiceClick(e, service)}
             className="text-left w-full"
           >
-            <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4 md:p-5 lg:p-6 hover:scale-[1.02] hover:border-blue-500/30 transition-all cursor-pointer group h-full rounded-xl md:rounded-2xl">
+            <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4 md:p-5 lg:p-6 hover:scale-[1.02] hover:border-blue-500/30 transition-all cursor-pointer group h-full rounded-xl md:rounded-2xl">
               <div className="flex items-start gap-3 md:gap-4 mb-3 md:mb-4">
                 <div
                   className={`w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br ${service.color} rounded-lg md:rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor} group-hover:scale-110 transition-transform flex-shrink-0`}

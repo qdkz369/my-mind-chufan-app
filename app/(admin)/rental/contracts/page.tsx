@@ -318,7 +318,7 @@ export default function RentalContractsPage() {
 
         {/* 错误提示 */}
         {error && (
-          <Card className="glass-breath p-6 mb-6 border-destructive/30 bg-destructive/10">
+          <Card semanticLevel="secondary_fact" className="glass-breath p-6 mb-6 border-destructive/30 bg-destructive/10">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-destructive" />
               <div>
@@ -336,7 +336,7 @@ export default function RentalContractsPage() {
             <span className="text-muted-foreground">加载中...</span>
           </div>
         ) : contracts.length === 0 ? (
-          <Card className="glass-breath p-8">
+          <Card semanticLevel="system_hint" className="glass-breath p-8">
             <div className="text-center">
               <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-bold text-foreground mb-2">暂无合同</h3>
@@ -346,7 +346,7 @@ export default function RentalContractsPage() {
         ) : (
           <div className="space-y-4">
             {contracts.map((contract) => (
-              <Card key={contract.id} className="glass-breath p-6 hover:bg-muted/30 transition-colors">
+              <Card key={contract.id} semanticLevel="secondary_fact" className="glass-breath p-6 hover:bg-muted/30 transition-colors">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">

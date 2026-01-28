@@ -632,10 +632,6 @@ function PaymentContent() {
     if (typeof window === "undefined") return
     
     // 获取当前用户的 restaurant_id
-    if (typeof window === "undefined") {
-      setError("无法在服务器端获取用户信息")
-      return
-    }
     const restaurantId = localStorage.getItem("restaurantId")
     
     if (!restaurantId) {
@@ -773,7 +769,7 @@ function PaymentContent() {
         </div>
 
         {/* 燃料选择 */}
-        <Card className="glass-breath p-6">
+        <Card semanticLevel="action" className="glass-breath p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Calculator className="h-5 w-5" />
             选择燃料类型
@@ -1375,7 +1371,7 @@ function PaymentContent() {
         </Card>
 
         {/* 订单信息 */}
-        <Card className="bg-slate-900/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="primary_fact" className="bg-slate-900/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
               <Truck className="h-6 w-6 text-white" />
@@ -1456,7 +1452,7 @@ function PaymentContent() {
         </Card>
 
         {/* 支付方式选择 */}
-        <Card className="bg-slate-900/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-slate-900/90 border-slate-700/50 backdrop-blur-sm p-6">
           <h2 className="text-lg font-semibold text-white mb-4">选择支付方式</h2>
           <div className="space-y-3">
             {paymentMethods.map((method) => {

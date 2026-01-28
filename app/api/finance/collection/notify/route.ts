@@ -4,9 +4,10 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：逾期账期催收通知
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getCurrentUserId, getCurrentCompanyId, verifyCompanyAccess } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
+import { verifyCompanyAccess } from "@/lib/multi-tenant"
 
 /**
  * POST: 发送催收通知
@@ -18,8 +19,58 @@ import { getCurrentUserId, getCurrentCompanyId, verifyCompanyAccess } from "@/li
  * - recipient_phone: 收件人电话（可选）
  * - recipient_email: 收件人邮箱（可选）
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[催收通知API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -95,9 +146,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // 获取当前用户ID
-    const currentUserId = await getCurrentUserId(request)
-    const currentCompanyId = await getCurrentCompanyId(request)
+    // 🔒 统一 company_id 来源：使用 getUserContext
+    const currentUserId = userContext?.userId
+    const currentCompanyId = userContext?.companyId
 
     // 查询账期信息
     let billingCycle: any = null
@@ -160,8 +211,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // 🔒 多租户隔离：验证用户是否有权限操作此订单
-    if (order.provider_id && currentUserId && currentCompanyId) {
+    // 🔒 多租户隔离：验证用户是否有权限操作此订单（super_admin 跳过）
+    if (order.provider_id && currentUserId && currentCompanyId && userContext?.role !== "super_admin") {
       const hasAccess = await verifyCompanyAccess(currentUserId, order.provider_id)
       if (!hasAccess && order.provider_id !== currentCompanyId) {
         return NextResponse.json(

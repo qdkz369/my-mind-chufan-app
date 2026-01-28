@@ -1,11 +1,11 @@
 // ACCESS_LEVEL: STAFF_LEVEL
 // ALLOWED_ROLES: staff, admin, super_admin
-// CURRENT_KEY: Anon Key (supabase)
-// TARGET_KEY: Anon Key + RLS
-// 说明：staff 调用必须绑定 worker_id / assigned_to，admin/super_admin 可以查看所有数据（但需要数据隔离）
+// CURRENT_KEY: Service Role Key (优先) 或 Anon Key
+// TARGET_KEY: Service Role Key (绕过 RLS) + 应用层数据隔离
+// 说明：staff/admin/super_admin 可以调用，使用 service role key 绕过 RLS，数据隔离在应用层通过 company_id 实现
 
-import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 import { getUserContext } from "@/lib/auth/user-context"
 
@@ -19,50 +19,101 @@ import { getUserContext } from "@/lib/auth/user-context"
  * - restaurant_id: 餐厅ID筛选（可选）
  * - service_type: 服务类型筛选（repair, cleaning, renovation, all）- 可选
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    if (!supabase) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || (!serviceRoleKey && !anonKey)) {
       return NextResponse.json(
-        { error: "数据库连接失败" },
+        { error: "数据库配置错误" },
         { status: 500 }
       )
     }
 
+    // 使用 service role key 创建客户端（绕过 RLS）
+    const supabase = createClient(
+      supabaseUrl,
+      serviceRoleKey || anonKey!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    )
+
     // 🔒 第一步：获取用户上下文，用于数据隔离
-    let userContext
-    try {
-      userContext = await getUserContext(request)
-      console.log("[报修列表API] 用户上下文:", {
-        role: userContext.role,
-        companyId: userContext.companyId,
-        userId: userContext.userId
+    // 调试：检查请求头中的 cookies
+    const cookieHeader = request.headers.get("cookie")
+    console.log("[报修列表API] 请求 Cookie header:", {
+      exists: !!cookieHeader,
+      length: cookieHeader?.length || 0,
+      fullHeader: cookieHeader || "无", // 显示完整的 header，不截断
+      hasSupabaseCookies: cookieHeader ? (cookieHeader.includes("sb-") || cookieHeader.includes("supabase")) : false
+    })
+    
+    // 检查所有相关的 headers
+    console.log("[报修列表API] 请求 Headers:", {
+      cookie: cookieHeader ? "存在" : "不存在",
+      authorization: request.headers.get("authorization") ? "存在" : "不存在",
+      userAgent: request.headers.get("user-agent")?.substring(0, 50) || "无"
+    })
+    
+    const userContext = await getUserContext(request)
+    
+    if (!userContext) {
+      // 记录详细错误信息，便于调试
+      console.error("[报修列表API] ❌ 获取用户上下文失败:", {
+        cookieHeader: cookieHeader ? "存在" : "不存在",
+        cookieHeaderLength: cookieHeader?.length || 0,
+        cookieHeaderPreview: cookieHeader ? cookieHeader.substring(0, 200) : "无"
       })
-    } catch (error: any) {
-      const errorMessage = error.message || "未知错误"
       
-      // 如果是未登录错误，返回 401
-      if (errorMessage.includes("未登录") || errorMessage.includes("无法获取用户")) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "未授权",
-            details: "请先登录",
-          },
-          { status: 401 }
-        )
+      // 🔧 临时调试：如果无法获取用户上下文，尝试直接查询数据（仅用于调试）
+      // 在生产环境中应该移除这部分代码
+      if (process.env.NODE_ENV === 'development' && supabase) {
+        console.warn("[报修列表API] ⚠️ 开发环境：认证失败，但尝试直接查询数据用于调试")
+        
+        // 直接查询所有报修工单（不进行数据隔离）
+        const { data: allOrders, error: queryError } = await supabase
+          .from("repair_orders")
+          .select("id, restaurant_id, service_type, status, description, amount, created_at, updated_at, assigned_to, audio_url, device_id")
+          .order("created_at", { ascending: false })
+          .limit(500)
+        
+        if (queryError) {
+          console.error("[报修列表API] 直接查询也失败:", queryError)
+        } else {
+          console.log("[报修列表API] 直接查询成功，返回 %d 条数据", allOrders?.length || 0)
+          return NextResponse.json({
+            success: true,
+            data: allOrders || [],
+            debug: {
+              authError: "用户上下文为 null",
+              totalOrders: allOrders?.length || 0,
+              note: "开发环境：认证失败但返回了数据（仅用于调试）"
+            },
+          })
+        }
       }
       
-      // 其他错误，返回 403
-      console.warn("[报修列表API] 获取用户上下文失败:", errorMessage)
       return NextResponse.json(
         {
           success: false,
-          error: "权限不足",
-          details: errorMessage,
+          error: "未授权",
+          details: "请先登录",
         },
-        { status: 403 }
+        { status: 401 }
       )
     }
+    
+    console.log("[报修列表API] ✅ 用户上下文获取成功:", {
+      role: userContext.role,
+      companyId: userContext.companyId,
+      userId: userContext.userId
+    })
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled

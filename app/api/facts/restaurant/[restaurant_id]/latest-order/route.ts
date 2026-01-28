@@ -48,12 +48,12 @@
  * 用途：获取最近一次完成的订单 ID，用于后续调用订单事实 API
  */
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { verifyFactAccess } from "@/lib/auth/facts-auth"
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ restaurant_id: string }> }
 ) {
   try {

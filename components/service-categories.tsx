@@ -33,7 +33,7 @@ const categories = [
 
 export function ServiceCategories() {
   return (
-    <Card className="p-4">
+    <Card semanticLevel="action" className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold text-base">服务分类</h2>
         <button className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">

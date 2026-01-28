@@ -19,31 +19,16 @@ import { getUserContext } from "@/lib/auth/user-context"
 export async function GET(request: Request) {
   try {
     // 第一步：使用统一用户上下文获取用户身份和权限
-    let userContext
-    try {
-      userContext = await getUserContext(request)
-    } catch (error: any) {
-      const errorMessage = error.message || "未知错误"
-      
-      if (errorMessage.includes("未登录")) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "未授权",
-            details: "请先登录",
-          },
-          { status: 401 }
-        )
-      }
-      
-      // 如果 companyId 不存在（非 super_admin），直接返回 403
+    const userContext = await getUserContext(request)
+    
+    if (!userContext) {
       return NextResponse.json(
         {
           success: false,
-          error: "权限不足",
-          details: errorMessage,
+          error: "未授权",
+          details: "请先登录",
         },
-        { status: 403 }
+        { status: 401 }
       )
     }
 
@@ -108,7 +93,7 @@ export async function GET(request: Request) {
       .from("rental_orders")
       .select(`
         *,
-        equipment (
+        equipment!equipment_id (
           id,
           name,
           brand,

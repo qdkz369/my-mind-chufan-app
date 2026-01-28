@@ -97,6 +97,27 @@ function validateString(value: unknown, defaultValue: string): string {
 }
 
 /**
+ * 验证可选字符串字段（可返回 null）
+ * 
+ * @param value 字符串值
+ * @param defaultValue 默认值（可以是 null）
+ * @returns 合法的字符串或 null
+ */
+function validateOptionalString(value: unknown, defaultValue: string | null): string | null {
+  if (value === null || value === undefined) {
+    return defaultValue
+  }
+  
+  if (typeof value === 'string') {
+    return value === '' ? defaultValue : value
+  }
+  
+  // 尝试转换为字符串
+  const str = String(value)
+  return str === '' ? defaultValue : str
+}
+
+/**
  * 适配订单事实契约
  * 
  * @param order 原始订单数据（可能不完整或包含非法值）
@@ -136,6 +157,8 @@ function adaptOrderFact(order: unknown): OrderFactContract | null {
       order_id: orderId,
       restaurant_id: restaurantId,
       status: status,
+      previous_state: validateOptionalString(orderObj.previous_state, null),
+      next_expected_state: validateOptionalString(orderObj.next_expected_state, null),
       created_at: createdAt,
       accepted_at: validateTimeString(orderObj.accepted_at),
       completed_at: validateTimeString(orderObj.completed_at),
@@ -274,6 +297,8 @@ function adaptAssetFact(asset: unknown): AssetFactContract | null {
     const adapted = {
       asset_id: assetId,
       status: validateString(assetObj.status, 'unknown'),
+      previous_state: validateOptionalString(assetObj.previous_state, null),
+      next_expected_state: validateOptionalString(assetObj.next_expected_state, null),
       last_action: validateString(assetObj.last_action, ''),
       last_action_at: validateTimeString(assetObj.last_action_at),
     }

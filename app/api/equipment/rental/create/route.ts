@@ -4,16 +4,67 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：admin/staff 调用，必须强制 company_id 过滤，已使用 Anon Key，需完善 RLS
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { createClient } from "@supabase/supabase-js"
-import { getCurrentCompanyId, getCurrentUserId } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
+import { verifyCompanyAccess } from "@/lib/multi-tenant"
 
 /**
  * POST: 创建租赁订单
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[创建租赁订单API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     if (!supabase) {
       return NextResponse.json(
         { error: "数据库连接失败" },
@@ -45,13 +96,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // 🔒 多租户隔离：获取当前用户的 company_id
-    const currentUserId = user_id || await getCurrentUserId(request)
-    const currentCompanyId = provider_id || await getCurrentCompanyId(request)
+    // 🔒 统一 company_id 来源：使用 getUserContext 而不是 getCurrentCompanyId
+    const currentUserId = user_id || userContext?.userId
+    const currentCompanyId = provider_id || userContext?.companyId
     
-    // 如果提供了 provider_id，验证用户是否有权限
-    if (provider_id && currentUserId) {
-      const { verifyCompanyAccess } = await import("@/lib/multi-tenant")
+    // 如果提供了 provider_id，验证用户是否有权限（super_admin 跳过验证）
+    if (provider_id && currentUserId && userContext?.role !== "super_admin") {
       const hasAccess = await verifyCompanyAccess(currentUserId, provider_id)
       if (!hasAccess) {
         return NextResponse.json(
@@ -61,7 +111,7 @@ export async function POST(request: Request) {
       }
     }
     
-    // 如果没有提供 provider_id，使用当前用户的 company_id
+    // 如果没有提供 provider_id，使用当前用户的 company_id（super_admin 可以为 undefined）
     const finalProviderId = provider_id || currentCompanyId
 
     // 获取设备信息
@@ -289,6 +339,64 @@ export async function POST(request: Request) {
 
     // 更新设备库存（暂时不减少，等订单确认后再减少）
     // 这里可以根据业务需求决定是否立即减少库存
+
+    // 📝 影子写入：同步写入 order_main 表
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+      if (supabaseUrl && (serviceRoleKey || anonKey) && rentalOrder) {
+        const adminClient = createClient(
+          supabaseUrl,
+          serviceRoleKey || anonKey!,
+          {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+            },
+          }
+        )
+
+        // 创建 order_main 记录
+        const { data: mainOrder, error: mainOrderError } = await adminClient
+          .from("order_main")
+          .insert({
+            order_number: rentalOrder.order_number || `RENT${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+            order_type: "rental",
+            company_id: finalProviderId || null,
+            status: rentalOrder.order_status || "pending",
+            total_amount: rentalOrder.total_amount || 0,
+            fuel_order_id: null,
+            rental_order_id: rentalOrder.id,
+            restaurant_id: restaurant_id,
+            user_id: currentUserId || null,
+            created_at: rentalOrder.created_at || new Date().toISOString(),
+          })
+          .select("id")
+          .single()
+
+        if (mainOrder && mainOrder.id) {
+          // 更新 rental_orders 表的 main_order_id
+          const { error: updateError } = await adminClient
+            .from("rental_orders")
+            .update({ main_order_id: mainOrder.id })
+            .eq("id", rentalOrder.id)
+
+          if (updateError) {
+            console.error("[租赁订单API] 更新 rental_orders.main_order_id 失败:", updateError)
+          } else {
+            console.log(`[租赁订单API] ✅ 影子写入成功：order_main.id = ${mainOrder.id}, rental_orders.id = ${rentalOrder.id}`)
+          }
+        } else if (mainOrderError) {
+          console.error("[租赁订单API] 影子写入 order_main 失败:", mainOrderError)
+          // 影子写入失败不影响主流程，只记录错误
+        }
+      }
+    } catch (shadowWriteError) {
+      console.error("[租赁订单API] 影子写入异常（不影响主流程）:", shadowWriteError)
+      // 影子写入失败不影响主流程
+    }
 
     return NextResponse.json({
       success: true,

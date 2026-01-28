@@ -61,6 +61,7 @@ export function SoundScapes() {
           {sounds.map((sound, index) => (
             <Card
               key={index}
+              semanticLevel="action"
               className="overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group"
               onClick={() => setPlaying(playing === index ? null : index)}
             >

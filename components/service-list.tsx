@@ -111,7 +111,7 @@ export function ServiceList() {
               {services
                 .filter((service) => service.phase === phase)
                 .map((service) => (
-                  <Card key={service.title} className="p-4 theme-card hover:border-primary/50 transition-all">
+                  <Card key={service.title} semanticLevel="action" className="p-4 theme-card hover:border-primary/50 transition-all">
                     <div className="flex items-start gap-3">
                       <div
                         className={`w-12 h-12 ${service.iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}

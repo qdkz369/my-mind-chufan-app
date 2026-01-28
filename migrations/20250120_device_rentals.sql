@@ -76,24 +76,46 @@ EXECUTE FUNCTION update_device_rentals_updated_at();
 -- 启用 RLS
 ALTER TABLE device_rentals ENABLE ROW LEVEL SECURITY;
 
--- RLS 策略：允许所有人查询（宽松策略）
+-- RLS 策略：基于公司隔离
 DROP POLICY IF EXISTS "Allow all select on device_rentals" ON device_rentals;
-CREATE POLICY "Allow all select on device_rentals"
+CREATE POLICY "device_rentals_company_isolation_select"
   ON device_rentals FOR SELECT
-  USING (true); -- 允许所有人查询
+  TO authenticated
+  USING (
+    restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  );
 
--- RLS 策略：允许所有人插入（宽松策略）
 DROP POLICY IF EXISTS "Allow all insert on device_rentals" ON device_rentals;
-CREATE POLICY "Allow all insert on device_rentals"
+CREATE POLICY "device_rentals_company_isolation_insert"
   ON device_rentals FOR INSERT
-  WITH CHECK (true); -- 允许所有人插入
+  TO authenticated
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  );
 
--- RLS 策略：允许所有人更新（宽松策略）
 DROP POLICY IF EXISTS "Allow all update on device_rentals" ON device_rentals;
-CREATE POLICY "Allow all update on device_rentals"
+CREATE POLICY "device_rentals_company_isolation_update"
   ON device_rentals FOR UPDATE
-  USING (true)
-  WITH CHECK (true); -- 允许所有人更新
+  TO authenticated
+  USING (
+    restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  );
+
+-- Service role 完全访问策略
+CREATE POLICY "Service role full access to device_rentals"
+ON device_rentals FOR ALL TO service_role
+USING (true) WITH CHECK (true);
 
 -- ============================================
 -- 5️⃣ 验证表创建

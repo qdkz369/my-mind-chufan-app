@@ -70,7 +70,7 @@ export function AIChat() {
             </div>
           </div>
 
-          <Card className="p-6 shadow-xl">
+          <Card semanticLevel="action" className="p-6 shadow-xl">
             <div className="space-y-4">
               <div className="h-[400px] overflow-y-auto space-y-4 mb-4 pr-2">
                 {messages.map((msg, index) => (

@@ -20,11 +20,21 @@ export default function HomePage() {
 
   useEffect(() => {
     const checkUserAndRedirect = async () => {
+      // 检查 supabase 是否可用
+      if (!supabase) {
+        console.error("[入口调度器] Supabase 未初始化，重定向到 /guest")
+        router.replace('/guest')
+        return
+      }
+
+      // 将 supabase 赋值给局部常量，确保 TypeScript 类型收窄
+      const supabaseClient = supabase
+
       try {
         console.log("[入口调度器] 开始检查用户身份...")
 
         // 第1步：是否已登录？
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser()
         const restaurantId = typeof window !== "undefined" 
           ? localStorage.getItem("restaurantId") 
           : null
@@ -44,7 +54,7 @@ export default function HomePage() {
 
         // 第2步：是否管理员角色？
         if (user && !authError) {
-          const { data: roleData } = await supabase
+          const { data: roleData } = await supabaseClient
             .from("user_roles")
             .select("role")
             .eq("user_id", user.id)
@@ -54,7 +64,7 @@ export default function HomePage() {
           console.log("[入口调度器] 用户角色:", role)
 
           // 如果是管理员角色 → 重定向到 /dashboard
-          if (role === "super_admin" || role === "admin") {
+          if (role === "super_admin" || role === "platform_admin") {
             console.log("[入口调度器] 管理员身份，重定向到 /dashboard")
             router.replace('/dashboard')
             return
@@ -69,7 +79,7 @@ export default function HomePage() {
         }
 
         // 第4步：是否已绑定设备/资产？
-        const { data: devices, error: devicesError } = await supabase
+        const { data: devices, error: devicesError } = await supabaseClient
           .from("devices")
           .select("device_id")
           .eq("restaurant_id", restaurantId)

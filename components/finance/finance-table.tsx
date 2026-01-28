@@ -170,7 +170,7 @@ export function FinanceTable<T = any>({
   
   if (title || description) {
     return (
-      <Card className={`border border-border shadow-none ${className || ''}`}>
+      <Card semanticLevel="financial" className={`border border-border shadow-none ${className || ''}`}>
         {title && (
           <CardHeader className="border-b border-border">
             <CardTitle>{title}</CardTitle>

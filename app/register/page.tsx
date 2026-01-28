@@ -196,7 +196,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card semanticLevel="action" className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
@@ -294,8 +294,8 @@ export default function RegisterPage() {
                       disabled={isLoading}
                     />
                     {location && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                        <MapPin className="h-4 w-4 text-green-500" title="已自动获取位置" />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2" title="已自动获取位置">
+                        <MapPin className="h-4 w-4 text-green-500" />
                       </div>
                     )}
                   </div>

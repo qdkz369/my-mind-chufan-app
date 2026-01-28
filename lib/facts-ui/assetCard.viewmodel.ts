@@ -120,7 +120,7 @@ function formatTimeDisplay(timestamp: string | null): string {
 export function convertAssetFactToCardViewModel(
   asset: AssetFactContract
 ): AssetCardViewModel {
-  const hasLastAction = asset.last_action && asset.last_action !== ""
+  const hasLastAction = Boolean(asset.last_action && asset.last_action !== "")
   const lastActionLabel = hasLastAction ? asset.last_action : null
   const lastActionTimeDisplay = asset.last_action_at
     ? formatTimeDisplay(asset.last_action_at)

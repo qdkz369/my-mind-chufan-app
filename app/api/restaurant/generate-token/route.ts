@@ -6,14 +6,73 @@
 
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { getUserContext } from "@/lib/auth/user-context"
 
 // POST: 为餐厅生成或更新 qr_token
 export async function POST(request: Request) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[生成Token API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     // 检查环境变量
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       return NextResponse.json(
         { error: "Supabase环境变量未配置" },
+        { status: 500 }
+      )
+    }
+
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "数据库连接失败" },
         { status: 500 }
       )
     }
@@ -49,7 +108,7 @@ export async function POST(request: Request) {
     }
 
     // 检查 token 是否已存在，如果存在则重新生成
-    let newToken: string
+    let newToken: string = ""
     let tokenExists = true
     let attempts = 0
     const maxAttempts = 10
@@ -70,7 +129,7 @@ export async function POST(request: Request) {
       attempts++
     }
 
-    if (tokenExists) {
+    if (tokenExists || !newToken) {
       return NextResponse.json(
         { error: "生成唯一Token失败，请重试" },
         { status: 500 }

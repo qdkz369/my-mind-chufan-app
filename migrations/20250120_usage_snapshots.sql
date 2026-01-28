@@ -86,25 +86,61 @@ CREATE INDEX IF NOT EXISTS idx_usage_snapshots_contract_device_status ON usage_s
 -- 启用 RLS
 ALTER TABLE usage_snapshots ENABLE ROW LEVEL SECURITY;
 
--- RLS 策略：允许所有人查询（宽松策略）
+-- RLS 策略：基于公司隔离
 DROP POLICY IF EXISTS "Allow all select on usage_snapshots" ON usage_snapshots;
-CREATE POLICY "Allow all select on usage_snapshots"
+CREATE POLICY "usage_snapshots_company_isolation_select"
   ON usage_snapshots FOR SELECT
-  USING (true);
+  TO authenticated
+  USING (
+    -- 通过设备查询关联公司
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  );
 
--- RLS 策略：允许所有人插入（宽松策略）
 DROP POLICY IF EXISTS "Allow all insert on usage_snapshots" ON usage_snapshots;
-CREATE POLICY "Allow all insert on usage_snapshots"
+CREATE POLICY "usage_snapshots_company_isolation_insert"
   ON usage_snapshots FOR INSERT
-  WITH CHECK (true);
+  TO authenticated
+  WITH CHECK (
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  );
 
--- RLS 策略：允许所有人更新（宽松策略）
+-- RLS 策略：基于公司隔离更新
 -- 注意：status=locked 的不可修改约束由业务逻辑层实现
 DROP POLICY IF EXISTS "Allow all update on usage_snapshots" ON usage_snapshots;
-CREATE POLICY "Allow all update on usage_snapshots"
+CREATE POLICY "usage_snapshots_company_isolation_update"
   ON usage_snapshots FOR UPDATE
-  USING (true)
-  WITH CHECK (true);
+  TO authenticated
+  USING (
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  );
+
+-- Service role 完全访问策略
+CREATE POLICY "Service role full access to usage_snapshots"
+ON usage_snapshots FOR ALL TO service_role
+USING (true) WITH CHECK (true);
 
 -- ============================================
 -- 验证表创建

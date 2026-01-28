@@ -53,7 +53,7 @@ export function Features() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature, index) => (
-            <Card key={index} className="p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+            <Card key={index} semanticLevel="secondary_fact" className="p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
               <feature.icon className={`w-12 h-12 mb-4 ${feature.color}`} />
               <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
               <p className="text-muted-foreground leading-relaxed">{feature.description}</p>

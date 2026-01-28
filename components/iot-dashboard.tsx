@@ -158,9 +158,17 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
       // 如果组件已卸载，不再尝试连接
       if (isUnmounted) return
 
+      // 确保 supabase 不为 null
+      if (!supabase) {
+        console.warn('[IoT Dashboard] Supabase 未初始化，无法订阅实时数据')
+        return
+      }
+
+      const supabaseClient = supabase
+
       try {
         // 先查询设备 ID
-        const { data: devices, error: deviceError } = await supabase
+        const { data: devices, error: deviceError } = await supabaseClient
           .from("devices")
           .select("device_id")
           .eq("restaurant_id", restaurantId)
@@ -179,14 +187,14 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
         // 如果已有频道，先清理
         if (channel) {
           try {
-            await supabase.removeChannel(channel)
+            await supabaseClient.removeChannel(channel)
           } catch (e) {
             console.warn('[IoT Dashboard] 清理旧频道失败:', e)
           }
         }
 
         // 创建新频道并订阅 fuel_level 表的实时更新
-        channel = supabase
+        channel = supabaseClient
           .channel(`fuel-level-${currentDeviceId}`, {
             config: {
               broadcast: { self: false },
@@ -272,7 +280,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
       }
-      if (channel) {
+      if (channel && supabase) {
         console.log('[IoT Dashboard] 清理 Realtime 订阅')
         supabase.removeChannel(channel).catch(err => {
           console.warn('[IoT Dashboard] 清理频道失败:', err)

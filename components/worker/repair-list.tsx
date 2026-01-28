@@ -41,6 +41,8 @@ interface Repair {
   amount: number
   urgency?: string
   audio_url?: string | null
+  assigned_to?: string | null
+  worker_id?: string | null
   created_at: string
   updated_at: string
   restaurants: {
@@ -87,9 +89,8 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
 
         console.log("[工人端] 开始监听维修工单实时更新...")
 
-        // 订阅 orders 表的变化（只监听维修服务）
+        // 订阅 repair_orders 表的变化（报修工单已迁移到独立表）
         // 注意：Supabase Realtime 的 filter 使用精确匹配，不支持 ilike
-        // 如果需要匹配多种 service_type 值，可以创建多个订阅或使用 PostgreSQL 函数
         channel = supabase
           .channel(`repairs-realtime-worker-${workerId || "all"}`)
           .on(
@@ -97,9 +98,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
             {
               event: "*", // 监听所有事件（INSERT, UPDATE, DELETE）
               schema: "public",
-              table: "orders",
-              // 精确匹配：根据实际数据中的 service_type 值调整
-              filter: "service_type=eq.维修服务", // 精确匹配
+              table: "repair_orders", // 已迁移到 repair_orders 表
             },
             (payload) => {
               console.log("[工人端] 收到维修工单实时更新:", payload)
@@ -416,7 +415,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
 
   if (error && !repairs.length) {
     return (
-      <Card className="bg-red-500/10 border-red-500/30 p-4">
+      <Card semanticLevel="system_hint" className="bg-red-500/10 border-red-500/30 p-4">
         <div className="flex items-center gap-3">
           <AlertCircle className="h-5 w-5 text-red-400" />
           <p className="text-sm text-red-400">{error}</p>
@@ -427,7 +426,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
 
   if (repairs.length === 0) {
     return (
-      <Card className="bg-slate-900/50 border-slate-800/50 p-8">
+      <Card semanticLevel="system_hint" className="bg-slate-900/50 border-slate-800/50 p-8">
         <div className="text-center">
           <Wrench className="h-12 w-12 text-slate-500 mx-auto mb-4" />
           <p className="text-slate-400">暂无报修单（已连接数据库，但未匹配到维修类型数据）</p>
@@ -439,7 +438,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
   return (
     <>
       {/* 服务类型筛选器 */}
-      <Card className="bg-slate-900/50 border-slate-800/50 p-4 mb-4">
+      <Card semanticLevel="action" className="bg-slate-900/50 border-slate-800/50 p-4 mb-4">
         <div className="flex flex-wrap gap-2">
           {[
             { value: "all", label: "全部", icon: null },
@@ -469,14 +468,14 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
       </Card>
 
       {/* 添加状态调试：在页面顶部临时加一行文字显示工单总数 */}
-      <Card className="bg-blue-500/10 border-blue-500/30 p-3 mb-4">
+      <Card semanticLevel="system_hint" className="bg-blue-500/10 border-blue-500/30 p-3 mb-4">
         <p className="text-sm text-blue-400 font-semibold">
           当前加载到的工单总数：{repairs.length}
         </p>
       </Card>
 
       {error && (
-        <Card className="bg-red-500/10 border-red-500/30 p-4 mb-4">
+        <Card semanticLevel="system_hint" className="bg-red-500/10 border-red-500/30 p-4 mb-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-red-400" />
             <p className="text-sm text-red-400">{error}</p>
@@ -493,6 +492,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
           return (
             <Card
               key={repair.id}
+              semanticLevel="secondary_fact"
               className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4 cursor-pointer hover:border-yellow-500/50 transition-all"
               onClick={() => openDetailDialog(repair)}
             >
@@ -502,7 +502,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
                     <Wrench className="h-4 w-4 text-yellow-400" />
                     <span className="text-sm font-medium text-white">工单号: {repair.id.slice(0, 8)}</span>
                     {repair.audio_url && (
-                      <Mic className="h-4 w-4 text-yellow-400" title="语音报修单" />
+                      <Mic className="h-4 w-4 text-yellow-400" aria-label="语音报修单" />
                     )}
                     {/* 服务类型标签 */}
                     {(() => {
@@ -646,7 +646,7 @@ export function WorkerRepairList({ workerId, statusFilter = "all", serviceTypeFi
               })()}
               服务工单详情
               {selectedRepair?.audio_url && (
-                <Mic className="h-5 w-5 text-yellow-400" title="语音报修单" />
+                <Mic className="h-5 w-5 text-yellow-400" aria-label="语音报修单" />
               )}
             </DialogTitle>
             <DialogDescription className="text-slate-400">

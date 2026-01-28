@@ -157,9 +157,9 @@ export function ForceVisibleWrapper({ children }: { children: React.ReactNode })
   return (
     <div 
       style={{ 
-        display: 'block !important', 
-        visibility: 'visible !important', 
-        opacity: '1 !important',
+        display: 'block', 
+        visibility: 'visible', 
+        opacity: 1,
         position: 'relative',
         zIndex: 1
       }}

@@ -5,6 +5,7 @@
 // 说明：admin/staff 调用，创建支付订单，必须强制 company_id 过滤
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getUserContext } from "@/lib/auth/user-context"
 
 // 环境配置
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -34,6 +35,56 @@ const ALIPAY_GATEWAY = IS_PRODUCTION
  */
 export async function POST(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[支付创建API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const body = await request.json()
     const { orderId, amount, subject, returnUrl, notifyUrl } = body
 

@@ -179,6 +179,7 @@ export default function EquipmentShowcasePage() {
             {filteredEquipment.map((item) => (
               <Card
                 key={item.id}
+                semanticLevel="primary_fact"
                 className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all duration-300 overflow-hidden group"
               >
                 {/* 图片 */}

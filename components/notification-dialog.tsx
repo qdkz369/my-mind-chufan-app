@@ -280,6 +280,7 @@ export function NotificationDialog({
                     {unreadNotifications.map((notification) => (
                       <Card
                         key={notification.id}
+                        semanticLevel="action"
                         className={`bg-slate-800/50 border-slate-700 p-4 hover:border-blue-500/50 cursor-pointer transition-colors ${
                           notification.priority === "urgent" ? "border-red-500/50" : ""
                         }`}
@@ -352,6 +353,7 @@ export function NotificationDialog({
                     {readNotifications.map((notification) => (
                       <Card
                         key={notification.id}
+                        semanticLevel="action"
                         className="bg-slate-800/30 border-slate-700/50 p-4 hover:border-slate-600 cursor-pointer transition-colors opacity-70"
                         onClick={() => handleNotificationClick(notification)}
                       >

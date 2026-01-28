@@ -4,9 +4,10 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：admin/staff 调用，必须强制 company_id 过滤，后续必须迁移到 Anon Key + RLS
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getCurrentCompanyId, enforceCompanyFilter } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
+import { enforceCompanyFilter } from "@/lib/multi-tenant"
 
 /**
  * GET: 获取所有设备租赁订单（管理端）
@@ -17,8 +18,62 @@ import { getCurrentCompanyId, enforceCompanyFilter } from "@/lib/multi-tenant"
  * 注意：此 API 查询的是 rental_orders 表（设备租赁订单表）
  * 如果查询 rentals 表（租赁管理表），请使用不同的 API 端点
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+            data: [],
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[设备租赁管理API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+            data: [],
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+          data: [],
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+          data: [],
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -72,14 +127,19 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const restaurantId = searchParams.get("restaurant_id")
-    const companyId = searchParams.get("company_id") || await getCurrentCompanyId(request) // 🔒 多租户隔离：供应商ID
+    
+    // 🔒 统一 company_id 来源：使用 getUserContext 而不是 getCurrentCompanyId
+    let companyId: string | undefined = searchParams.get("company_id") || undefined
+    if (!companyId && userContext && userContext.role !== "super_admin") {
+      companyId = userContext.companyId
+    }
 
     // 首先尝试查询 rental_orders 表，如果不存在则查询 rentals 表
     let query = supabaseClient
       .from("rental_orders")
       .select(`
         *,
-        equipment (
+        equipment!equipment_id (
           id,
           name,
           brand,
@@ -93,13 +153,13 @@ export async function GET(request: Request) {
             icon
           )
         ),
-        restaurants (
+        restaurants!restaurant_id (
           id,
           name,
           contact_name,
           contact_phone
         ),
-        companies (
+        companies!provider_id (
           id,
           name,
           contact_name,
@@ -117,10 +177,12 @@ export async function GET(request: Request) {
       query = query.eq("restaurant_id", restaurantId)
     }
 
-    // 🔒 多租户隔离：强制按 provider_id 过滤（如果提供了 company_id）
-    if (companyId) {
+    // 🔒 多租户隔离：强制按 provider_id 过滤（如果提供了 company_id 且不是 super_admin）
+    if (companyId && userContext?.role !== "super_admin") {
       query = enforceCompanyFilter(query, companyId, "provider_id")
       console.log("[设备租赁管理API] 应用多租户过滤，company_id:", companyId)
+    } else if (userContext?.role === "super_admin") {
+      console.log("[设备租赁管理API] Super Admin 访问，不应用多租户过滤")
     }
 
     query = query.order("created_at", { ascending: false })

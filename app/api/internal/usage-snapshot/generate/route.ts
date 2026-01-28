@@ -37,35 +37,21 @@ import { getUserContext } from "@/lib/auth/user-context"
 export async function POST(request: Request) {
   try {
     // 权限验证：仅允许 system / admin 权限调用
-    let userContext
-    try {
-      userContext = await getUserContext(request)
-    } catch (error: any) {
-      const errorMessage = error.message || "未知错误"
-      
-      if (errorMessage.includes("未登录")) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "未授权",
-            details: "请先登录",
-          },
-          { status: 401 }
-        )
-      }
-      
+    const userContext = await getUserContext(request)
+    
+    if (!userContext) {
       return NextResponse.json(
         {
           success: false,
-          error: "权限不足",
-          details: errorMessage,
+          error: "未授权",
+          details: "请先登录",
         },
-        { status: 403 }
+        { status: 401 }
       )
     }
 
     // 检查是否是管理员（system 通过 super_admin 或 admin 角色实现）
-    if (userContext.role !== "super_admin" && userContext.role !== "admin") {
+    if (userContext.role !== "super_admin" && userContext.role !== "platform_admin") {
       return NextResponse.json(
         {
           success: false,

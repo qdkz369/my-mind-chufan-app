@@ -53,7 +53,7 @@ export function QuickActions() {
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-semibold text-foreground">快速服务</h2>
-      <Card className="theme-card backdrop-blur-sm p-4">
+      <Card semanticLevel="action" className="theme-card backdrop-blur-sm p-4">
         <div className="grid grid-cols-3 gap-4">
           {actions.map((action) => (
             <Link

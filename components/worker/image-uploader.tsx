@@ -104,7 +104,7 @@ export function ImageUploader({
       <label className="text-slate-300 text-sm font-medium">{label}</label>
 
       {preview ? (
-        <Card className="bg-slate-800/50 border-slate-700 p-4">
+        <Card semanticLevel="secondary_fact" className="bg-slate-800/50 border-slate-700 p-4">
           <div className="relative">
             <img
               src={preview}
@@ -126,7 +126,7 @@ export function ImageUploader({
           </div>
         </Card>
       ) : (
-        <Card className="bg-slate-800/50 border-slate-700 p-6 border-2 border-dashed">
+        <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700 p-6 border-2 border-dashed">
           <div className="text-center">
             <input
               ref={fileInputRef}

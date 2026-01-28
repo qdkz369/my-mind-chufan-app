@@ -70,11 +70,14 @@ export async function GET(request: Request) {
 
     // 获取每个设备的最新燃料百分比
     // 如果设备列表为空，直接返回空数组
-    const devicesWithFuel = devicesData && devicesData.length > 0
+    // 注意：supabase 已经在函数开头检查，这里可以安全使用
+    const supabaseClient = supabase
+    
+    const devicesWithFuel = devicesData && devicesData.length > 0 && supabaseClient
       ? await Promise.all(
           devicesData.map(async (device) => {
             try {
-              const { data: fuelData } = await supabase
+              const { data: fuelData } = await supabaseClient
                 .from("fuel_level")
                 .select("percentage")
                 .eq("device_id", device.device_id)

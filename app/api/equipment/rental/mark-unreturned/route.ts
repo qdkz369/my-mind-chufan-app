@@ -4,9 +4,10 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：设备未归还标记
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getCurrentUserId, getCurrentCompanyId, verifyCompanyAccess } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
+import { verifyCompanyAccess } from "@/lib/multi-tenant"
 
 /**
  * POST: 标记设备为未归还
@@ -16,8 +17,58 @@ import { getCurrentUserId, getCurrentCompanyId, verifyCompanyAccess } from "@/li
  * - action: 操作类型（可选）：'send_reminder'（发送提醒）、'mark_lost'（标记为丢失）、'legal_action'（法律行动）
  * - notes: 备注（可选）
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[设备未归还标记API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -82,7 +133,7 @@ export async function POST(request: Request) {
     // 验证订单是否存在
     const { data: order, error: orderError } = await supabaseClient
       .from("rental_orders")
-      .select("id, order_status, equipment_id, end_date, provider_id")
+      .select("id, order_status, equipment_id, end_date, provider_id, restaurant_id, start_date")
       .eq("id", rental_order_id)
       .single()
 
@@ -97,11 +148,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // 🔒 多租户隔离：验证用户是否有权限操作此订单
-    const currentUserId = await getCurrentUserId(request)
-    const currentCompanyId = await getCurrentCompanyId(request)
+    // 🔒 多租户隔离：验证用户是否有权限操作此订单（super_admin 跳过）
+    const currentUserId = userContext?.userId
+    const currentCompanyId = userContext?.companyId
 
-    if (order.provider_id && currentUserId && currentCompanyId) {
+    if (order.provider_id && currentUserId && currentCompanyId && userContext?.role !== "super_admin") {
       const hasAccess = await verifyCompanyAccess(currentUserId, order.provider_id)
       if (!hasAccess && order.provider_id !== currentCompanyId) {
         return NextResponse.json(

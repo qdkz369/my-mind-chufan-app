@@ -384,7 +384,7 @@ export default function AddressesPage() {
           </div>
         )}
 
-        <Card className="glass-breath p-6">
+        <Card semanticLevel="action" className="glass-breath p-6">
           {!isEditing ? (
             <>
               {/* 查看模式 */}

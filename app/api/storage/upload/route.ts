@@ -6,12 +6,63 @@
 
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * POST: 上传图片到Supabase Storage
  */
 export async function POST(request: Request) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[文件上传API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     if (!supabase) {
       return NextResponse.json(
         { error: "数据库连接失败" },
@@ -55,13 +106,14 @@ export async function POST(request: Request) {
       )
     }
 
-    // 验证文件类型（支持图片和音频）
+    // 验证文件类型（支持图片、音频和视频）
     const isImage = file.type.startsWith("image/")
     const isAudio = file.type.startsWith("audio/")
+    const isVideo = file.type.startsWith("video/")
     
-    if (!isImage && !isAudio) {
+    if (!isImage && !isAudio && !isVideo) {
       return NextResponse.json(
-        { error: "只支持图片或音频文件" },
+        { error: "只支持图片、音频或视频文件" },
         { status: 400 }
       )
     }
@@ -102,7 +154,6 @@ export async function POST(request: Request) {
       console.error("[存储上传API] 上传失败:", {
         error: error,
         message: error.message,
-        statusCode: error.statusCode,
         bucket: BUCKET_NAME,
         folder: folder,
         fileType: file.type,
@@ -113,8 +164,7 @@ export async function POST(request: Request) {
       if (
         error.message?.includes("Bucket not found") || 
         error.message?.includes("不存在") ||
-        error.message?.includes("not found") ||
-        error.statusCode === 404
+        error.message?.includes("not found")
       ) {
         const availableBuckets = buckets?.map(b => b.name).join(", ") || "无"
         return NextResponse.json(
@@ -131,7 +181,6 @@ export async function POST(request: Request) {
         {
           error: "上传失败",
           details: error.message || "未知错误",
-          statusCode: error.statusCode,
         },
         { status: 500 }
       )

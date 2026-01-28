@@ -72,8 +72,11 @@ export default function DevicesPage() {
         return
       }
 
+      // 将 supabase 赋值给局部常量，确保 TypeScript 类型收窄
+      const supabaseClient = supabase
+
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabaseClient.auth.getUser()
         if (!user) {
           // 游客访问，重定向到首页
           setIsLoggedIn(false)
@@ -123,6 +126,9 @@ export default function DevicesPage() {
       return
     }
 
+    // 将 supabase 赋值给局部常量，确保 TypeScript 类型收窄
+    const supabaseClient = supabase
+
     const loadDevices = async () => {
       try {
         setIsLoading(true)
@@ -133,7 +139,7 @@ export default function DevicesPage() {
         const shouldQueryFinancialFields = canViewFinancialView && !isCheckingFinancialPermission
 
         // 查询所有已激活的设备
-        const { data: devicesData, error: devicesError } = await supabase
+        const { data: devicesData, error: devicesError } = await supabaseClient
           .from("devices")
           .select("device_id, model, address, installer, install_date, status, created_at")
           .eq("restaurant_id", restaurantId)
@@ -151,7 +157,7 @@ export default function DevicesPage() {
           const deviceIds = devicesData.map((d) => d.device_id)
           
           // 1. 查询活跃的租赁记录（device_rentals）
-          const { data: rentalsData, error: rentalsError } = await supabase
+          const { data: rentalsData, error: rentalsError } = await supabaseClient
             .from("device_rentals")
             .select("device_id, status, start_at, end_at")
             .in("device_id", deviceIds)
@@ -169,10 +175,24 @@ export default function DevicesPage() {
             ? "device_id, rental_contract_id, agreed_daily_fee, agreed_monthly_fee, agreed_usage_metric"
             : "device_id, rental_contract_id, agreed_usage_metric"
           
-          const { data: contractDevicesData, error: contractDevicesError } = await supabase
+          // 定义类型以支持动态查询
+          type ContractDeviceRow = {
+            device_id: string
+            rental_contract_id: string
+            agreed_usage_metric?: string | null
+            agreed_daily_fee?: number | null
+            agreed_monthly_fee?: number | null
+          }
+          
+          const result = await supabaseClient
             .from("rental_contract_devices")
             .select(contractDevicesSelect)
             .in("device_id", deviceIds)
+          
+          const { data: contractDevicesData, error: contractDevicesError } = {
+            data: result.data as ContractDeviceRow[] | null,
+            error: result.error
+          }
 
           if (contractDevicesError) {
             console.warn("查询合同设备关系失败（不影响主流程）:", contractDevicesError)
@@ -184,7 +204,7 @@ export default function DevicesPage() {
           // 查询合同信息
           let contractsData: any[] = []
           if (contractIds.length > 0) {
-            const { data: contracts, error: contractsError } = await supabase
+            const { data: contracts, error: contractsError } = await supabaseClient
               .from("rental_contracts")
               .select("id, contract_no, lessee_restaurant_id, lessor_type, start_at, end_at, billing_model, status")
               .in("id", contractIds)
@@ -333,7 +353,7 @@ export default function DevicesPage() {
 
         {/* 错误提示 */}
         {error && !isLoading && !isInitializing && (
-          <Card className="glass-breath p-6 mb-6 border-destructive/30 bg-destructive/10">
+          <Card semanticLevel="system_hint" className="glass-breath p-6 mb-6 border-destructive/30 bg-destructive/10">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-destructive" />
               <div>
@@ -348,7 +368,7 @@ export default function DevicesPage() {
         {!isLoading && !isInitializing && !error && (
           <>
             {devices.length === 0 ? (
-              <Card className="glass-breath p-8">
+              <Card semanticLevel="system_hint" className="glass-breath p-8">
                 <div className="text-center">
                   <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4 border border-border" style={{ borderRadius: 'var(--radius-card)' }}>
                     <Package className="h-8 w-8 text-muted-foreground" />
@@ -451,7 +471,7 @@ export default function DevicesPage() {
                         层级 2: Lease Status（租赁状态）
                         ======================================== */}
                     {device.lease_status && (
-                      <Card className="glass-breath border-blue-500/30 bg-blue-500/5">
+                      <Card semanticLevel="secondary_fact" className="glass-breath border-blue-500/30 bg-blue-500/5">
                         <CardHeader>
                           <div className="flex items-center gap-2">
                             <Building2 className="h-5 w-5 text-blue-400" />
@@ -547,7 +567,7 @@ export default function DevicesPage() {
                     {/* ⚠️ 权限检查：只有管理员可见金融视图 */}
                     {/* 权限不足时不渲染、不请求 API */}
                     {device.financial_view && canViewFinancialView && !isCheckingFinancialPermission && (
-                      <Card className="bg-muted/30 border-muted text-muted-foreground">
+                      <Card semanticLevel="financial" className="bg-muted/30 border-muted text-muted-foreground">
                         <CardHeader>
                           <div className="flex items-center gap-2">
                             <Info className="h-4 w-4 text-muted-foreground" />

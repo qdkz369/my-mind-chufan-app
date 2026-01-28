@@ -43,6 +43,18 @@ export async function POST(request: Request) {
       )
     }
 
+    // 检查 userContext 是否为 null（TypeScript 类型保护）
+    if (!userContext) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "未授权",
+          details: "无法获取用户上下文信息",
+        },
+        { status: 401 }
+      )
+    }
+
     // 明确要求：role === 'super_admin'
     if (userContext.role !== "super_admin") {
       console.error("[创建公司API] 用户不是超级管理员:", userContext.userId, userContext.role)
@@ -61,7 +73,20 @@ export async function POST(request: Request) {
     // 第二步：使用 Service Role Key 创建 Supabase 客户端
     // 注意：创建公司需要 Service Role Key，因为需要绕过 RLS 创建记录
     // 但创建后会自动为当前用户创建关联，确保多租户隔离
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl) {
+      console.error("[创建公司API] Supabase URL 未配置")
+      return NextResponse.json(
+        {
+          success: false,
+          error: "服务器配置错误",
+          details: "NEXT_PUBLIC_SUPABASE_URL 未配置，无法创建公司",
+        },
+        { status: 500 }
+      )
+    }
 
     if (!serviceRoleKey) {
       console.error("[创建公司API] Service Role Key 未配置")

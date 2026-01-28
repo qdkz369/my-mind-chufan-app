@@ -272,7 +272,7 @@ export default function UsageSnapshotsPage() {
 
         {/* 错误提示 */}
         {error && (
-          <Card className="bg-gradient-to-br from-red-900/90 to-red-800/90 border-red-700/50 backdrop-blur-sm mb-6">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-red-900/90 to-red-800/90 border-red-700/50 backdrop-blur-sm mb-6">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
@@ -300,7 +300,7 @@ export default function UsageSnapshotsPage() {
             <span className="text-muted-foreground">加载中...</span>
           </div>
         ) : snapshots.length === 0 ? (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
+          <Card semanticLevel="system_hint" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm">
             <CardContent className="p-8 text-center">
               <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">
@@ -313,6 +313,7 @@ export default function UsageSnapshotsPage() {
             {snapshots.map((snapshot) => (
               <Card
                 key={snapshot.id}
+                semanticLevel="secondary_fact"
                 className="glass-breath p-6 hover:bg-muted/30 transition-colors"
               >
                 <div className="flex items-start justify-between mb-4">

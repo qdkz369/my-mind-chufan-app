@@ -36,7 +36,7 @@ const orders = [
 
 export function OrderStatus() {
   return (
-    <Card className="p-4">
+    <Card semanticLevel="primary_fact" className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold text-base">最近订单</h2>
         <button className="text-sm text-muted-foreground hover:text-foreground">查看全部</button>

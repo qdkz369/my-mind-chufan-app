@@ -412,7 +412,7 @@ export default function EquipmentRentalPage() {
 
             {/* 错误提示 */}
             {equipmentError && (
-              <Card className="bg-gradient-to-br from-red-900/90 to-red-800/90 border-red-700/50">
+              <Card semanticLevel="system_hint" className="bg-gradient-to-br from-red-900/90 to-red-800/90 border-red-700/50">
                 <div className="p-4">
                   <div className="flex items-center gap-3">
                     <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
@@ -440,7 +440,7 @@ export default function EquipmentRentalPage() {
                 <span className="text-slate-400">加载中...</span>
               </div>
             ) : equipment.length === 0 ? (
-              <Card className="bg-slate-900/50 border-slate-800 p-8 text-center">
+              <Card semanticLevel="system_hint" className="bg-slate-900/50 border-slate-800 p-8 text-center">
                 <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
                 <p className="text-slate-400 mb-2">暂无设备</p>
                 {equipmentError ? (
@@ -462,6 +462,7 @@ export default function EquipmentRentalPage() {
                   {equipment.map((item) => (
                   <Card
                     key={item.id}
+                    semanticLevel="primary_fact"
                     className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 overflow-hidden"
                   >
                     {/* 设备图片 */}
@@ -555,7 +556,7 @@ export default function EquipmentRentalPage() {
                 <span className="text-slate-400">加载中...</span>
               </div>
             ) : rentalOrders.length === 0 ? (
-              <Card className="bg-slate-900/50 border-slate-800 p-8 text-center">
+              <Card semanticLevel="system_hint" className="bg-slate-900/50 border-slate-800 p-8 text-center">
                 <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
                 <p className="text-slate-400">暂无租赁订单</p>
               </Card>
@@ -564,6 +565,7 @@ export default function EquipmentRentalPage() {
                 {rentalOrders.map((order) => (
                   <Card
                     key={order.id}
+                    semanticLevel="primary_fact"
                     className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 p-4"
                   >
                     <div className="flex items-start justify-between mb-3">

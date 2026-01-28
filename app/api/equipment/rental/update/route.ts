@@ -4,9 +4,10 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：admin/staff 调用，必须强制 company_id 过滤，后续必须迁移到 Anon Key + RLS
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getCurrentCompanyId, verifyCompanyAccess, getCurrentUserId } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
+import { verifyCompanyAccess } from "@/lib/multi-tenant"
 
 /**
  * PATCH: 更新租赁订单状态
@@ -15,8 +16,58 @@ import { getCurrentCompanyId, verifyCompanyAccess, getCurrentUserId } from "@/li
  * - order_status: 订单状态（pending, confirmed, active, completed, cancelled）
  * - payment_status: 支付状态（可选）
  */
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[租赁订单更新API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -81,18 +132,29 @@ export async function PATCH(request: Request) {
       )
     }
 
-    // 🔒 多租户隔离：验证用户是否有权限更新此订单
-    const currentUserId = await getCurrentUserId(request)
-    const currentCompanyId = await getCurrentCompanyId(request)
+    // 🔒 多租户隔离：验证用户是否有权限更新此订单（super_admin 跳过）
+    const currentUserId = userContext?.userId
+    const currentCompanyId = userContext?.companyId
     
-    // 先获取订单的 provider_id
+    // 获取订单信息（provider_id、order_status、equipment_id）
     const { data: existingOrder } = await supabaseClient
       .from("rental_orders")
-      .select("provider_id")
+      .select("provider_id, order_status, equipment_id")
       .eq("id", id)
       .single()
     
-    if (existingOrder?.provider_id && currentUserId && currentCompanyId) {
+    if (!existingOrder) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "订单不存在",
+        },
+        { status: 404 }
+      )
+    }
+    
+    // 验证权限（super_admin 跳过）
+    if (existingOrder.provider_id && currentUserId && currentCompanyId && userContext?.role !== "super_admin") {
       const hasAccess = await verifyCompanyAccess(currentUserId, existingOrder.provider_id)
       if (!hasAccess && existingOrder.provider_id !== currentCompanyId) {
         return NextResponse.json(
@@ -107,14 +169,8 @@ export async function PATCH(request: Request) {
     }
 
     // 获取订单当前状态和设备信息（用于状态机判断）
-    const { data: existingOrder } = await supabaseClient
-      .from("rental_orders")
-      .select("order_status, equipment_id")
-      .eq("id", id)
-      .single()
-
-    const previousOrderStatus = existingOrder?.order_status
-    const equipmentId = existingOrder?.equipment_id
+    const previousOrderStatus = existingOrder.order_status
+    const equipmentId = existingOrder.equipment_id
 
     // 构建更新数据
     const updateData: any = {}

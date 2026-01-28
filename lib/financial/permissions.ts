@@ -36,7 +36,7 @@ export function canViewFinancialView(role: UserRole | string | null | undefined)
   }
 
   // 管理端角色：可见
-  if (role === "super_admin" || role === "admin") {
+  if (role === "super_admin" || role === "platform_admin") {
     return true
   }
 
@@ -97,5 +97,5 @@ export function isRegularUser(role: UserRole | string | null | undefined): boole
   }
 
   // 非管理员角色视为普通用户
-  return role !== "super_admin" && role !== "admin"
+  return role !== "super_admin" && role !== "platform_admin"
 }

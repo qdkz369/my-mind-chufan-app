@@ -97,7 +97,7 @@ export async function POST(request: Request) {
           .from("user_roles")
           .insert({
             user_id: existingUser.id,
-            role: "admin",
+            role: "company_admin",
           })
 
         if (roleInsertError) {
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       .from("user_roles")
       .insert({
         user_id: newUser.user.id,
-        role: "admin", // 分配管理员角色
+        role: "company_admin", // 分配公司管理员角色
       })
 
     if (roleError) {

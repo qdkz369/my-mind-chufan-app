@@ -1,14 +1,15 @@
 // ACCESS_LEVEL: STAFF_LEVEL
-// ALLOWED_ROLES: staff
-// CURRENT_KEY: Anon Key (supabase)
-// TARGET_KEY: Anon Key + RLS
-// 说明：只能 staff 调用，必须绑定 worker_id / assigned_to，后续必须使用 RLS 限制只能访问自己数据
+// ALLOWED_ROLES: staff, admin, super_admin
+// CURRENT_KEY: Service Role Key (优先) 或 Anon Key
+// TARGET_KEY: Service Role Key (绕过 RLS) + 应用层数据隔离
+// 说明：staff/admin/super_admin 可以调用，使用 service role key 绕过 RLS，数据隔离在应用层通过 company_id 实现
 
 import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 import { CONFIG_REQUIRE_ASSET_TRACE } from "@/lib/config/asset-trace"
 import { createOrderStatusNotification } from "@/lib/notifications/create-notification"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * POST: 更新报修工单状态和金额
@@ -18,12 +19,49 @@ import { createOrderStatusNotification } from "@/lib/notifications/create-notifi
  */
 export async function POST(request: Request) {
   try {
-    if (!supabase) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || (!serviceRoleKey && !anonKey)) {
       return NextResponse.json(
-        { error: "数据库连接失败" },
+        { error: "数据库配置错误" },
         { status: 500 }
       )
     }
+
+    // 使用 service role key 创建客户端（绕过 RLS）
+    const supabase = createClient(
+      supabaseUrl,
+      serviceRoleKey || anonKey!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    )
+
+    // 🔒 获取用户上下文，用于权限验证和数据隔离
+    const userContext = await getUserContext(request)
+    
+    if (!userContext) {
+      console.error("[更新报修API] ❌ 获取用户上下文失败: 用户上下文为 null")
+      return NextResponse.json(
+        {
+          success: false,
+          error: "未授权",
+          details: "请先登录",
+        },
+        { status: 401 }
+      )
+    }
+    
+    console.log("[更新报修API] ✅ 用户上下文获取成功:", {
+      role: userContext.role,
+      companyId: userContext.companyId,
+      userId: userContext.userId
+    })
 
     const body = await request.json()
     

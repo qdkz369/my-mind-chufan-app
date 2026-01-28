@@ -124,56 +124,151 @@ ALTER TABLE device_ownerships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rental_contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rental_contract_devices ENABLE ROW LEVEL SECURITY;
 
--- device_ownerships RLS 策略
+-- device_ownerships RLS 策略 (基于公司隔离)
 DROP POLICY IF EXISTS "Allow all select on device_ownerships" ON device_ownerships;
-CREATE POLICY "Allow all select on device_ownerships"
+CREATE POLICY "device_ownerships_company_isolation_select"
   ON device_ownerships FOR SELECT
-  USING (true);
+  TO authenticated
+  USING (
+    -- 通过设备查询关联公司
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  );
 
 DROP POLICY IF EXISTS "Allow all insert on device_ownerships" ON device_ownerships;
-CREATE POLICY "Allow all insert on device_ownerships"
+CREATE POLICY "device_ownerships_company_isolation_insert"
   ON device_ownerships FOR INSERT
-  WITH CHECK (true);
+  TO authenticated
+  WITH CHECK (
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  );
 
 DROP POLICY IF EXISTS "Allow all update on device_ownerships" ON device_ownerships;
-CREATE POLICY "Allow all update on device_ownerships"
+CREATE POLICY "device_ownerships_company_isolation_update"
   ON device_ownerships FOR UPDATE
-  USING (true)
-  WITH CHECK (true);
+  TO authenticated
+  USING (
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    device_id IN (
+      SELECT d.device_id 
+      FROM devices d 
+      JOIN restaurants r ON d.restaurant_id = r.id 
+      WHERE r.user_id = auth.uid()
+    )
+  );
 
--- rental_contracts RLS 策略
+-- rental_contracts RLS 策略 (基于餐厅隔离)
 DROP POLICY IF EXISTS "Allow all select on rental_contracts" ON rental_contracts;
-CREATE POLICY "Allow all select on rental_contracts"
+CREATE POLICY "rental_contracts_company_isolation_select"
   ON rental_contracts FOR SELECT
-  USING (true);
+  TO authenticated
+  USING (
+    lessee_restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  );
 
 DROP POLICY IF EXISTS "Allow all insert on rental_contracts" ON rental_contracts;
-CREATE POLICY "Allow all insert on rental_contracts"
+CREATE POLICY "rental_contracts_company_isolation_insert"
   ON rental_contracts FOR INSERT
-  WITH CHECK (true);
+  TO authenticated
+  WITH CHECK (
+    lessee_restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  );
 
 DROP POLICY IF EXISTS "Allow all update on rental_contracts" ON rental_contracts;
-CREATE POLICY "Allow all update on rental_contracts"
+CREATE POLICY "rental_contracts_company_isolation_update"
   ON rental_contracts FOR UPDATE
-  USING (true)
-  WITH CHECK (true);
+  TO authenticated
+  USING (
+    lessee_restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    lessee_restaurant_id IN (
+      SELECT id FROM restaurants WHERE user_id = auth.uid()
+    )
+  );
 
--- rental_contract_devices RLS 策略
+-- rental_contract_devices RLS 策略 (基于合同隔离)
 DROP POLICY IF EXISTS "Allow all select on rental_contract_devices" ON rental_contract_devices;
-CREATE POLICY "Allow all select on rental_contract_devices"
+CREATE POLICY "rental_contract_devices_company_isolation_select"
   ON rental_contract_devices FOR SELECT
-  USING (true);
+  TO authenticated
+  USING (
+    rental_contract_id IN (
+      SELECT id FROM rental_contracts 
+      WHERE lessee_restaurant_id IN (
+        SELECT id FROM restaurants WHERE user_id = auth.uid()
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS "Allow all insert on rental_contract_devices" ON rental_contract_devices;
-CREATE POLICY "Allow all insert on rental_contract_devices"
+CREATE POLICY "rental_contract_devices_company_isolation_insert"
   ON rental_contract_devices FOR INSERT
-  WITH CHECK (true);
+  TO authenticated
+  WITH CHECK (
+    rental_contract_id IN (
+      SELECT id FROM rental_contracts 
+      WHERE lessee_restaurant_id IN (
+        SELECT id FROM restaurants WHERE user_id = auth.uid()
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS "Allow all update on rental_contract_devices" ON rental_contract_devices;
-CREATE POLICY "Allow all update on rental_contract_devices"
+CREATE POLICY "rental_contract_devices_company_isolation_update"
   ON rental_contract_devices FOR UPDATE
-  USING (true)
-  WITH CHECK (true);
+  TO authenticated
+  USING (
+    rental_contract_id IN (
+      SELECT id FROM rental_contracts 
+      WHERE lessee_restaurant_id IN (
+        SELECT id FROM restaurants WHERE user_id = auth.uid()
+      )
+    )
+  )
+  WITH CHECK (
+    rental_contract_id IN (
+      SELECT id FROM rental_contracts 
+      WHERE lessee_restaurant_id IN (
+        SELECT id FROM restaurants WHERE user_id = auth.uid()
+      )
+    )
+  );
+
+-- Service role 完全访问策略
+CREATE POLICY "Service role full access to device_ownerships"
+ON device_ownerships FOR ALL TO service_role
+USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access to rental_contracts"
+ON rental_contracts FOR ALL TO service_role
+USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access to rental_contract_devices"
+ON rental_contract_devices FOR ALL TO service_role
+USING (true) WITH CHECK (true);
 
 -- ============================================
 -- 6️⃣ 验证表创建

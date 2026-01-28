@@ -34,7 +34,7 @@ function PaymentCallbackContent() {
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
       <Header />
       <div className="container mx-auto px-4 py-12">
-        <Card className="max-w-md mx-auto bg-slate-900/90 border-slate-700/50 backdrop-blur-sm p-8">
+        <Card semanticLevel="action" className="max-w-md mx-auto bg-slate-900/90 border-slate-700/50 backdrop-blur-sm p-8">
           <div className="text-center space-y-6">
             {status === 'loading' && (
               <>

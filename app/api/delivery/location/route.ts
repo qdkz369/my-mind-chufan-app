@@ -24,6 +24,17 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const deliveryId = searchParams.get("deliveryId") || "default" // 默认配送员ID
 
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      // 如果 supabase 不可用，返回默认位置
+      return NextResponse.json({
+        lat: 25.0389,
+        lon: 102.7183,
+        deliveryId: deliveryId,
+        isDefault: true,
+      })
+    }
+
     // 从数据库获取配送员实时位置
     const { data, error } = await supabase
       .from("delivery_locations")
@@ -88,6 +99,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "缺少必要参数: deliveryId, lat, lon" },
         { status: 400 }
+      )
+    }
+
+    // 检查 supabase 客户端是否可用
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "数据库连接失败" },
+        { status: 500 }
       )
     }
 

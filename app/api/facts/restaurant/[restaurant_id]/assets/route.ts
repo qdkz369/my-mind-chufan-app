@@ -51,14 +51,14 @@
  * - 返回 AssetFact[] 列表
  */
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { AssetFact } from "@/lib/facts/types"
 import { AssetFactContract } from "@/lib/facts/contracts/order.fact"
 import { verifyFactAccess } from "@/lib/auth/facts-auth"
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ restaurant_id: string }> }
 ) {
   try {
@@ -108,10 +108,21 @@ export async function GET(
     }
 
     // 2. 为每个设备查询最后一次操作（从 trace_logs 中获取）
+    // 注意：supabase 已经在函数开头检查，这里可以安全使用
+    if (!supabase) {
+      return NextResponse.json({
+        success: true,
+        assets: [],
+      })
+    }
+
+    // 将 supabase 赋值给局部常量，确保 TypeScript 类型收窄
+    const supabaseClient = supabase
+
     const assetsWithTraces = await Promise.all(
       devicesData.map(async (device) => {
         // 查询该设备的最后一次操作（从 trace_logs 中）
-        const { data: lastTrace, error: lastTraceError } = await supabase
+        const { data: lastTrace, error: lastTraceError } = await supabaseClient
           .from("trace_logs")
           .select("action_type, created_at")
           .eq("asset_id", device.device_id)

@@ -224,7 +224,7 @@ export default function SupplierUploadPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 py-8">
       <div className="container mx-auto px-4 max-w-4xl">
-        <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-white mb-2">上传设备产品</h1>
             <p className="text-slate-400">填写设备信息，提交后等待管理员审核</p>

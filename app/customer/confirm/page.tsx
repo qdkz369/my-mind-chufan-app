@@ -53,6 +53,9 @@ export default function CustomerConfirmPage() {
       return
     }
 
+    // 将 supabase 赋值给局部常量，确保 TypeScript 类型收窄
+    const supabaseClient = supabase
+
     const loadInfo = async () => {
       try {
         setIsLoading(true)
@@ -62,7 +65,7 @@ export default function CustomerConfirmPage() {
         if (orderId) {
           // 查询订单（需要判断是报修工单还是配送订单）
           // 先尝试查询 delivery_orders（配送订单）
-          let { data: orderData, error: orderError } = await supabase
+          let { data: orderData, error: orderError } = await supabaseClient
             .from("delivery_orders")
             .select("*")
             .eq("id", orderId)
@@ -70,7 +73,7 @@ export default function CustomerConfirmPage() {
           
           // 如果 delivery_orders 中不存在，尝试查询 repair_orders（报修工单）
           if (orderError || !orderData) {
-            const repairResult = await supabase
+            const repairResult = await supabaseClient
               .from("repair_orders")
               .select("*")
               .eq("id", orderId)
@@ -101,7 +104,7 @@ export default function CustomerConfirmPage() {
 
           // 查询餐厅信息
           if (orderData.restaurant_id) {
-            const { data: restaurantData } = await supabase
+            const { data: restaurantData } = await supabaseClient
               .from("restaurants")
               .select("id, name, contact_name, contact_phone, address")
               .eq("id", orderData.restaurant_id)
@@ -114,7 +117,7 @@ export default function CustomerConfirmPage() {
 
           // 查询设备信息（如果有）
           if (orderData.restaurant_id) {
-            const { data: deviceData } = await supabase
+            const { data: deviceData } = await supabaseClient
               .from("devices")
               .select("device_id, model, address, installer, install_date")
               .eq("restaurant_id", orderData.restaurant_id)
@@ -138,7 +141,7 @@ export default function CustomerConfirmPage() {
         }
 
         // 查询餐厅信息
-        const { data: restaurantData } = await supabase
+        const { data: restaurantData } = await supabaseClient
           .from("restaurants")
           .select("id, name, contact_name, contact_phone, address")
           .eq("id", restaurantId)
@@ -149,7 +152,7 @@ export default function CustomerConfirmPage() {
         }
 
         // 查询待确认的设备（状态为 online 或 pending_acceptance）
-        const { data: devicesData, error: devicesError } = await supabase
+        const { data: devicesData, error: devicesError } = await supabaseClient
           .from("devices")
           .select("device_id, model, address, installer, install_date, status, created_at")
           .eq("restaurant_id", restaurantId)
@@ -236,8 +239,11 @@ export default function CustomerConfirmPage() {
         throw new Error("缺少必要信息")
       }
 
+      // 将 supabase 赋值给局部常量，确保 TypeScript 类型收窄
+      const supabaseClientForUpdate = supabase
+
       // 更新设备状态为 active
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseClientForUpdate
         .from("devices")
         .update({
           status: "active",
@@ -290,7 +296,7 @@ export default function CustomerConfirmPage() {
   if (error && !order) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center p-4">
-        <Card className="bg-slate-900/90 border-red-500/50 p-6 max-w-md w-full">
+        <Card semanticLevel="system_hint" className="bg-slate-900/90 border-red-500/50 p-6 max-w-md w-full">
           <div className="flex items-center gap-3 mb-4">
             <AlertCircle className="h-6 w-6 text-red-400" />
             <h2 className="text-xl font-bold text-white">加载失败</h2>
@@ -328,7 +334,7 @@ export default function CustomerConfirmPage() {
       <div className="container mx-auto px-4 py-6 space-y-6">
         {/* 成功提示 */}
         {success && (
-          <Card className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-6">
+          <Card semanticLevel="action" className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-6">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="h-8 w-8 text-green-400" />
               <div>
@@ -341,7 +347,7 @@ export default function CustomerConfirmPage() {
 
         {/* 错误提示 */}
         {error && (
-          <Card className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
+          <Card semanticLevel="system_hint" className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-red-400" />
               <p className="text-sm text-red-400">{error}</p>
@@ -351,7 +357,7 @@ export default function CustomerConfirmPage() {
 
         {/* 订单信息 */}
         {order && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
@@ -391,7 +397,7 @@ export default function CustomerConfirmPage() {
 
         {/* 餐厅信息 */}
         {restaurant && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <Card semanticLevel="secondary_fact" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center">
                 <Building2 className="h-5 w-5 text-white" />
@@ -428,7 +434,7 @@ export default function CustomerConfirmPage() {
 
         {/* 待确认设备列表 */}
         {!orderId && pendingDevices.length > 0 && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
                 <Package className="h-5 w-5 text-white" />
@@ -440,6 +446,7 @@ export default function CustomerConfirmPage() {
               {pendingDevices.map((dev) => (
                 <Card
                   key={dev.device_id}
+                  semanticLevel="secondary_fact"
                   className={`p-4 cursor-pointer transition-all ${
                     device?.device_id === dev.device_id
                       ? "bg-blue-500/20 border-blue-500/50"
@@ -505,7 +512,7 @@ export default function CustomerConfirmPage() {
 
         {/* 设备信息（已选择的设备或订单关联的设备） */}
         {device && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <Card semanticLevel="primary_fact" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
                 <Package className="h-5 w-5 text-white" />
@@ -553,7 +560,7 @@ export default function CustomerConfirmPage() {
 
         {/* 确认按钮 */}
         {!success && device && (
-          <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+          <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
             <Button
               onClick={() => handleConfirm()}
               disabled={isSubmitting || success}
@@ -581,7 +588,7 @@ export default function CustomerConfirmPage() {
 
         {/* 提示：如果没有选择设备 */}
         {!success && !orderId && !device && pendingDevices.length > 0 && (
-          <Card className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border-yellow-500/30 p-4">
+          <Card semanticLevel="system_hint" className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border-yellow-500/30 p-4">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-yellow-400" />
               <p className="text-sm text-yellow-400">请从上方列表中选择要确认的设备</p>

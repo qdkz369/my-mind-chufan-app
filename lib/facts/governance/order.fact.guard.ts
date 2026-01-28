@@ -21,74 +21,15 @@
 
 import { OrderFactContract, TraceFactContract } from "@/lib/facts/contracts/order.fact"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import type { 
+  FactWarning, 
+  FactWarningLevel, 
+  FactWarningDomain, 
+  FactWarningCode 
+} from "@/lib/facts/types"
 
-/**
- * 事实警告级别
- */
-export type FactWarningLevel = 'low' | 'medium' | 'high'
-
-/**
- * 事实警告领域
- */
-export type FactWarningDomain = 'order' | 'trace' | 'audit'
-
-/**
- * 事实警告代码
- */
-export type FactWarningCode =
-  | 'FACT_ACCEPTED_AT_MISSING_AUDIT_LOG'
-  | 'FACT_TIME_INVERSION'
-  | 'FACT_ENUM_VALUE_INVALID'
-  | 'FACT_TIMELINE_BREAK'
-  | 'FACT_TIMELINE_ANOMALY'
-
-/**
- * 结构化事实警告
- * 
- * 用于后续：
- * - 管理端治理列表
- * - 自动修复任务
- * - 事实健康度可视化
- */
-export type FactWarning = {
-  /**
-   * 警告代码（唯一标识符）
-   */
-  code: FactWarningCode
-
-  /**
-   * 警告级别
-   * - low: 可能是合理的异常（如订单创建前的资产操作）
-   * - medium: 数据不一致（如枚举值不在允许范围内）
-   * - high: 严重的事实违反（如时间逻辑异常）
-   */
-  level: FactWarningLevel
-
-  /**
-   * 警告领域
-   * - order: 订单相关
-   * - trace: 溯源相关
-   * - audit: 审计日志相关
-   */
-  domain: FactWarningDomain
-
-  /**
-   * 人类可读的警告消息
-   */
-  message: string
-
-  /**
-   * 相关字段列表（用于定位问题）
-   * 例如：['order.completed_at', 'order.created_at']
-   */
-  fields: string[]
-
-  /**
-   * 原始值快照（只读，用于调试和修复）
-   * 包含触发警告的相关数据
-   */
-  evidence?: any
-}
+// 重新导出类型以便向后兼容
+export type { FactWarning, FactWarningLevel, FactWarningDomain, FactWarningCode }
 
 /**
  * 订单事实治理结果
@@ -150,6 +91,23 @@ export type OrderFactGovernanceContext = {
    * - value: device_id（如果 asset_id 在 devices 表中存在，则为 device_id；否则为 null）
    */
   assetIdToDeviceIdMap?: Record<string, string | null>
+}
+
+/**
+ * 从 assetIdToDeviceIdMap 中获取 device_id（best-effort）
+ * 
+ * @param assetId 资产ID
+ * @param assetIdToDeviceIdMap asset_id 到 device_id 的映射
+ * @returns device_id（如果存在），否则返回 null
+ */
+function getDeviceId(
+  assetId: string,
+  assetIdToDeviceIdMap?: Record<string, string | null>
+): string | null {
+  if (!assetIdToDeviceIdMap || !assetId) {
+    return null
+  }
+  return assetIdToDeviceIdMap[assetId] ?? null
 }
 
 /**

@@ -91,7 +91,7 @@ export default function UserUnboundPage() {
       
       {/* 设备绑定提示 */}
       <div className="container mx-auto px-4 py-4">
-        <Card className="glass-breath p-4 mb-6">
+        <Card semanticLevel="system_hint" className="glass-breath p-4 mb-6">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 bg-primary/20 flex items-center justify-center flex-shrink-0" style={{ borderRadius: 'var(--radius-button)' }}>
               <Settings className="h-5 w-5 text-primary" />

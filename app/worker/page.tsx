@@ -382,7 +382,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
 
       {/* 成功提示 - 带动画 */}
       {submitSuccess && (
-        <Card className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-75"></div>
@@ -398,7 +398,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
 
       {/* 错误提示 */}
       {error && (
-        <Card className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
+        <Card semanticLevel="system_hint" className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
           <div className="flex items-center gap-3">
             <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
               <span className="text-white text-xs font-bold">!</span>
@@ -412,7 +412,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
       )}
 
       {/* 扫码登记表单 */}
-      <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+      <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
             <QrCode className="h-6 w-6 text-white" />
@@ -647,6 +647,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
                 {deviceList.map((device) => (
                   <Card
                     key={device.id}
+                    semanticLevel="secondary_fact"
                     className="bg-slate-800/50 border-slate-700 p-3 flex items-center justify-between"
                   >
                     <div className="flex-1">
@@ -817,7 +818,7 @@ function InstallForm({ onBack, workerId }: { onBack: () => void; workerId?: stri
       </Card>
 
       {/* 使用说明 */}
-      <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4">
+              <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500/20 to-cyan-600/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
             <Smartphone className="h-4 w-4 text-blue-400" />
@@ -878,7 +879,7 @@ function NewCustomerPrompt({ restaurantInfo, onBindDevice, onBack }: {
 }) {
   return (
     <div className="space-y-4">
-      <Card className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30 shadow-lg shadow-yellow-500/20 p-6">
+      <Card semanticLevel="system_hint" className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30 shadow-lg shadow-yellow-500/20 p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/30">
             <User className="h-6 w-6 text-white" />
@@ -1016,7 +1017,7 @@ function BindDevicePage({ restaurantInfo, onComplete, onBack }: {
 
   return (
     <div className="space-y-4">
-      <Card className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6">
+      <Card semanticLevel="primary_fact" className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
             <Package className="h-6 w-6 text-white" />
@@ -1260,7 +1261,7 @@ function NewCustomerInstallGuide({ restaurantInfo, onComplete, onBack, workerId 
 
   return (
     <div className="space-y-4">
-      <Card className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6">
+      <Card semanticLevel="primary_fact" className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
             <Package className="h-6 w-6 text-white" />
@@ -1816,7 +1817,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 成功提示 - 带动画 */}
       {submitSuccess && (
-        <Card className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-75"></div>
@@ -1832,7 +1833,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 错误提示 */}
       {error && (
-        <Card className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
+        <Card semanticLevel="system_hint" className="bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/30 p-4">
           <div className="flex items-center gap-3">
             <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
               <span className="text-white text-xs font-bold">!</span>
@@ -1868,7 +1869,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 步骤0: 选择订单或扫描餐厅 */}
       {step === "select_order" && (
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
               <Package className="h-6 w-6 text-white" />
@@ -1904,7 +1905,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 订单列表（从订单列表选择） */}
       {step === "order_list" && (
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
               <Package className="h-6 w-6 text-white" />
@@ -1941,7 +1942,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 配送证明步骤（扫码+拍照） */}
       {step === "delivery_proof" && selectedOrder && (
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30">
               <CheckCircle2 className="h-6 w-6 text-white" />
@@ -2139,7 +2140,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 步骤1: 扫描餐厅二维码 */}
       {step === "scan_restaurant" && (
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
               <QrCode className="h-6 w-6 text-white" />
@@ -2200,7 +2201,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
       {step === "device_list" && restaurantInfo && (
         <div className="space-y-4">
           {/* 餐厅信息卡片 */}
-          <Card className="bg-gradient-to-br from-blue-500/20 to-cyan-600/20 border-blue-500/30 p-4">
+          <Card semanticLevel="system_hint" className="bg-gradient-to-br from-blue-500/20 to-cyan-600/20 border-blue-500/30 p-4">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-lg font-semibold text-white">{restaurantInfo.name}</div>
@@ -2224,7 +2225,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
           {/* 设备列表 */}
           {devices.length === 0 ? (
-            <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+            <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
               <div className="text-center py-8">
                 <Package className="h-12 w-12 text-slate-500 mx-auto mb-4" />
                 <div className="text-slate-400">该餐厅暂无设备</div>
@@ -2235,6 +2236,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
               {devices.map((device) => (
                 <Card
                   key={device.device_id}
+                  semanticLevel="secondary_fact"
                   className="bg-slate-900/50 border-slate-800/50 backdrop-blur-sm p-4 hover:bg-slate-800/50 transition-colors"
                 >
                   <div className="flex items-center justify-between">
@@ -2298,7 +2300,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 步骤3: 扫描钢瓶二维码（仅 cylinder 场景） */}
       {step === "cylinder_scan" && selectedDevice && (
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
               <Package className="h-6 w-6 text-white" />
@@ -2376,7 +2378,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 步骤4: 填写配送信息 */}
       {step === "filling" && selectedDevice && (
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30">
               <CheckCircle2 className="h-6 w-6 text-white" />
@@ -2509,7 +2511,7 @@ function DeliveryForm({ onBack, workerId }: { onBack: () => void; workerId?: str
 
       {/* 使用说明（仅在扫描餐厅阶段显示） */}
       {step === "scan_restaurant" && (
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 bg-gradient-to-br from-orange-500/20 to-red-600/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <Smartphone className="h-4 w-4 text-orange-400" />
@@ -2559,7 +2561,7 @@ function ComingSoon({ title, description, onBack }: { title: string; description
         返回首页
       </Button>
 
-      <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-12">
+      <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-12">
         <div className="text-center space-y-4">
           <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-600/20 rounded-full flex items-center justify-center mx-auto">
             <AlertCircle className="h-10 w-10 text-blue-400" />
@@ -2630,10 +2632,27 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
     setShowQRScanner(false)
   }
 
+  // 验证设备序列号并继续
+  const handleVerifyDevice = () => {
+    if (!deviceSn.trim()) {
+      setError("请输入设备序列号")
+      return
+    }
+
+    if (!selectedRental) {
+      setError("请先选择租赁订单")
+      return
+    }
+
+    // 验证通过，继续到拍照步骤
+    setError("")
+    setStep("photo")
+  }
+
   // 选择订单（直接选择订单，不需要扫码）
   const handleSelectRental = (rental: any) => {
     setSelectedRental(rental)
-    setStep("photo")
+    setStep("scan")
     setError("")
   }
 
@@ -2773,7 +2792,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
     return (
       <div className="space-y-3">
         <Label className="text-slate-300">客户电子签名 *</Label>
-        <Card className="bg-slate-800/50 border-slate-700 p-4">
+        <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700 p-4">
           <canvas
             ref={canvasRef}
             width={400}
@@ -2812,7 +2831,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
   if (step === "list") {
     return (
       <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <h2 className="text-xl font-bold text-white mb-4">待交付租赁单</h2>
 
           {isLoadingRentals ? (
@@ -2830,6 +2849,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
               {pendingRentals.map((rental) => (
                 <Card
                   key={rental.id}
+                  semanticLevel="secondary_fact"
                   className="bg-slate-800/50 border-slate-700 p-4 hover:border-cyan-500/50 transition-all cursor-pointer"
                   onClick={() => handleSelectRental(rental)}
                 >
@@ -2880,7 +2900,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
   if (step === "scan") {
     return (
       <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <Button variant="ghost" size="icon" onClick={() => setStep("list")} className="text-white">
               <ArrowLeft className="h-5 w-5" />
@@ -2949,7 +2969,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
   if (step === "photo") {
     return (
       <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <Button variant="ghost" size="icon" onClick={() => setStep("list")} className="text-white">
               <ArrowLeft className="h-5 w-5" />
@@ -3019,7 +3039,7 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
   if (step === "signature") {
     return (
       <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+        <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
           <div className="flex items-center gap-3 mb-6">
             <Button variant="ghost" size="icon" onClick={() => setStep("photo")} className="text-white">
               <ArrowLeft className="h-5 w-5" />
@@ -3468,7 +3488,7 @@ export default function WorkerPage() {
       {/* 登录对话框 */}
       {isLoginDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <Card className="w-full max-w-md bg-slate-900 border-slate-700 p-6">
+          <Card semanticLevel="action" className="w-full max-w-md bg-slate-900 border-slate-700 p-6">
             <div className="space-y-4">
               <div className="text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -3552,7 +3572,7 @@ export default function WorkerPage() {
           {currentView === "home" && (
             <div className="space-y-6">
               {/* 欢迎卡片 */}
-              <Card className="glass-breath p-6">
+              <Card semanticLevel="system_hint" className="glass-breath p-6">
                 <div className="text-center space-y-2">
                   <div className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mx-auto shadow-lg shadow-primary/30" style={{ borderRadius: '50%' }}>
                     <Package className="h-8 w-8 text-primary-foreground" />
@@ -3567,6 +3587,7 @@ export default function WorkerPage() {
                 {/* 设备安装 - 仅安装工可见 */}
                 {workerInfo?.worker_types?.includes("install") && (
                   <Card
+                    semanticLevel="action"
                     className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
                     onClick={() => setCurrentView("install")}
                   >
@@ -3586,6 +3607,7 @@ export default function WorkerPage() {
                 {/* 待接单订单 - 仅配送员可见 */}
                 {workerInfo?.worker_types?.includes("delivery") && (
                   <Card
+                    semanticLevel="action"
                     className="bg-slate-900/40 backdrop-blur-md border border-orange-500/30 shadow-lg shadow-orange-500/20 p-6 hover:scale-[1.02] hover:shadow-orange-500/30 transition-all cursor-pointer"
                     onClick={() => setCurrentView("orders")}
                   >
@@ -3605,6 +3627,7 @@ export default function WorkerPage() {
                 {/* 燃料配送 - 仅配送员可见 */}
                 {workerInfo?.worker_types?.includes("delivery") && (
                   <Card
+                    semanticLevel="action"
                     className="bg-slate-900/40 backdrop-blur-md border border-blue-500/30 shadow-lg shadow-blue-500/20 p-6 hover:scale-[1.02] hover:shadow-blue-500/30 transition-all cursor-pointer"
                     onClick={() => setCurrentView("delivery")}
                   >
@@ -3624,6 +3647,7 @@ export default function WorkerPage() {
                 {/* 故障维修 - 仅维修工可见 */}
                 {workerInfo?.worker_types?.includes("repair") && (
                   <Card
+                    semanticLevel="action"
                     className="bg-slate-900/40 backdrop-blur-md border border-purple-500/30 shadow-lg shadow-purple-500/20 p-6 hover:scale-[1.02] hover:shadow-purple-500/30 transition-all cursor-pointer"
                     onClick={() => setCurrentView("repair")}
                   >
@@ -3642,6 +3666,7 @@ export default function WorkerPage() {
 
                 {/* 设备交付助手 - 所有工人都可以使用 */}
                 <Card
+                  semanticLevel="action"
                   className="bg-slate-900/40 backdrop-blur-md border border-cyan-500/30 shadow-lg shadow-cyan-500/20 p-6 hover:scale-[1.02] hover:shadow-cyan-500/30 transition-all cursor-pointer"
                   onClick={() => setCurrentView("rental_delivery")}
                 >
@@ -3659,7 +3684,7 @@ export default function WorkerPage() {
 
                 {/* 如果没有任何权限，显示提示 */}
                 {(!workerInfo || !workerInfo.worker_types || workerInfo.worker_types.length === 0) && (
-                  <Card className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 p-6">
+                  <Card semanticLevel="system_hint" className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 p-6">
                     <div className="text-center">
                       <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-3" />
                       <h3 className="text-lg font-semibold text-white mb-2">暂无可用功能</h3>
@@ -3678,7 +3703,7 @@ export default function WorkerPage() {
               </div>
 
               {/* 使用说明 */}
-              <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4">
+              <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4">
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-blue-500/20 to-cyan-600/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                     <Smartphone className="h-4 w-4 text-blue-400" />
@@ -3711,7 +3736,7 @@ export default function WorkerPage() {
 
           {currentView === "orders" && (
             <div className="space-y-6">
-              <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+              <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
                     <Package className="h-6 w-6 text-white" />
@@ -3803,7 +3828,7 @@ export default function WorkerPage() {
 
           {currentView === "repair" && workerInfo?.worker_types?.includes("repair") ? (
             <div className="space-y-6">
-              <Card className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
+              <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/30">
                     <Wrench className="h-6 w-6 text-white" />

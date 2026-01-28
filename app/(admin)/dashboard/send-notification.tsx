@@ -86,7 +86,7 @@ export function SendNotification({ restaurants = [] }: SendNotificationProps) {
   }
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700">
+    <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700">
       <CardHeader>
         <CardTitle className="text-white">发送通知</CardTitle>
         <CardDescription className="text-slate-400">

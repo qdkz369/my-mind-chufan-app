@@ -6,14 +6,29 @@
  * DELETE /api/agreements/[id] - 删除协议
  */
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getUserContext } from "@/lib/auth/user-context"
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 权限验证：确保用户已登录
+    const userContext = await getUserContext(request)
+    
+    if (!userContext) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "未授权",
+          details: "请先登录",
+        },
+        { status: 401 }
+      )
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -21,8 +36,13 @@ export async function GET(
     const keyToUse = serviceRoleKey || anonKey
     
     if (!supabaseUrl || !keyToUse) {
+      console.error("[协议管理API] Supabase URL 或密钥未配置")
       return NextResponse.json(
-        { error: "数据库配置错误" },
+        { 
+          success: false,
+          error: "数据库配置错误",
+          details: "缺少 Supabase 环境变量配置"
+        },
         { status: 500 }
       )
     }
@@ -45,13 +65,31 @@ export async function GET(
     if (error) {
       if (error.code === "PGRST116") {
         return NextResponse.json(
-          { error: "协议不存在" },
+          { 
+            success: false,
+            error: "协议不存在" 
+          },
           { status: 404 }
         )
       }
       console.error("[协议管理API] 查询失败:", error)
+      // 如果表不存在，返回 404
+      if (error.code === "42P01" || error.message?.includes("does not exist")) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "协议不存在",
+            details: "agreements 表不存在，请先执行数据库迁移脚本"
+          },
+          { status: 404 }
+        )
+      }
       return NextResponse.json(
-        { error: "查询协议失败", details: error.message },
+        { 
+          success: false,
+          error: "查询协议失败", 
+          details: error.message 
+        },
         { status: 500 }
       )
     }
@@ -70,10 +108,36 @@ export async function GET(
 }
 
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 权限验证：确保用户已登录且是管理员
+    const userContext = await getUserContext(request)
+    
+    if (!userContext) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "未授权",
+          details: "请先登录",
+        },
+        { status: 401 }
+      )
+    }
+
+    // 检查是否是管理员
+    if (userContext.role !== "super_admin" && userContext.role !== "platform_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "仅管理员可更新协议",
+        },
+        { status: 403 }
+      )
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -81,8 +145,13 @@ export async function PUT(
     const keyToUse = serviceRoleKey || anonKey
     
     if (!supabaseUrl || !keyToUse) {
+      console.error("[协议管理API] Supabase URL 或密钥未配置")
       return NextResponse.json(
-        { error: "数据库配置错误" },
+        { 
+          success: false,
+          error: "数据库配置错误",
+          details: "缺少 Supabase 环境变量配置"
+        },
         { status: 500 }
       )
     }
@@ -156,8 +225,23 @@ export async function PUT(
 
     if (error) {
       console.error("[协议管理API] 更新失败:", error)
+      // 如果表不存在，提示用户执行迁移脚本
+      if (error.code === "42P01" || error.message?.includes("does not exist")) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "更新协议失败", 
+            details: "agreements 表不存在，请先执行数据库迁移脚本：migrations/20250121_agreements_table.sql"
+          },
+          { status: 500 }
+        )
+      }
       return NextResponse.json(
-        { error: "更新协议失败", details: error.message },
+        { 
+          success: false,
+          error: "更新协议失败", 
+          details: error.message 
+        },
         { status: 500 }
       )
     }
@@ -176,10 +260,36 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 权限验证：确保用户已登录且是管理员
+    const userContext = await getUserContext(request)
+    
+    if (!userContext) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "未授权",
+          details: "请先登录",
+        },
+        { status: 401 }
+      )
+    }
+
+    // 检查是否是管理员
+    if (userContext.role !== "super_admin" && userContext.role !== "platform_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "仅管理员可删除协议",
+        },
+        { status: 403 }
+      )
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -187,8 +297,13 @@ export async function DELETE(
     const keyToUse = serviceRoleKey || anonKey
     
     if (!supabaseUrl || !keyToUse) {
+      console.error("[协议管理API] Supabase URL 或密钥未配置")
       return NextResponse.json(
-        { error: "数据库配置错误" },
+        { 
+          success: false,
+          error: "数据库配置错误",
+          details: "缺少 Supabase 环境变量配置"
+        },
         { status: 500 }
       )
     }
@@ -209,8 +324,23 @@ export async function DELETE(
 
     if (error) {
       console.error("[协议管理API] 删除失败:", error)
+      // 如果表不存在，提示用户执行迁移脚本
+      if (error.code === "42P01" || error.message?.includes("does not exist")) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "删除协议失败", 
+            details: "agreements 表不存在，请先执行数据库迁移脚本：migrations/20250121_agreements_table.sql"
+          },
+          { status: 500 }
+        )
+      }
       return NextResponse.json(
-        { error: "删除协议失败", details: error.message },
+        { 
+          success: false,
+          error: "删除协议失败", 
+          details: error.message 
+        },
         { status: 500 }
       )
     }

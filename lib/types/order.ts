@@ -43,7 +43,7 @@ export interface Order {
 /**
  * 订单状态流转规则
  */
-export const OrderStatusFlow = {
+export const OrderStatusFlow: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.PENDING_INSTALL]: [OrderStatus.PENDING_ACCEPTANCE],
   [OrderStatus.PENDING_ACCEPTANCE]: [OrderStatus.ACTIVE],
   [OrderStatus.ACTIVE]: [OrderStatus.PROCESSING],

@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * POST: 创建产品库条目（供应商上传产品）
@@ -17,6 +18,7 @@ import { createClient } from "@supabase/supabase-js"
  * - description: 描述
  * - specifications: 规格（JSONB）
  * - images: 图片URL数组
+ * - video_url: 视频URL（可选，用于设备展示视频）
  * - category_id: 分类ID
  * - monthly_rental_price: 月租金（必需）
  * - daily_rental_price: 日租金
@@ -29,6 +31,56 @@ import { createClient } from "@supabase/supabase-js"
  */
 export async function POST(request: Request) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[产品库创建API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -81,6 +133,7 @@ export async function POST(request: Request) {
       description,
       specifications,
       images = [],
+      video_url,
       category_id,
       monthly_rental_price,
       daily_rental_price,
@@ -113,6 +166,7 @@ export async function POST(request: Request) {
       description: description || null,
       specifications: specifications || null,
       images: images || [],
+      video_url: video_url || null,
       category_id: category_id || null,
       monthly_rental_price,
       daily_rental_price: daily_rental_price || null,

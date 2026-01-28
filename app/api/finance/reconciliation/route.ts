@@ -4,9 +4,9 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：财务对账功能
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getCurrentCompanyId } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * GET: 财务对账
@@ -17,8 +17,58 @@ import { getCurrentCompanyId } from "@/lib/multi-tenant"
  * - restaurant_id: 餐厅ID（可选）
  * - order_status: 订单状态（可选）
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[财务对账API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -63,9 +113,9 @@ export async function GET(request: Request) {
       return date.toISOString().split("T")[0]
     })()
 
-    // 多租户隔离：获取当前用户的 company_id
-    const currentCompanyId = await getCurrentCompanyId(request)
-    const finalProviderId = providerId || currentCompanyId
+    // P0修复：统一 company_id 来源：使用 getUserContext
+    const currentCompanyId = userContext.companyId
+    const finalProviderId = providerId || (userContext.role !== "super_admin" ? currentCompanyId : undefined)
 
     // 构建订单查询
     let orderQuery = supabaseClient
@@ -91,9 +141,11 @@ export async function GET(request: Request) {
     orderQuery = orderQuery.gte("created_at", `${startDate}T00:00:00Z`)
     orderQuery = orderQuery.lte("created_at", `${endDate}T23:59:59Z`)
 
-    // 供应商筛选
-    if (finalProviderId) {
+    // 供应商筛选（super_admin 跳过）
+    if (finalProviderId && userContext?.role !== "super_admin") {
       orderQuery = orderQuery.eq("provider_id", finalProviderId)
+    } else if (userContext?.role === "super_admin") {
+      console.log("[财务对账API] Super Admin 访问，不应用供应商筛选")
     }
 
     // 餐厅筛选

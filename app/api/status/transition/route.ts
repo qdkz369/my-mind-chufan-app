@@ -4,10 +4,11 @@
 // TARGET_KEY: Anon Key + RLS
 // 说明：admin/staff 调用，必须强制 company_id 过滤，后续必须迁移到 Anon Key + RLS
 
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { validateStatusTransition, logStatusChange } from "@/lib/status-manager"
-import { getCurrentCompanyId, verifyCompanyAccess } from "@/lib/multi-tenant"
+import { getUserContext } from "@/lib/auth/user-context"
+import { verifyCompanyAccess } from "@/lib/multi-tenant"
 
 /**
  * POST: 统一的状态变更接口
@@ -18,8 +19,58 @@ import { getCurrentCompanyId, verifyCompanyAccess } from "@/lib/multi-tenant"
  * - reason: 变更原因（可选）
  * - user_id: 操作人ID（可选，从 token 获取）
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // P0修复：强制使用统一用户上下文获取用户身份和权限
+    let userContext
+    try {
+      userContext = await getUserContext(request)
+      if (!userContext) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      if (userContext.role === "super_admin") {
+        console.log("[状态变更API] Super Admin 访问，跳过多租户过滤")
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "未知错误"
+      if (errorMessage.includes("未登录")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "请先登录",
+          },
+          { status: 401 }
+        )
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: errorMessage,
+        },
+        { status: 403 }
+      )
+    }
+
+    // P0修复：强制验证 companyId（super_admin 除外）
+    if (!userContext.companyId && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "权限不足",
+          details: "用户未关联任何公司",
+        },
+        { status: 403 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -119,10 +170,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // 多租户权限检查
-    const companyId = await getCurrentCompanyId(request)
-    if (companyId && currentRecord.provider_id) {
-      const hasAccess = await verifyCompanyAccess(user_id || "", companyId)
+    // 多租户权限检查（super_admin 跳过）
+    const companyId = userContext?.companyId
+    const userId = user_id || userContext?.userId || ""
+    if (companyId && currentRecord.provider_id && userContext?.role !== "super_admin") {
+      const hasAccess = await verifyCompanyAccess(userId, companyId)
       if (!hasAccess && currentRecord.provider_id !== companyId) {
         return NextResponse.json(
           {

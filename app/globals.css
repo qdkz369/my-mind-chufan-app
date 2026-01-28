@@ -1463,3 +1463,69 @@ div[class*="bg-zinc-950"] {
   color: #000000 !important;
 }
 
+/* ========== 移动端与桌面端画布一致性优化 ========== */
+/* 确保移动端和桌面端的画布效果保持一致 */
+
+/* 统一容器宽度和内边距 */
+@media (max-width: 767px) {
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* 确保背景渐变在移动端和桌面端一致 */
+body {
+  /* 确保背景在移动端不会因为 fixed 而出现问题 */
+  background-attachment: scroll !important;
+  /* 确保背景覆盖整个视口 */
+  background-position: center center;
+  /* 确保背景在移动端和桌面端显示一致 */
+  -webkit-background-size: cover;
+  -moz-background-size: cover;
+  -o-background-size: cover;
+  background-size: cover;
+}
+
+/* 统一字体渲染，确保移动端和桌面端文字显示一致 */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 确保卡片在移动端和桌面端的圆角比例一致 */
+@media (max-width: 767px) {
+  .rounded-xl {
+    border-radius: 0.75rem;
+  }
+  .rounded-2xl {
+    border-radius: 1rem;
+  }
+}
+
+/* 统一响应式间距，确保移动端和桌面端的视觉比例一致 */
+@media (max-width: 767px) {
+  /* 移动端使用更紧凑的间距 */
+  .space-y-4 > * + * {
+    margin-top: 0.75rem;
+  }
+  .space-y-6 > * + * {
+    margin-top: 1rem;
+  }
+}
+
+/* 确保图片和媒体元素在移动端和桌面端显示一致 */
+img, video, canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* 统一按钮和交互元素的触摸目标大小（移动端最小 44x44px） */
+@media (max-width: 767px) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

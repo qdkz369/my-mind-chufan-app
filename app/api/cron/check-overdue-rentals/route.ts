@@ -156,7 +156,7 @@ export async function POST(request: Request) {
 
       // 记录未归还事件
       for (const order of overdueOrderDetails) {
-        await supabaseClient
+        const { error: eventError } = await supabaseClient
           .from("rental_events")
           .insert({
             rental_order_id: order.id,
@@ -170,9 +170,10 @@ export async function POST(request: Request) {
               auto_marked: true,
             },
           })
-          .catch((err) => {
-            console.error(`[设备未归还检测] 记录事件失败（订单ID: ${order.id}）:`, err)
-          })
+        
+        if (eventError) {
+          console.error(`[设备未归还检测] 记录事件失败（订单ID: ${order.id}）:`, eventError)
+        }
       }
     }
 

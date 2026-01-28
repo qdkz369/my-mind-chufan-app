@@ -56,6 +56,7 @@ export function RecentOrders() {
         {orders.map((order) => (
           <Card
             key={order.id}
+            semanticLevel="action"
             className="theme-card backdrop-blur-sm p-4 hover:opacity-90 transition-all cursor-pointer"
           >
             <div className="flex items-center justify-between">
