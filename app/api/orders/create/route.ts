@@ -331,7 +331,8 @@ export async function POST(request: NextRequest) {
         )
 
         // 使用传入的订单号，如果没有则生成一个
-        const orderNumber = newOrder.order_number || order_number || `FUEL${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+        // 注意：delivery_orders 表没有 order_number 字段，所以不能从 newOrder 中获取
+        const orderNumber = order_number || `FUEL${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`
 
         // 创建 order_main 记录
         const { data: mainOrder, error: mainOrderError } = await adminClient
