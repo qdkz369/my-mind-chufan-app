@@ -66,11 +66,23 @@ export default function OrdersPage() {
         page: pagination.page
       })
 
+      // 获取客户端用户的 restaurantId（如果存在）
+      const restaurantId = typeof window !== "undefined" 
+        ? localStorage.getItem("restaurantId") 
+        : null
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+      
+      // 如果是客户端用户（通过手机号登录），传递 restaurantId 请求头
+      if (restaurantId) {
+        headers["x-restaurant-id"] = restaurantId
+      }
+
       const response = await fetch(`/api/orders/main/list?${params.toString()}`, {
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
       })
 
       console.log(`[订单列表] 📡 API响应状态:`, response.status)
@@ -92,7 +104,7 @@ export default function OrdersPage() {
           } else {
             // 提供更友好的错误提示
             if (response.status === 401) {
-              errorMessage = "🔑 登录状态异常\n\n请刷新页面重新登录，或联系管理员检查账户状态"
+              errorMessage = "🔑 登录状态异常\n\n您的登录会话已过期，请重新登录后重试"
             } else if (response.status === 403) {
               errorMessage = "🚫 权限不足\n\n没有查看订单的权限，请联系管理员分配相应角色"
             } else if (response.status === 500) {
@@ -331,6 +343,18 @@ export default function OrdersPage() {
               )}
               
               <div className="flex justify-center gap-2 flex-wrap">
+                {/* 如果是401错误，优先显示"前往登录"按钮 */}
+                {error.includes('登录状态异常') || error.includes('未授权') ? (
+                  <Button 
+                    onClick={() => window.location.href = '/login'} 
+                    variant="default" 
+                    size="sm"
+                    className="bg-primary hover:bg-primary/90"
+                  >
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    前往登录
+                  </Button>
+                ) : null}
                 <Button 
                   onClick={() => window.location.reload()} 
                   variant="outline" 

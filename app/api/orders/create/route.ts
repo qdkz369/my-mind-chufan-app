@@ -15,45 +15,65 @@ export async function POST(request: NextRequest) {
   try {
     // P0修复：强制使用统一用户上下文获取用户身份和权限
     let userContext
+    let clientRestaurantId: string | null = null
+    
     try {
       userContext = await getUserContext(request)
+      
+      // 如果 getUserContext 失败，尝试客户端用户认证（通过 x-restaurant-id 请求头）
       if (!userContext) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "未授权",
-            details: "请先登录",
-          },
-          { status: 401 }
-        )
-      }
-      if (userContext.role === "super_admin") {
-        console.log("[创建燃料订单API] Super Admin 访问，跳过多租户过滤")
+        clientRestaurantId = request.headers.get("x-restaurant-id")
+        if (clientRestaurantId && clientRestaurantId.trim() !== "") {
+          console.log("[创建燃料订单API] 使用客户端用户认证，restaurant_id:", clientRestaurantId)
+          // 客户端用户认证成功，继续处理（稍后验证 restaurant_id）
+        } else {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "未授权",
+              details: "请先登录",
+            },
+            { status: 401 }
+          )
+        }
+      } else {
+        if (userContext.role === "super_admin") {
+          console.log("[创建燃料订单API] Super Admin 访问，跳过多租户过滤")
+        }
       }
     } catch (error: any) {
       const errorMessage = error.message || "未知错误"
-      if (errorMessage.includes("未登录")) {
+      
+      // 如果 getUserContext 失败，尝试客户端用户认证
+      if (errorMessage.includes("未登录") || !userContext) {
+        clientRestaurantId = request.headers.get("x-restaurant-id")
+        if (clientRestaurantId && clientRestaurantId.trim() !== "") {
+          console.log("[创建燃料订单API] getUserContext 失败，使用客户端用户认证，restaurant_id:", clientRestaurantId)
+          // 客户端用户认证成功，继续处理
+        } else {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "未授权",
+              details: "请先登录",
+            },
+            { status: 401 }
+          )
+        }
+      } else {
         return NextResponse.json(
           {
             success: false,
-            error: "未授权",
-            details: "请先登录",
+            error: "权限不足",
+            details: errorMessage,
           },
-          { status: 401 }
+          { status: 403 }
         )
       }
-      return NextResponse.json(
-        {
-          success: false,
-          error: "权限不足",
-          details: errorMessage,
-        },
-        { status: 403 }
-      )
     }
 
-    // P0修复：强制验证 companyId（super_admin 除外）
-    if (!userContext.companyId && userContext.role !== "super_admin") {
+    // P0修复：强制验证 companyId（super_admin 和客户端用户除外）
+    if (userContext && !userContext.companyId && userContext.role !== "super_admin") {
       return NextResponse.json(
         {
           success: false,
@@ -87,6 +107,20 @@ export async function POST(request: NextRequest) {
       notes, // 备注信息
     } = body
 
+    // 如果是客户端用户，验证 restaurant_id 是否匹配
+    if (clientRestaurantId) {
+      if (!restaurant_id || restaurant_id !== clientRestaurantId) {
+        console.error('[创建订单API] ❌ 客户端用户 restaurant_id 不匹配')
+        return NextResponse.json(
+          { 
+            error: "权限不足", 
+            details: "restaurant_id 不匹配"
+          },
+          { status: 403 }
+        )
+      }
+    }
+
     // 增强参数验证和调试信息
     console.log('[创建订单API] 📥 接收到请求参数:', {
       order_number,
@@ -96,7 +130,8 @@ export async function POST(request: NextRequest) {
       contact_name,
       contact_phone,
       delivery_address,
-      hasNotes: !!notes
+      hasNotes: !!notes,
+      isClientUser: !!clientRestaurantId
     })
 
     // 验证必要参数
@@ -143,37 +178,55 @@ export async function POST(request: NextRequest) {
     // 🔒 统一 company_id 来源：优先使用 getUserContext，其次从 restaurants 表获取
     const companyId = userContext?.companyId || restaurantData.company_id
 
+    // ⚠️ 重要：task_pool 表的 company_id 字段有 NOT NULL 约束
+    // 如果 companyId 为 null，触发器会失败，导致订单创建失败
+    // 对于管理员用户，如果餐厅没有关联公司，需要先关联公司才能创建订单
+    // 对于客户端用户，允许尝试创建订单，但如果触发器失败，会捕获错误并提供友好提示
+    if (!companyId && userContext && userContext.role !== "super_admin") {
+      return NextResponse.json(
+        {
+          error: "无法创建订单",
+          details: "餐厅未关联公司，无法创建订单。请联系管理员为餐厅关联公司。",
+          hint: "task_pool 表要求 company_id 字段不能为空",
+        },
+        { status: 400 }
+      )
+    }
+    
+    // 对于客户端用户（userContext 为 null），如果没有 company_id，记录警告但允许尝试创建
+    // 如果 task_pool 触发器失败，会在错误处理中捕获
+    if (!companyId && !userContext) {
+      console.warn("[创建订单API] ⚠️ 客户端用户创建订单，但餐厅未关联公司（company_id 为 null）")
+      console.warn("[创建订单API] ⚠️ 如果 task_pool 触发器失败，订单创建将失败")
+    }
+
     // 创建配送订单（表已分离，固定为 delivery_orders）
     // 初始状态必须为 'pending'，不接受其他值
     const orderData: any = {
       restaurant_id: restaurant_id,
+      company_id: companyId || null, // 添加 company_id 字段（用于多租户数据隔离和 task_pool 触发器）
       service_type: service_type || "燃料配送", // 允许自定义服务类型描述
       status: "pending", // 统一初始状态为 pending，不接受 created / new / null 等值
-      amount: total_amount || amount || 0,
-      total_amount: total_amount || amount || 0, // 确保总金额字段
+      amount: total_amount || amount || 0, // delivery_orders 表只有 amount 字段，没有 total_amount
       customer_confirmed: false, // 默认未确认
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
 
-    // 添加订单号（如果提供）
-    if (order_number) {
-      orderData.order_number = order_number
-    }
+    // 注意：order_number 字段不存在于 delivery_orders 表中
+    // 订单号只存储在 order_main 表中（通过影子写入）
 
-    // 添加联系信息
-    if (contact_name) {
-      orderData.contact_name = contact_name
-    }
-    if (contact_phone) {
-      orderData.contact_phone = contact_phone
-    }
-    if (delivery_address) {
-      orderData.delivery_address = delivery_address
-    }
+    // 添加备注（联系信息存储在 restaurants 表中，不需要存储在订单中）
     if (notes) {
       orderData.notes = notes
     }
+    
+    // 注意：contact_name、contact_phone、delivery_address 字段不存在于 delivery_orders 表中
+    // 这些信息应该从 restaurants 表获取，不需要存储在订单中
+    // 如果需要记录订单时的联系信息，可以考虑：
+    // 1. 将这些信息存储在 notes 字段中（JSON格式）
+    // 2. 或者创建单独的订单联系信息表
+    // 当前实现：这些信息仅用于前端展示，不存储到数据库
 
     // 添加产品类型（如果提供）
     if (product_type) {
@@ -192,11 +245,46 @@ export async function POST(request: NextRequest) {
     const { data: newOrder, error: createError } = await supabase
       .from("delivery_orders")
       .insert(orderData)
-      .select("id, restaurant_id, worker_id, assigned_to, product_type, service_type, status, amount, total_amount, tracking_code, proof_image, customer_confirmed, created_at, updated_at, order_number")
+      .select("id, restaurant_id, worker_id, assigned_to, product_type, service_type, status, amount, tracking_code, proof_image, customer_confirmed, created_at, updated_at")
       .single()
 
     if (createError) {
       console.error("[创建订单API] 创建订单失败:", createError)
+      
+      // 检查是否是 task_pool 触发器失败（company_id 为 null）
+      const errorMessage = createError.message || ""
+      const errorCode = createError.code || ""
+      
+      // 错误代码 23502 是 PostgreSQL NOT NULL 约束违反错误
+      // 检查是否是 task_pool 表的 company_id 字段约束违反
+      if (
+        errorCode === "23502" && 
+        (errorMessage.includes("task_pool") || errorMessage.includes("company_id"))
+      ) {
+        return NextResponse.json(
+          {
+            error: "无法创建订单",
+            details: "餐厅未关联公司，无法创建订单。请联系管理员为餐厅关联公司。",
+            hint: "task_pool 表要求 company_id 字段不能为空。请先为餐厅关联公司后再创建订单。",
+            solution: "请联系系统管理员，为您的餐厅关联一个公司账户",
+          },
+          { status: 400 }
+        )
+      }
+      
+      // 也检查错误消息中是否包含 task_pool 和 company_id
+      if (errorMessage.includes("task_pool") && errorMessage.includes("company_id")) {
+        return NextResponse.json(
+          {
+            error: "无法创建订单",
+            details: "餐厅未关联公司，无法创建订单。请联系管理员为餐厅关联公司。",
+            hint: "task_pool 表要求 company_id 字段不能为空。请先为餐厅关联公司后再创建订单。",
+            solution: "请联系系统管理员，为您的餐厅关联一个公司账户",
+          },
+          { status: 400 }
+        )
+      }
+      
       return NextResponse.json(
         {
           error: "创建订单失败",
@@ -219,15 +307,21 @@ export async function POST(request: NextRequest) {
     }
 
     // 📝 影子写入：同步写入 order_main 表
+    let shadowWriteSuccess = false
+    let shadowWriteWarning: string | null = null
+    
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-      if (supabaseUrl && (serviceRoleKey || anonKey)) {
+      // ⚠️ 重要：影子写入必须使用 Service Role Key，否则 RLS 策略会阻止插入
+      if (!supabaseUrl || !serviceRoleKey) {
+        shadowWriteWarning = "订单已创建，但无法同步到订单主表（Service Role Key 未配置）。订单可能不会在订单列表中显示。请联系管理员配置 SUPABASE_SERVICE_ROLE_KEY 环境变量。"
+        console.error("[创建订单API] ⚠️ Service Role Key 未配置，无法执行影子写入")
+      } else {
         const adminClient = createClient(
           supabaseUrl,
-          serviceRoleKey || anonKey!,
+          serviceRoleKey, // 必须使用 Service Role Key，不能回退到 anonKey
           {
             auth: {
               persistSession: false,
@@ -247,7 +341,7 @@ export async function POST(request: NextRequest) {
             order_type: "fuel",
             company_id: companyId || null,
             status: newOrder.status || "pending",
-            total_amount: newOrder.total_amount || newOrder.amount || 0,
+            total_amount: newOrder.amount || 0, // delivery_orders 表只有 amount 字段，order_main 表使用 total_amount
             fuel_order_id: newOrder.id,
             rental_order_id: null,
             restaurant_id: restaurant_id,
@@ -267,23 +361,35 @@ export async function POST(request: NextRequest) {
 
           if (updateError) {
             console.error("[创建订单API] 更新 delivery_orders.main_order_id 失败:", updateError)
+            shadowWriteWarning = `订单已创建，但关联主表失败：${updateError.message}。订单可能不会在订单列表中显示。`
           } else {
             console.log(`[创建订单API] ✅ 影子写入成功：order_main.id = ${mainOrder.id}, delivery_orders.id = ${newOrder.id}`)
+            shadowWriteSuccess = true
           }
         } else if (mainOrderError) {
           console.error("[创建订单API] 影子写入 order_main 失败:", mainOrderError)
-          // 影子写入失败不影响主流程，只记录错误
+          // 详细记录错误信息，便于排查
+          console.error("[创建订单API] 错误详情:", {
+            code: mainOrderError.code,
+            message: mainOrderError.message,
+            details: mainOrderError.details,
+            hint: mainOrderError.hint,
+          })
+          shadowWriteWarning = `订单已创建，但同步到订单主表失败：${mainOrderError.message || "未知错误"}。订单可能不会在订单列表中显示，请联系管理员。`
         }
       }
-    } catch (shadowWriteError) {
+    } catch (shadowWriteError: any) {
       console.error("[创建订单API] 影子写入异常（不影响主流程）:", shadowWriteError)
-      // 影子写入失败不影响主流程
+      shadowWriteWarning = `订单已创建，但同步到订单主表时发生异常：${shadowWriteError?.message || "未知错误"}。订单可能不会在订单列表中显示。`
     }
 
     return NextResponse.json({
       success: true,
-      message: "订单创建成功",
+      message: shadowWriteSuccess 
+        ? "订单创建成功" 
+        : "订单创建成功（但同步到订单主表失败，订单可能不会在列表中显示）",
       data: newOrder, // 包含真实写入的 id
+      warning: shadowWriteWarning || undefined, // 如果影子写入失败，包含警告信息
     })
   } catch (error) {
     console.error("[创建订单API] 处理请求时出错:", error)

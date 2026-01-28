@@ -8,17 +8,23 @@ import { getUserContext } from "@/lib/auth/user-context"
 export async function GET(request: NextRequest) {
   try {
     // 获取用户上下文
-    const userContext = await getUserContext(request)
+    let userContext = await getUserContext(request)
+    let clientRestaurantId: string | null = null
     
+    // 如果 Supabase Auth 失败，尝试客户端用户认证（通过 x-restaurant-id 请求头）
     if (!userContext) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "未授权",
-          details: "用户未登录或会话已过期",
-        },
-        { status: 401 }
-      )
+      clientRestaurantId = request.headers.get("x-restaurant-id")
+      if (!clientRestaurantId || clientRestaurantId.trim() === "") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未授权",
+            details: "用户未登录或会话已过期",
+          },
+          { status: 401 }
+        )
+      }
+      console.log("[当前餐厅API] 使用客户端用户认证，restaurant_id:", clientRestaurantId)
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -49,10 +55,8 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    console.log("[当前餐厅API] 查询用户关联餐厅，userId:", userContext.userId)
-
-    // 查询用户关联的餐厅信息
-    const { data: restaurants, error } = await supabaseClient
+    // 查询餐厅信息
+    let query = supabaseClient
       .from("restaurants")
       .select(`
         id,
@@ -63,8 +67,27 @@ export async function GET(request: NextRequest) {
         company_id,
         created_at
       `)
-      .eq("user_id", userContext.userId)
-      .limit(1)
+    
+    if (clientRestaurantId) {
+      // 客户端用户：直接通过 restaurant_id 查询
+      console.log("[当前餐厅API] 查询客户端餐厅，restaurant_id:", clientRestaurantId)
+      query = query.eq("id", clientRestaurantId)
+    } else if (userContext) {
+      // Supabase Auth 用户：通过 user_id 查询
+      console.log("[当前餐厅API] 查询用户关联餐厅，userId:", userContext.userId)
+      query = query.eq("user_id", userContext.userId)
+    } else {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "未授权",
+          details: "无法识别用户身份",
+        },
+        { status: 401 }
+      )
+    }
+    
+    const { data: restaurants, error } = await query.limit(1)
 
     if (error) {
       console.error("[当前餐厅API] 查询失败:", error)

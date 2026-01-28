@@ -84,7 +84,7 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    let supabaseClient: any
+    let supabaseClient
 
     if (serviceRoleKey) {
       supabaseClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -106,6 +106,18 @@ export async function PATCH(request: NextRequest) {
           success: false,
           error: "服务器配置错误",
           details: "Supabase 密钥未配置",
+        },
+        { status: 500 }
+      )
+    }
+
+    // 确保 supabaseClient 已初始化
+    if (!supabaseClient) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "服务器配置错误",
+          details: "Supabase 客户端初始化失败",
         },
         { status: 500 }
       )
@@ -137,17 +149,19 @@ export async function PATCH(request: NextRequest) {
     const currentCompanyId = userContext?.companyId
     
     // 获取订单信息（provider_id、order_status、equipment_id）
-    const { data: existingOrder } = await supabaseClient
+    const { data: existingOrder, error: fetchError } = await supabaseClient
       .from("rental_orders")
       .select("provider_id, order_status, equipment_id")
       .eq("id", id)
       .single()
     
-    if (!existingOrder) {
+    if (fetchError || !existingOrder) {
+      console.error("[租赁订单更新API] 获取订单失败:", fetchError)
       return NextResponse.json(
         {
           success: false,
           error: "订单不存在",
+          details: fetchError?.message || "无法获取订单信息",
         },
         { status: 404 }
       )

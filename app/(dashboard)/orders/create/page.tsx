@@ -110,15 +110,31 @@ export default function CreateOrderPage() {
     try {
       setIsLoadingDefaults(true)
       
+      // 获取客户端用户的 restaurantId（如果存在）
+      const clientRestaurantId = typeof window !== "undefined" 
+        ? localStorage.getItem("restaurantId") 
+        : null
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+      
+      // 如果是客户端用户，传递 restaurantId 请求头
+      if (clientRestaurantId) {
+        headers["x-restaurant-id"] = clientRestaurantId
+      }
+      
       // 获取用户上下文
       const userContext = await fetch('/api/user/context', {
-        credentials: 'include'
+        credentials: 'include',
+        headers
       }).then(res => res.json())
 
       if (userContext.success && userContext.data) {
         // 从餐厅表获取默认信息
         const response = await fetch('/api/restaurants/current', {
-          credentials: 'include'
+          credentials: 'include',
+          headers
         })
         
         if (response.ok) {
@@ -236,21 +252,42 @@ export default function CreateOrderPage() {
         console.log('🔍 餐厅信息不完整，重新获取用户上下文...')
         
         try {
+          // 获取客户端用户的 restaurantId（如果存在）
+          const clientRestaurantId = typeof window !== "undefined" 
+            ? localStorage.getItem("restaurantId") 
+            : null
+
+          const headers: HeadersInit = {
+            "Content-Type": "application/json",
+          }
+          
+          // 如果是客户端用户，传递 restaurantId 请求头
+          if (clientRestaurantId) {
+            headers["x-restaurant-id"] = clientRestaurantId
+            currentRestaurantId = clientRestaurantId
+            console.log('✅ 从 localStorage 获取 restaurantId:', currentRestaurantId)
+          }
+
           const userContextResponse = await fetch('/api/user/context', {
-            credentials: 'include'
+            credentials: 'include',
+            headers
           })
           
           if (userContextResponse.ok) {
             const userContextResult = await userContextResponse.json()
             if (userContextResult.success) {
               currentCompanyId = userContextResult.data.companyId
+              if (!currentRestaurantId && userContextResult.data.restaurantId) {
+                currentRestaurantId = userContextResult.data.restaurantId
+              }
               console.log('✅ 从用户上下文获取 company_id:', currentCompanyId)
             }
           }
           
           // 尝试重新获取餐厅信息
           const restaurantResponse = await fetch('/api/restaurants/current', {
-            credentials: 'include'
+            credentials: 'include',
+            headers
           })
           
           if (restaurantResponse.ok) {
@@ -306,11 +343,23 @@ export default function CreateOrderPage() {
         throw new Error("关键信息缺失：餐厅ID或订单号为空")
       }
 
+      // 获取客户端用户的 restaurantId（如果存在）
+      const clientRestaurantId = typeof window !== "undefined" 
+        ? localStorage.getItem("restaurantId") 
+        : null
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+      
+      // 如果是客户端用户，传递 restaurantId 请求头
+      if (clientRestaurantId) {
+        headers["x-restaurant-id"] = clientRestaurantId
+      }
+
       const response = await fetch("/api/orders/create", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: 'include',
         body: JSON.stringify(requestBody),
       })
@@ -352,10 +401,10 @@ export default function CreateOrderPage() {
 
       console.log('✅ 订单创建成功！', result.data)
 
-      // 5秒后跳转到订单列表
+      // 8秒后跳转到订单列表（给用户更多时间查看成功信息）
       setTimeout(() => {
         router.push("/orders")
-      }, 5000)
+      }, 8000)
       
     } catch (err: any) {
       console.error('❌ 订单创建失败:', err)
@@ -451,7 +500,36 @@ export default function CreateOrderPage() {
                     {shadowWriteResult && (
                       <p className="text-green-300">{shadowWriteResult}</p>
                     )}
-                    <p className="text-green-300 mt-3">5秒后自动跳转到订单列表</p>
+                    <p className="text-green-300 mt-3">8秒后自动跳转到订单列表，或点击下方按钮立即跳转</p>
+                    <div className="mt-4 flex gap-2">
+                      <Button
+                        onClick={() => router.push("/orders")}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        size="sm"
+                      >
+                        立即查看订单列表
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setSuccess(false)
+                          setCreatedOrderId(null)
+                          setShadowWriteResult(null)
+                          setOrderNumber(generateOrderNumber())
+                          // 重置表单
+                          setSelectedProductType(null)
+                          setQuantity(50)
+                          setContactName("")
+                          setContactPhone("")
+                          setDeliveryAddress("")
+                          setNotes("")
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="border-green-500 text-green-400 hover:bg-green-500/20"
+                      >
+                        继续创建订单
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
