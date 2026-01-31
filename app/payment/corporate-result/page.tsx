@@ -106,7 +106,7 @@ function CorporateResultContent() {
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
         <Header />
         <div className="container mx-auto px-4 py-8">
-          <Card className="p-6 bg-slate-900/90 border-slate-700">
+          <Card semanticLevel="system_hint" className="p-6 bg-slate-900/90 border-slate-700">
             <p className="text-slate-400">缺少订单信息，请从支付页重新提交。</p>
             <Link href="/payment">
               <Button className="mt-4">返回支付页</Button>
@@ -130,7 +130,7 @@ function CorporateResultContent() {
           </div>
         </div>
 
-        <Card className="p-6 bg-slate-900/90 border-slate-700 space-y-4">
+        <Card semanticLevel="secondary_fact" className="p-6 bg-slate-900/90 border-slate-700 space-y-4">
           <div className="flex justify-between items-center">
             <span className="text-slate-400">订单号</span>
             <span className="font-mono text-white">{orderId}</span>
@@ -150,11 +150,11 @@ function CorporateResultContent() {
         </Card>
 
         {loading ? (
-          <Card className="p-8 flex justify-center">
+          <Card semanticLevel="system_hint" className="p-8 flex justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
           </Card>
         ) : error ? (
-          <Card className="p-6 bg-slate-900/90 border-amber-500/40">
+          <Card semanticLevel="system_hint" className="p-6 bg-slate-900/90 border-amber-500/40">
             <div className="flex flex-col items-center text-center py-4">
               <div className="w-14 h-14 rounded-full bg-amber-500/20 flex items-center justify-center mb-3">
                 <AlertCircle className="h-7 w-7 text-amber-400" />
@@ -169,7 +169,7 @@ function CorporateResultContent() {
             </div>
           </Card>
         ) : account ? (
-          <Card className="p-6 bg-slate-900/90 border-slate-700 space-y-4">
+          <Card semanticLevel="secondary_fact" className="p-6 bg-slate-900/90 border-slate-700 space-y-4">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
               <Building2 className="h-5 w-5 text-amber-400" />
               收款账户信息
@@ -222,7 +222,7 @@ function CorporateResultContent() {
 
         {/* 上传转账凭证 */}
         {account && (
-          <Card className="p-6 bg-slate-900/90 border-slate-700">
+          <Card semanticLevel="secondary_fact" className="p-6 bg-slate-900/90 border-slate-700">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-white mb-3">
               <FileText className="h-5 w-5" />
               上传转账凭证
