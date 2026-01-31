@@ -109,82 +109,16 @@ import { ExceptionHandlingWithData } from "./components/exception-handling-with-
 import { EquipmentRentalWithDialogs } from "./components/equipment-rental-with-dialogs"
 import { RentalsDashboardWithDialogs } from "./components/rentals-dashboard-with-dialogs"
 import { type MapDashboardHandle } from "./components/map-dashboard"
-import { Restaurant, Order } from "./types/dashboard-types"
+import {
+  Restaurant,
+  Order,
+  Worker,
+  Device,
+  ApiConfig,
+  ServicePoint,
+} from "./types/dashboard-types"
 import { formatTime, getOrderStatusStyle } from "./lib/dashboard-utils"
 // recharts 已迁移到 components/analytics.tsx 使用
-
-// 数据类型定义 - 已迁移到 types/dashboard-types.ts
-// 暂时保留此处类型定义以确保向后兼容，确认功能正常后可删除
-// import type { Restaurant, Order, Worker, Device, ApiConfig, ServicePoint } from "./types/dashboard-types"
-
-interface Restaurant {
-  id: string
-  name: string
-  contact_name: string | null
-  contact_phone: string | null
-  total_refilled: number
-  status: string
-  created_at: string
-  latitude: number | null
-  longitude: number | null
-  address: string | null
-  qr_token: string | null
-}
-
-interface Order {
-  id: string
-  restaurant_id: string
-  restaurant_name?: string
-  service_type: string
-  status: string
-  amount: number
-  created_at: string
-  updated_at: string
-  worker_id?: string | null
-}
-
-interface Worker {
-  id: string
-  name: string
-  phone: string | null
-  worker_type?: "delivery" | "repair" | "install" | string[] | null // 工人类型：配送员、维修工、安装工（支持多选）
-  product_types?: string[] | null // 产品类型（仅配送员）：lpg, clean, alcohol, outdoor
-  status?: "active" | "inactive" | null // 状态：在职、离职
-  created_at?: string
-  updated_at?: string
-}
-
-interface Device {
-  device_id: string
-  restaurant_id: string | null
-  model: string | null
-  address: string | null
-  installer: string | null
-  install_date: string | null
-  status: string
-}
-
-interface ApiConfig {
-  id?: string
-  name: string
-  endpoint: string
-  method: string
-  description: string
-  is_active: boolean
-}
-
-interface ServicePoint {
-  id: string
-  name: string
-  township: string
-  latitude: number
-  longitude: number
-  service_radius: number // 服务半径（公里）
-  legal_entity: string // 法人主体
-  status: string
-  created_at: string
-  workers?: string[] // 绑定的工人ID列表
-}
 
 const menuItems = [
   { icon: Home, label: "工作台", key: "dashboard" },
