@@ -190,8 +190,8 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     // 🔒 多租户隔离：按 company_id 过滤
-    // super_admin、platform_admin、admin 可以查看所有协议，其他角色只能查看自己公司的
-    if (userContext.role !== "super_admin" && userContext.role !== "platform_admin" && userContext.role !== "admin") {
+    // super_admin、platform_admin 可以查看所有协议，其他角色只能查看自己公司的（admin 已迁移为 platform_admin）
+    if (userContext.role !== "super_admin" && userContext.role !== "platform_admin") {
       if (userContext.companyId) {
         // 普通用户：只能查看自己公司的协议，或者平台通用协议（company_id IS NULL）
         query = query.or(`company_id.eq.${userContext.companyId},company_id.is.null`)
@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
         query = query.is("company_id", null)
       }
     }
-    // super_admin 和 admin 可以查看所有协议，不需要过滤
+    // super_admin 和 platform_admin 可以查看所有协议，不需要过滤
 
     // 类型筛选
     if (type) {
@@ -268,8 +268,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 检查是否是管理员（super_admin、platform_admin、admin 均可创建协议）
-    if (userContext.role !== "super_admin" && userContext.role !== "platform_admin" && userContext.role !== "admin") {
+    // 检查是否是管理员（super_admin、platform_admin 均可创建协议）
+    if (userContext.role !== "super_admin" && userContext.role !== "platform_admin") {
       return NextResponse.json(
         {
           success: false,
@@ -368,8 +368,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 🔒 多租户隔离：设置 company_id
-    // super_admin 可以创建平台通用协议（company_id = null）或指定公司的协议
-    // admin 可以创建平台通用协议或指定公司的协议
+    // super_admin、platform_admin 可以创建平台通用协议（company_id = null）或指定公司的协议
     // 其他角色只能创建自己公司的协议
     const companyId = userContext.role === "super_admin" 
       ? (body.company_id || null)  // super_admin 可以指定 company_id，或创建平台通用协议
