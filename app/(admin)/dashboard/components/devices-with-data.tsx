@@ -49,6 +49,7 @@ export function DevicesWithData({ userRole, userCompanyId }: DevicesWithDataProp
 
   const loadDevices = useCallback(async () => {
     if (!supabase) return
+    const client = supabase
     if (userRole !== null && userRole !== "super_admin" && userRole !== "admin" && !userCompanyId) {
       setDevices([])
       return
@@ -56,7 +57,7 @@ export function DevicesWithData({ userRole, userCompanyId }: DevicesWithDataProp
 
     try {
       const { data, error } = await retryQuery(async () => {
-        let query = supabase
+        let query = client
           .from("devices")
           .select("device_id, restaurant_id, model, address, installer, install_date, status")
           .order("install_date", { ascending: false })
