@@ -7,7 +7,6 @@
 import { NextResponse, NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { getUserContext } from "@/lib/auth/user-context"
-import { enforceCompanyFilter } from "@/lib/multi-tenant"
 
 /**
  * GET: 获取所有设备租赁订单（管理端）
@@ -177,9 +176,9 @@ export async function GET(request: NextRequest) {
       query = query.eq("restaurant_id", restaurantId)
     }
 
-    // 🔒 多租户隔离：强制按 provider_id 过滤（如果提供了 company_id 且不是 super_admin）
+    // 🔒 多租户隔离：按 company_id 过滤（兼容无 provider_id 列的环境）
     if (companyId && userContext?.role !== "super_admin") {
-      query = enforceCompanyFilter(query, companyId, "provider_id")
+      query = query.eq("company_id", companyId)
       console.log("[设备租赁管理API] 应用多租户过滤，company_id:", companyId)
     } else if (userContext?.role === "super_admin") {
       console.log("[设备租赁管理API] Super Admin 访问，不应用多租户过滤")
@@ -189,7 +188,24 @@ export async function GET(request: NextRequest) {
 
     let { data: orders, error } = await query
 
-    // 如果 rental_orders 表不存在，尝试查询 rentals 表作为后备
+    // PGRST200：schema 中无 rental_orders 与 restaurants/equipment 的外键关系，改用仅查主表
+    if (error && (error.code === "PGRST200" || (error.message && error.message.includes("relationship") && error.message.includes("schema cache")))) {
+      console.warn("[设备租赁管理API] 关联查询失败（缺少外键关系），改用仅查 rental_orders:", error.message)
+      let fallbackQuery = supabaseClient
+        .from("rental_orders")
+        .select("*")
+        .order("created_at", { ascending: false })
+      if (status && status !== "all") fallbackQuery = fallbackQuery.eq("order_status", status)
+      if (restaurantId) fallbackQuery = fallbackQuery.eq("restaurant_id", restaurantId)
+      if (companyId && userContext?.role !== "super_admin") fallbackQuery = fallbackQuery.eq("company_id", companyId)
+      const { data: fallbackOrders, error: fallbackError } = await fallbackQuery
+      if (!fallbackError && fallbackOrders) {
+        orders = fallbackOrders
+        error = null
+      }
+    }
+
+    // 如果 rental_orders 表不存在或仍失败，尝试查询 rentals 表作为后备
     if (error && (error.code === "PGRST116" || error.code === "42P01" || error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.message?.includes("Could not find the table"))) {
       console.warn("[设备租赁管理API] rental_orders 表查询失败:", error.message, "错误代码:", error.code)
       console.warn("[设备租赁管理API] 尝试查询 rentals 表作为后备")

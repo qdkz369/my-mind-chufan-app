@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 import {
   CheckCircle2,
   XCircle,
@@ -76,7 +77,9 @@ export function ProductApproval() {
   const loadProducts = useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/equipment/catalog/list?is_approved=false")
+      const response = await fetchWithAuth("/api/equipment/catalog/list?is_approved=false", {
+        credentials: "include",
+      })
       const result = await response.json()
 
       if (result.success && result.data) {
@@ -126,9 +129,10 @@ export function ProductApproval() {
   const handleApprove = async (productId: string, approved: boolean) => {
     setIsApproving(true)
     try {
-      const response = await fetch("/api/equipment/catalog/approve", {
+      const response = await fetchWithAuth("/api/equipment/catalog/approve", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           id: productId,
           is_approved: approved,

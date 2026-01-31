@@ -1,11 +1,12 @@
 // ACCESS_LEVEL: INTERNAL / SERVICE_ROLE
-// ALLOWED_ROLES: service_role (定时任务调用)
+// ALLOWED_ROLES: service_role (定时任务调用) | platform_admin/company_admin (前端 dry_run 查询)
 // CURRENT_KEY: Service Role Key (必须)
 // TARGET_KEY: Service Role Key
-// 说明：设备未归还自动检测定时任务（可手动调用或由外部定时任务服务调用）
+// 说明：设备未归还自动检测定时任务；前端 dry_run 调用时按多租户隔离
 
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * POST: 检查并标记未归还设备
@@ -46,18 +47,41 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const { dry_run = false, auto_mark = false, min_overdue_days = 0, batch_size = 100 } = body
 
+    // 多租户：前端 dry_run 调用时按当前用户公司过滤；定时任务（无用户）查全部
+    const userContext = await getUserContext(request as any).catch(() => null)
+    const isCronOrSuperAdmin = !userContext || userContext.role === "super_admin"
+    const companyId = userContext?.companyId ?? null
+
+    // 非 super_admin 且无 companyId 时返回空（防止跨公司数据泄漏）
+    if (!isCronOrSuperAdmin && !companyId) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          checked_count: 0,
+          overdue_orders: [],
+          message: "用户未关联公司，无法查询逾期设备",
+        },
+        dry_run: false,
+      })
+    }
+
     const today = new Date()
     today.setHours(0, 0, 0, 0) // 设置为当天0点
     const todayStr = today.toISOString().split("T")[0] // YYYY-MM-DD
 
-    // 查询所有逾期的租赁订单
-    // 条件：end_date < 今天 且 order_status = 'active'
-    const { data: overdueOrders, error: queryError } = await supabaseClient
+    // 查询逾期的租赁订单（多租户：非 super_admin 按 provider_id 过滤）
+    let query = supabaseClient
       .from("rental_orders")
-      .select("id, order_number, restaurant_id, equipment_id, end_date, order_status")
+      .select("id, order_number, restaurant_id, equipment_id, end_date, order_status, provider_id")
       .lt("end_date", todayStr)
       .eq("order_status", "active")
       .limit(batch_size)
+
+    if (!isCronOrSuperAdmin && companyId) {
+      query = query.eq("provider_id", companyId)
+    }
+
+    const { data: overdueOrders, error: queryError } = await query
 
     if (queryError) {
       console.error("[设备未归还检测] 查询失败:", queryError)

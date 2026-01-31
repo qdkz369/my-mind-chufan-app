@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { FileText, Plus, Edit, Trash2, CheckCircle2, XCircle, Clock } from "lucide-react"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 
 interface Agreement {
   id: string
@@ -49,7 +50,7 @@ export function AgreementManagement() {
 
   const [formData, setFormData] = useState({
     title: "",
-    type: "service",
+    type: "service" as "service" | "payment" | "privacy" | "terms" | "rental",
     version: "1.0",
     content: "",
     content_html: "",
@@ -59,15 +60,18 @@ export function AgreementManagement() {
     expiry_date: "",
     description: "",
   })
+  const [typeFilter, setTypeFilter] = useState<string>("all")
 
   useEffect(() => {
     loadAgreements()
-  }, [])
+  }, [typeFilter])
 
   const loadAgreements = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/agreements")
+      const params = new URLSearchParams()
+      if (typeFilter !== "all") params.set("type", typeFilter)
+      const response = await fetchWithAuth(`/api/agreements?${params.toString()}`, { credentials: "include" })
       const result = await response.json()
       if (result.success) {
         setAgreements(result.data || [])
@@ -85,7 +89,7 @@ export function AgreementManagement() {
     setEditingAgreement(null)
     setFormData({
       title: "",
-      type: "service",
+      type: "service" as const,
       version: "1.0",
       content: "",
       content_html: "",
@@ -128,8 +132,9 @@ export function AgreementManagement() {
         : "/api/agreements"
       const method = editingAgreement ? "PUT" : "POST"
 
-      const response = await fetch(url, {
+      const response = await fetchWithAuth(url, {
         method,
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       })
@@ -154,8 +159,9 @@ export function AgreementManagement() {
     if (!confirm("确定要删除这个协议吗？")) return
 
     try {
-      const response = await fetch(`/api/agreements/${id}`, {
+      const response = await fetchWithAuth(`/api/agreements/${id}`, {
         method: "DELETE",
+        credentials: "include",
       })
 
       const result = await response.json()
@@ -193,6 +199,7 @@ export function AgreementManagement() {
       payment: "支付协议",
       privacy: "隐私协议",
       terms: "使用条款",
+      rental: "租赁协议",
     }
     return typeMap[type] || type
   }
@@ -211,6 +218,25 @@ export function AgreementManagement() {
           <Plus className="h-4 w-4 mr-2" />
           新建协议
         </Button>
+      </div>
+
+      {/* 类型筛选：全部 / 各类型（含租赁协议） */}
+      <div className="flex flex-wrap gap-2">
+        {(["all", "service", "payment", "privacy", "terms", "rental"] as const).map((key) => (
+          <Button
+            key={key}
+            variant={typeFilter === key ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTypeFilter(key)}
+            className={
+              typeFilter === key
+                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                : "border-slate-600 text-slate-400 hover:bg-slate-800"
+            }
+          >
+            {key === "all" ? "全部" : getTypeLabel(key)}
+          </Button>
+        ))}
       </div>
 
       {isLoading ? (
@@ -329,6 +355,7 @@ export function AgreementManagement() {
                     <SelectItem value="payment">支付协议</SelectItem>
                     <SelectItem value="privacy">隐私协议</SelectItem>
                     <SelectItem value="terms">使用条款</SelectItem>
+                    <SelectItem value="rental">租赁协议</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

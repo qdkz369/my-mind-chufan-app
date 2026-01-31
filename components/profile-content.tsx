@@ -15,6 +15,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import { loadAMapOnce, isAMapAvailable } from "@/lib/amap-loader"
 import { getCachedAddress, cacheAddress } from "@/lib/geocoding-cache"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 
 const menuItems = [
   { icon: Package, label: "我的设备", description: "查看已激活的设备", href: "/devices" },
@@ -71,6 +72,16 @@ export function ProfileContent() {
   const [totalSpent, setTotalSpent] = useState<number>(0)
   const [pointsBalance, setPointsBalance] = useState<number>(0)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
+
+  // 待确认租赁（个人中心简短列表，点进「我的设备」再操作）
+  const [pendingRentals, setPendingRentals] = useState<Array<{
+    id: string
+    device_id: string
+    start_at: string | null
+    rental_batch_id?: string | null
+    devices?: { device_id: string; model: string | null } | null
+  }>>([])
+  const [pendingRentalsLoading, setPendingRentalsLoading] = useState(false)
 
   // 从 localStorage 加载餐厅ID（自动登录）
   useEffect(() => {
@@ -215,6 +226,36 @@ export function ProfileContent() {
     // 修复：移除 amapLoaded 依赖，确保只执行一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 拉取待确认租赁简短列表（个人中心展示，点进「我的设备」再操作）
+  useEffect(() => {
+    const restaurantId = restaurantInfo?.id
+    if (!restaurantId) {
+      setPendingRentals([])
+      return
+    }
+    const load = async () => {
+      setPendingRentalsLoading(true)
+      try {
+        const res = await fetchWithAuth(
+          `/api/device-rentals/list?restaurant_id=${encodeURIComponent(restaurantId)}&status=pending_confirmation`,
+          { headers: { "x-restaurant-id": restaurantId } }
+        )
+        const json = await res.json()
+        if (json.success && Array.isArray(json.data)) {
+          setPendingRentals(json.data.slice(0, 5))
+        } else {
+          setPendingRentals([])
+        }
+      } catch (e) {
+        logBusinessWarning('ProfileContent', '拉取待确认租赁失败', e)
+        setPendingRentals([])
+      } finally {
+        setPendingRentalsLoading(false)
+      }
+    }
+    load()
+  }, [restaurantInfo?.id])
 
   // 加载餐厅统计数据
   const loadRestaurantStats = async (restaurantId: string) => {
@@ -1630,6 +1671,51 @@ export function ProfileContent() {
               <div className="text-xs text-muted-foreground data-unit">积分余额</div>
             </Card>
           </div>
+
+          {/* 待确认的租赁（简短列表，点进「我的设备」再操作） */}
+          {(pendingRentalsLoading || pendingRentals.length > 0) && (
+            <Card semanticLevel="secondary_fact" className="theme-card border-amber-500/20 bg-amber-500/5">
+              <Link href="/devices" className="block p-4 hover:bg-muted/30 transition-colors rounded-lg">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-amber-500 shrink-0" />
+                    <h3 className="font-medium text-foreground">待确认的租赁</h3>
+                    {pendingRentalsLoading && (
+                      <Loader2 className="h-4 w-4 animate-spin text-amber-500 shrink-0" />
+                    )}
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+                </div>
+                {!pendingRentalsLoading && pendingRentals.length > 0 && (
+                  <>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      共 {pendingRentals.length} 条待确认，点击进入「我的设备」操作
+                    </p>
+                    <ul className="space-y-1.5 text-sm text-foreground/90">
+                      {pendingRentals.slice(0, 3).map((r) => (
+                        <li key={r.id} className="flex items-center gap-2 truncate">
+                          <Package className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                          <span className="truncate">
+                            {r.devices?.model ?? r.device_id}
+                            {r.start_at && (
+                              <span className="text-muted-foreground ml-1">
+                                · {new Date(r.start_at).toLocaleDateString("zh-CN")}
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                      {pendingRentals.length > 3 && (
+                        <li className="text-muted-foreground text-xs">
+                          还有 {pendingRentals.length - 3} 条…
+                        </li>
+                      )}
+                    </ul>
+                  </>
+                )}
+              </Link>
+            </Card>
+          )}
 
           {/* 主题切换器 */}
           <Card semanticLevel="secondary_fact" className="theme-card p-4">

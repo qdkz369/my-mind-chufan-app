@@ -1,17 +1,25 @@
-// ACCESS_LEVEL: SYSTEM_LEVEL
-// ALLOWED_ROLES: super_admin
-// CURRENT_KEY: Service Role Key
-// 说明：只能由 super_admin 调用，用于查询供应商的功能权限和燃料品种
+// ACCESS_LEVEL: COMPANY_LEVEL
+// ALLOWED_ROLES: super_admin, platform_admin, company_admin
+// 说明：super_admin 可查任意公司；platform_admin/company_admin 只能查自己关联的公司
 
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getUserContext } from "@/lib/auth/user-context"
 
 /**
  * GET: 查询供应商的功能权限和燃料品种
- * @param companyId - 公司ID（可选，如果提供则查询单个公司，否则查询所有公司）
+ * @param companyId - 公司ID（查询单个公司时必填）
  */
 export async function GET(request: Request) {
   try {
+    // 鉴权：super_admin 可查任意公司；platform_admin/company_admin 只能查自己的公司
+    const userContext = await getUserContext(request as any)
+    if (!userContext) {
+      return NextResponse.json(
+        { success: false, error: "未授权", details: "请先登录" },
+        { status: 401 }
+      )
+    }
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -36,6 +44,30 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const companyId = searchParams.get("companyId")
+
+    // 多租户校验
+    if (!companyId) {
+      if (userContext.role !== "super_admin") {
+        return NextResponse.json(
+          { success: false, error: "权限不足", details: "仅超级管理员可查询所有公司" },
+          { status: 403 }
+        )
+      }
+    } else if (userContext.role !== "super_admin") {
+      // 非 super_admin：必须通过 user_companies 验证用户与公司的关联（比 userContext.companyId 更可靠）
+      const { data: uc, error: ucErr } = await supabaseAdmin
+        .from("user_companies")
+        .select("company_id")
+        .eq("user_id", userContext.userId)
+        .eq("company_id", companyId)
+        .maybeSingle()
+      if (ucErr || !uc) {
+        return NextResponse.json(
+          { success: false, error: "权限不足", details: "只能查询本公司权限" },
+          { status: 403 }
+        )
+      }
+    }
 
     if (companyId) {
       // 查询单个公司的权限

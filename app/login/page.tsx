@@ -135,8 +135,8 @@ export default function LoginPage() {
             console.log("[登录页] 自动分配角色成功，当前角色:", actualRole)
             
             // 继续后续的登录流程（跳过角色检查，因为已经分配了）
-            // 注意：这里需要确保 actualRole 是 admin 或 super_admin
-            if (actualRole !== "super_admin" && actualRole !== "admin") {
+            const allowedRoles = ["super_admin", "platform_admin", "admin", "company_admin"]
+            if (!allowedRoles.includes(actualRole)) {
               throw new Error(`自动分配的角色无效（${actualRole}），请联系系统管理员`)
             }
             
@@ -155,17 +155,19 @@ export default function LoginPage() {
       // 处理可能的数组格式（虽然使用了 maybeSingle，但以防万一）
       const actualRole = Array.isArray(roleData) ? roleData[0]?.role : roleData.role
       
+      // 允许访问管理后台的角色：super_admin、platform_admin、admin、company_admin（供应商）
+      const allowedAdminRoles = ["super_admin", "platform_admin", "admin", "company_admin"]
+      const canAccessDashboard = allowedAdminRoles.includes(actualRole)
+
       console.log("[登录页] 用户角色详情:", {
         roleData,
         actualRole,
-        isSuperAdmin: actualRole === "super_admin",
-        isAdmin: actualRole === "admin",
-        roleMatch: actualRole === "super_admin" || actualRole === "admin"
+        canAccessDashboard,
+        allowedRoles: allowedAdminRoles
       })
 
-      if (actualRole !== "super_admin" && actualRole !== "admin") {
-        console.warn("[登录页] 用户不是管理员，当前角色:", actualRole)
-        console.warn("[登录页] 需要 super_admin 或 admin 角色，但当前是:", actualRole || "未定义")
+      if (!canAccessDashboard) {
+        console.warn("[登录页] 用户无管理后台权限，当前角色:", actualRole)
         await supabase.auth.signOut()
         throw new Error(`您没有管理员权限（当前角色：${actualRole || "无"}），请联系系统管理员`)
       }

@@ -54,26 +54,87 @@ function parseCookiesFromRequest(request: Request): Array<{ name: string; value:
 }
 
 /**
+ * 根据 userId 解析 role 与 companyId（供 Cookie 与 Bearer 两种鉴权路径共用）
+ */
+async function resolveUserContextFromUserId(
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  serviceRoleKey: string | undefined,
+  userId: string
+): Promise<UserContext | null> {
+  const adminClient = createClient(
+    supabaseUrl,
+    serviceRoleKey || supabaseAnonKey,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+  const { data: roleData, error: roleError } = await adminClient
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .single()
+  if (roleError || !roleData) {
+    console.error("[getUserContext] 无法获取用户角色", roleError?.message || "无角色数据")
+    return null
+  }
+  const role = roleData.role as UserRole
+  if (role === "super_admin") {
+    return { userId, role, companyId: undefined }
+  }
+  // platform_admin / company_admin：仅从 user_companies 获取 companyId，确保多租户隔离
+  // 不从 restaurants 获取，避免 platform_admin 因关联餐厅而误用该餐厅的 company_id 查全量
+  const { data: ucData, error: ucError } = await adminClient
+    .from("user_companies")
+    .select("company_id")
+    .eq("user_id", userId)
+    .eq("is_primary", true)
+    .limit(1)
+    .maybeSingle()
+  const companyId = !ucError && ucData?.company_id ? ucData.company_id : undefined
+  return { userId, role, companyId }
+}
+
+/**
  * 获取用户上下文（唯一可信的权限入口）
  * 
  * @param req NextRequest 或 Request 对象
  * @returns UserContext 对象，包含 userId、role 和可选的 companyId，如果失败返回 null
- * @note 如果找不到 company_id，返回 undefined 而不是抛出错误（避免 500）
- * @note ⚠️ 临时修复：与权限、公司、用户相关的错误改为 console.error 并返回 null，避免 500 崩溃
+ * @note 支持 Cookie 会话 或 Authorization: Bearer <access_token>（客户端 localStorage 会话时使用）
  */
 export async function getUserContext(req: NextRequest | Request): Promise<UserContext | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      // ⚠️ 临时修复：改为 console.error 并返回 null，避免 500 崩溃
-      console.error("[getUserContext] 服务器配置错误：缺少 Supabase 环境变量")
-      return null
-    }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error("[getUserContext] 服务器配置错误：缺少 Supabase 环境变量")
+    return null
+  }
 
-  // 1. 从 Supabase Auth session 中获取 userId
-  // 在 Route Handler 中，优先使用 Next.js cookies() API（最可靠）
+  // 0. 客户端使用 localStorage 存会话时无法带 Cookie，支持通过 Authorization: Bearer <access_token> 鉴权
+  const authHeader = req.headers.get("authorization")
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null
+  if (bearerToken) {
+    try {
+      const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${bearerToken}`, apikey: supabaseAnonKey },
+      })
+      if (res.ok) {
+        const user = await res.json()
+        const userId = user?.id
+        if (userId) {
+          const ctx = await resolveUserContextFromUserId(supabaseUrl, supabaseAnonKey, serviceRoleKey, userId)
+          if (ctx) {
+            console.log("[getUserContext] ✅ 通过 Bearer Token 获取用户:", user.email)
+            return ctx
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[getUserContext] Bearer Token 校验失败:", e)
+    }
+  }
+
+  // 1. 从 Supabase Auth session 中获取 userId（Cookie）
   let cookieStore: Array<{ name: string; value: string }> = []
   let cookieSource = "unknown"
   
@@ -272,81 +333,7 @@ export async function getUserContext(req: NextRequest | Request): Promise<UserCo
     return null
   }
   
-  console.log("[getUserContext] ✅ 成功获取用户:", {
-    userId: user.id,
-    email: user.email,
-    cookieCount: cookieStore.length
-  })
+  console.log("[getUserContext] ✅ 成功获取用户（Cookie）:", user.email)
 
-  const userId = user.id
-
-  // 2. 从 user_roles 表获取 role
-  // 使用 Service Role Key 以确保能查询到角色信息（绕过 RLS）
-  const adminClient = createClient(
-    supabaseUrl,
-    serviceRoleKey || supabaseAnonKey,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    }
-  )
-
-  const { data: roleData, error: roleError } = await adminClient
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .single()
-
-  if (roleError || !roleData) {
-    // ⚠️ 临时修复：改为 console.error 并返回 null，避免 500 崩溃
-    console.error("[getUserContext] 权限不足：无法获取用户角色", roleError?.message || "无角色数据")
-    return null
-  }
-
-  const role = roleData.role as UserRole
-
-  // 3. 如果 role ≠ super_admin，从 restaurants 表获取 company_id
-  // 🔒 彻底切换到 restaurants 表，使用 user_id 字段匹配
-  if (role !== "super_admin") {
-    // 从 restaurants 表中查找用户关联的餐厅，获取 company_id
-    // 使用 user_id 字段匹配当前用户
-    const { data: restaurantData, error: restaurantError } = await adminClient
-      .from("restaurants")
-      .select("company_id")
-      .eq("user_id", userId)
-      .not("company_id", "is", null)
-      .limit(1)
-      .maybeSingle() // 使用 maybeSingle() 而不是 single()，避免表不存在时抛出错误
-
-    let companyId: string | undefined | null = null
-    
-    if (!restaurantError && restaurantData && restaurantData.company_id) {
-      // 从 restaurants 表获取 company_id
-      companyId = restaurantData.company_id
-      console.log("[getUserContext] ✅ 从 restaurants 表获取 company_id:", companyId)
-    } else {
-      // 如果 restaurants 表中没有找到，返回 null（不抛出错误）
-      console.warn("[getUserContext] ⚠️ restaurants 表中未找到 company_id，user_id:", userId)
-      if (restaurantError) {
-        console.warn("[getUserContext] 查询错误:", restaurantError.message)
-      }
-      companyId = null
-    }
-
-    // 重要：如果找不到公司，返回 null，绝对不要 throw Error 触发 500
-    return {
-      userId,
-      role,
-      companyId: companyId || undefined, // 将 null 转换为 undefined
-    }
-  }
-
-  // 4. super_admin 允许 companyId 为 undefined
-  return {
-    userId,
-    role,
-    companyId: undefined,
-  }
+  return await resolveUserContextFromUserId(supabaseUrl, supabaseAnonKey, serviceRoleKey, user.id)
 }

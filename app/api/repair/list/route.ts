@@ -44,6 +44,11 @@ export async function GET(request: NextRequest) {
       }
     )
 
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
+    const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
+    const serviceTypeFilter = searchParams.get("service_type") // 服务类型筛选：repair, cleaning, renovation, all
+
     // 🔒 第一步：获取用户上下文，用于数据隔离
     // 调试：检查请求头中的 cookies
     const cookieHeader = request.headers.get("cookie")
@@ -86,13 +91,55 @@ export async function GET(request: NextRequest) {
         if (queryError) {
           console.error("[报修列表API] 直接查询也失败:", queryError)
         } else {
-          console.log("[报修列表API] 直接查询成功，返回 %d 条数据", allOrders?.length || 0)
+          let repairs = allOrders || []
+          // 开发环境降级路径也应用状态、餐厅、服务类型筛选，与主路径一致
+          if (status) {
+            repairs = repairs.filter((order: any) => {
+              try {
+                return order?.status === status.toLowerCase()
+              } catch {
+                return false
+              }
+            })
+            console.log("[报修列表API] 开发环境-状态筛选后数量:", repairs.length)
+          }
+          if (restaurantId) {
+            repairs = repairs.filter((order: any) => {
+              try {
+                return order?.restaurant_id === restaurantId
+              } catch {
+                return false
+              }
+            })
+          }
+          if (serviceTypeFilter && serviceTypeFilter !== "all") {
+            repairs = repairs.filter((order: any) => {
+              try {
+                const serviceType = (order?.service_type || "").toString()
+                if (serviceTypeFilter === "repair") return serviceType === "维修服务"
+                if (serviceTypeFilter === "cleaning") return serviceType === "清洁服务"
+                if (serviceTypeFilter === "renovation") return serviceType === "工程改造"
+                return true
+              } catch {
+                return false
+              }
+            })
+            console.log("[报修列表API] 开发环境-服务类型筛选后数量:", repairs.length)
+          }
+          repairs = repairs.map((repair: any) => ({
+            ...repair,
+            description: repair?.description ?? null,
+            audio_url: repair?.audio_url ?? null,
+            device_id: repair?.device_id ?? null,
+          }))
+          console.log("[报修列表API] 直接查询成功，筛选后返回 %d 条数据", repairs.length)
           return NextResponse.json({
             success: true,
-            data: allOrders || [],
+            data: repairs,
             debug: {
               authError: "用户上下文为 null",
-              totalOrders: allOrders?.length || 0,
+              totalOrders: (allOrders || []).length,
+              filteredRepairs: repairs.length,
               note: "开发环境：认证失败但返回了数据（仅用于调试）"
             },
           })
@@ -114,11 +161,6 @@ export async function GET(request: NextRequest) {
       companyId: userContext.companyId,
       userId: userContext.userId
     })
-
-    const { searchParams } = new URL(request.url)
-    const status = searchParams.get("status") // 状态筛选：pending, processing, completed, cancelled
-    const restaurantId = searchParams.get("restaurant_id") // 餐厅ID筛选（可选）
-    const serviceTypeFilter = searchParams.get("service_type") // 服务类型筛选：repair, cleaning, renovation, all
 
     // 🔒 第二步：数据隔离 - 如果不是超级管理员，需要获取该公司的餐厅ID列表
     let companyRestaurantIds: string[] | null = null

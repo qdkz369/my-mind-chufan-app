@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
+import { dispatchViaPlatform } from "@/lib/platform/dispatch-gateway"
 import { CONFIG_REQUIRE_ASSET_TRACE } from "@/lib/config/asset-trace"
 import { createOrderStatusNotification } from "@/lib/notifications/create-notification"
 import { getUserContext } from "@/lib/auth/user-context"
@@ -91,6 +92,8 @@ export async function POST(request: Request) {
       amount, // 维修金额（可选，完成时必填）
       notes, // 备注（可选）
       assigned_to, // 分配的工人ID（可选）
+      rejected_reason, // Phase B: 拒绝平台推荐时必填（原文）
+      rejected_category, // 拒绝原因分类（CUSTOMER_SPECIFIED | URGENT_OVERRIDE | EXPERIENCE_PREFERENCE | PLATFORM_MISMATCH | OTHER）
       asset_ids, // 资产ID列表（可选，预留接口，当前不强制绑定）
     } = body
 
@@ -170,8 +173,35 @@ export async function POST(request: Request) {
       updateData.notes = notes
     }
 
-    // 如果提供了分配的工人ID，更新 assigned_to（不再更新 worker_id，避免字段不存在错误）
+    // 如果提供了分配的工人ID，更新 assigned_to；必须经平台 Gateway 记录决策（Shadow）
     if (assigned_to !== undefined && assigned_to !== null) {
+      const companyId = userContext.role !== "super_admin" ? userContext.companyId ?? null : null
+      try {
+        const gatewayResult = await dispatchViaPlatform({
+          task_id: repairId,
+          task_type: "repair",
+          company_id: companyId,
+          actor_id: userContext.userId,
+          business_provided_worker_id: assigned_to || undefined,
+          rejected_reason: rejected_reason || undefined,
+          rejected_category: rejected_category || undefined,
+          supabase,
+        })
+        if (!gatewayResult.success && gatewayResult.error === "REJECTED_REASON_REQUIRED") {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "请选择拒绝原因分类",
+              details: "当选择与平台推荐不同的工人时，必须选择拒绝原因类型",
+              platform_recommended_worker_id: gatewayResult.platform_selected_worker,
+              platform_recommendation_reason: gatewayResult.platform_recommendation_reason,
+            },
+            { status: 400 }
+          )
+        }
+      } catch (gatewayErr) {
+        console.warn("[更新报修API] 平台 Gateway 记录失败（继续执行）:", gatewayErr)
+      }
       updateData.assigned_to = assigned_to || null
     }
 

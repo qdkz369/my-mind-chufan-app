@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 import {
   Select,
   SelectContent,
@@ -118,7 +119,9 @@ export default function RentalContractsPage() {
       setIsLoading(true)
       setError("")
 
-      const response = await fetch("/api/admin/rental/contracts")
+      const response = await fetchWithAuth("/api/admin/rental/contracts", {
+        credentials: "include",
+      })
       const result = await response.json()
 
       if (result.success) {
@@ -181,9 +184,10 @@ export default function RentalContractsPage() {
 
     setIsCreating(true)
     try {
-      const response = await fetch("/api/admin/rental/contracts", {
+      const response = await fetchWithAuth("/api/admin/rental/contracts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(newContract),
       })
 

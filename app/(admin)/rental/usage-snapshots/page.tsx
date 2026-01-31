@@ -20,6 +20,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 import {
   ArrowLeft,
   Loader2,
@@ -117,11 +118,10 @@ export default function UsageSnapshotsPage() {
       setIsLoading(true)
       setError("")
 
-      const response = await fetch("/api/admin/rental/usage-snapshots", {
+      const response = await fetchWithAuth("/api/admin/rental/usage-snapshots", {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
       })
 
       const result = await response.json()
@@ -149,11 +149,10 @@ export default function UsageSnapshotsPage() {
     try {
       setIsUpdating(id)
 
-      const response = await fetch("/api/admin/rental/usage-snapshots", {
+      const response = await fetchWithAuth("/api/admin/rental/usage-snapshots", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           id,
           status: newStatus,

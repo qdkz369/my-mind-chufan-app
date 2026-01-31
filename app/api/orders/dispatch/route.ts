@@ -1,17 +1,16 @@
 // ACCESS_LEVEL: STAFF_LEVEL
 // ALLOWED_ROLES: staff
-// CURRENT_KEY: Anon Key (supabase)
-// TARGET_KEY: Anon Key + RLS
-// 说明：只能 staff 调用，必须绑定 worker_id / assigned_to，后续必须使用 RLS 限制只能访问自己数据
+// 说明：只能 staff 调用；Dispatch 必须经平台 Gateway 记录决策（Phase A Shadow）
 
 import { NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
-import { canTransitionDeliveryOrderStatus } from "@/lib/types/order"
 import { verifyWorkerPermission } from "@/lib/auth/worker-auth"
 import { requireCapability } from "@/lib/auth/requireCapability"
 import { Capability } from "@/lib/capabilities"
 import { writeAuditLog } from "@/lib/audit"
 import { createOrderStatusNotification } from "@/lib/notifications/create-notification"
+import { dispatchViaPlatform } from "@/lib/platform/dispatch-gateway"
 
 /**
  * POST: 配送员派单/开始配送
@@ -91,8 +90,37 @@ export async function POST(request: Request) {
     //   )
     // }
 
-    // 更新订单状态和配送员
-    // 系统信任模式：统一使用 worker_id
+    // 平台接管：必须经 Dispatch Gateway 记录决策（Shadow：记录但不强制）
+    let platformDecisionId: string | null = null
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (supabaseUrl && serviceRoleKey) {
+      try {
+        const platformSupabase = createClient(supabaseUrl, serviceRoleKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+        const gatewayResult = await dispatchViaPlatform({
+          task_id: orderId,
+          task_type: "delivery",
+          company_id: null,
+          actor_id: worker?.id || worker_id || null,
+          business_provided_worker_id: worker_id,
+          supabase: platformSupabase,
+        })
+        platformDecisionId = gatewayResult.decision_id
+      } catch (gatewayErr) {
+        console.warn("[派单API] 平台 Gateway 记录失败（继续执行）:", gatewayErr)
+        await writeAuditLog({
+          actor_id: worker?.id || worker_id || null,
+          action: "PLATFORM_BYPASS_ATTEMPT",
+          target_type: "delivery_order",
+          target_id: orderId,
+          metadata: { reason: "gateway_error", error: (gatewayErr as Error).message },
+        })
+      }
+    }
+
+    // 更新订单状态和配送员（Shadow：仍使用业务传入的 worker_id）
     const { data: updatedOrder, error: updateError } = await supabase
       .from("delivery_orders")
       .update({
@@ -128,6 +156,7 @@ export async function POST(request: Request) {
           next_status: 'delivering',
           operator_role: worker ? 'worker' : null,
           worker_id: worker_id || null,
+          platform_decision_id: platformDecisionId,
         },
       })
     } catch (auditError) {

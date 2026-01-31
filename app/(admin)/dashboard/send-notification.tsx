@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select"
 import { Send, Loader2 } from "lucide-react"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 
 interface SendNotificationProps {
   restaurants?: Array<{ id: string; name: string }>
@@ -44,9 +45,10 @@ export function SendNotification({ restaurants = [] }: SendNotificationProps) {
     setSuccess(false)
 
     try {
-      const response = await fetch("/api/notifications", {
+      const response = await fetchWithAuth("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           restaurant_id: formData.restaurant_id,
           title: formData.title,

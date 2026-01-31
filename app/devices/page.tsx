@@ -24,10 +24,20 @@ import {
   Info,
   FileText,
 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { useFinancialViewPermission } from "@/hooks/use-financial-view-permission"
 import { logBusinessWarning } from "@/lib/utils/logger"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 
 export default function DevicesPage() {
   const router = useRouter()
@@ -39,13 +49,15 @@ export default function DevicesPage() {
     install_date: string | null
     status: string | null
     created_at: string | null
-    // 租赁状态信息
+    // 租赁状态信息（含 device_rentals 的单价与总价）
     lease_status?: {
       contract_no?: string | null
       start_at?: string | null
       end_at?: string | null
       lessor_type?: 'platform' | 'manufacturer' | 'leasing_company' | 'finance_partner' | null
       is_overdue?: boolean
+      unit_price?: number | null
+      total_asset_value?: number | null
     } | null
     // 金融视图信息（仅用于显示，不参与业务逻辑）
     financial_view?: {
@@ -59,31 +71,61 @@ export default function DevicesPage() {
   const [error, setError] = useState("")
   const [restaurantId, setRestaurantId] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
-  
+  // 待客户确认的租赁（来自管理端创建后推送）
+  const [pendingRentals, setPendingRentals] = useState<Array<{
+    id: string
+    device_id: string
+    restaurant_id: string
+    status: string
+    start_at: string | null
+    unit_price?: number | null
+    total_asset_value?: number | null
+    rental_batch_id?: string | null
+    devices?: { device_id: string; model: string | null; status: string | null } | null
+    restaurants?: { id: string; name: string | null; address: string | null } | null
+  }>>([])
+  const [pendingRentalsLoading, setPendingRentalsLoading] = useState(false)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null) // 正在确认的 rental_id 或 rental_batch_id
+  const [devicesRefreshKey, setDevicesRefreshKey] = useState(0) // 确认租赁后触发设备列表刷新
+  // 确认租赁前展示租赁协议
+  const [rentalAgreementDialogOpen, setRentalAgreementDialogOpen] = useState(false)
+  const [rentalAgreement, setRentalAgreement] = useState<{ id: string; title: string; version?: string; content?: string; content_html?: string } | null>(null)
+  const [rentalAgreementConsent, setRentalAgreementConsent] = useState(false)
+  const [pendingConfirmRentalId, setPendingConfirmRentalId] = useState<string | undefined>(undefined)
+  const [pendingConfirmBatchId, setPendingConfirmBatchId] = useState<string | undefined>(undefined)
+  const [rentalAgreementLoading, setRentalAgreementLoading] = useState(false)
+
   // 金融视图权限检查
   const { canView: canViewFinancialView, isLoading: isCheckingFinancialPermission } = useFinancialViewPermission()
 
-  // 路由保护：检查登录状态
+  // 路由保护：允许 Supabase 登录 或 仅餐厅手机号登录（localStorage.restaurantId）
   useEffect(() => {
     const checkAuth = async () => {
+      if (typeof window !== "undefined") {
+        const rid = localStorage.getItem("restaurantId")
+        if (rid?.trim()) {
+          // 有餐厅身份（个人中心/手机号登录），允许进入我的设备页
+          setIsLoggedIn(true)
+          return
+        }
+      }
+
       if (!supabase) {
         setIsLoggedIn(false)
         router.push('/')
         return
       }
 
-      // 将 supabase 赋值给局部常量，确保 TypeScript 类型收窄
       const supabaseClient = supabase
-
       try {
         const { data: { user } } = await supabaseClient.auth.getUser()
-        if (!user) {
-          // 游客访问，重定向到首页
-          setIsLoggedIn(false)
-          router.push('/')
+        if (user) {
+          setIsLoggedIn(true)
           return
         }
-        setIsLoggedIn(true)
+        // 无 Supabase 用户且无 restaurantId，视为未登录
+        setIsLoggedIn(false)
+        router.push('/')
       } catch (error) {
         logBusinessWarning('设备页面', '检查登录状态失败', error)
         setIsLoggedIn(false)
@@ -156,10 +198,10 @@ export default function DevicesPage() {
         if (devicesData && devicesData.length > 0) {
           const deviceIds = devicesData.map((d) => d.device_id)
           
-          // 1. 查询活跃的租赁记录（device_rentals）
+          // 1. 查询活跃的租赁记录（device_rentals），含单价与总价
           const { data: rentalsData, error: rentalsError } = await supabaseClient
             .from("device_rentals")
-            .select("device_id, status, start_at, end_at")
+            .select("device_id, status, start_at, end_at, unit_price, total_asset_value")
             .in("device_id", deviceIds)
             .eq("status", "active")
             .is("end_at", null)
@@ -243,6 +285,8 @@ export default function DevicesPage() {
                 end_at: contract?.end_at || rental?.end_at || null,
                 lessor_type: contract?.lessor_type || null,
                 is_overdue: isOverdue,
+                unit_price: rental?.unit_price ?? null,
+                total_asset_value: rental?.total_asset_value ?? null,
               } : null,
               // ⚠️ 权限检查：只有管理员才填充金融视图数据
               // 权限不足时不填充，避免"闪一下钱"
@@ -267,7 +311,104 @@ export default function DevicesPage() {
     }
 
     loadDevices()
-  }, [restaurantId, isCheckingFinancialPermission])
+  }, [restaurantId, isCheckingFinancialPermission, devicesRefreshKey])
+
+  // 拉取待确认的租赁（管理端创建后推送至客户）
+  useEffect(() => {
+    if (!restaurantId || !isLoggedIn) return
+    const loadPending = async () => {
+      setPendingRentalsLoading(true)
+      try {
+        const res = await fetchWithAuth(
+          `/api/device-rentals/list?restaurant_id=${encodeURIComponent(restaurantId)}&status=pending_confirmation`,
+          { headers: { "x-restaurant-id": restaurantId } }
+        )
+        const json = await res.json()
+        if (json.success && Array.isArray(json.data)) {
+          setPendingRentals(json.data)
+        } else {
+          setPendingRentals([])
+        }
+      } catch (e) {
+        logBusinessWarning('设备页面', '拉取待确认租赁失败', e)
+        setPendingRentals([])
+      } finally {
+        setPendingRentalsLoading(false)
+      }
+    }
+    loadPending()
+  }, [restaurantId, isLoggedIn])
+
+  const handleConfirmRental = async (rentalId?: string, batchId?: string, agreementId?: string | null) => {
+    if (!rentalId && !batchId) return
+    const key = batchId || rentalId!
+    setConfirmingId(key)
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' }
+      if (restaurantId) headers['x-restaurant-id'] = restaurantId
+      const res = await fetchWithAuth('/api/device-rentals/confirm', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          rental_id: rentalId,
+          rental_batch_id: batchId,
+          ...(agreementId ? { agreement_id: agreementId } : {}),
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setPendingRentals((prev) =>
+          batchId
+            ? prev.filter((r) => r.rental_batch_id !== batchId)
+            : prev.filter((r) => r.id !== rentalId)
+        )
+        setDevicesRefreshKey((k) => k + 1)
+      } else {
+        alert(json.error || '确认失败')
+      }
+    } catch (e) {
+      logBusinessWarning('设备页面', '确认租赁失败', e)
+      alert('确认失败，请稍后重试')
+    } finally {
+      setConfirmingId(null)
+    }
+  }
+
+  // 点击「确认租赁」时：若有生效租赁协议则先展示协议并勾选同意后再确认
+  const openConfirmRentalWithAgreement = async (rentalId?: string, batchId?: string) => {
+    if (!rentalId && !batchId) return
+    setPendingConfirmRentalId(rentalId)
+    setPendingConfirmBatchId(batchId)
+    setRentalAgreement(null)
+    setRentalAgreementConsent(false)
+    setRentalAgreementLoading(true)
+    setRentalAgreementDialogOpen(true)
+    try {
+      const res = await fetch('/api/agreements/active?type=rental')
+      const json = await res.json()
+      if (json.success && json.data) {
+        setRentalAgreement(json.data)
+      } else {
+        setRentalAgreement(null)
+      }
+    } catch {
+      setRentalAgreement(null)
+    } finally {
+      setRentalAgreementLoading(false)
+    }
+  }
+
+  const submitConfirmRentalAfterAgreement = () => {
+    if (rentalAgreement && !rentalAgreementConsent) {
+      alert('请先阅读并勾选同意《租赁协议》')
+      return
+    }
+    setRentalAgreementDialogOpen(false)
+    handleConfirmRental(pendingConfirmRentalId, pendingConfirmBatchId, rentalAgreement?.id ?? undefined)
+    setPendingConfirmRentalId(undefined)
+    setPendingConfirmBatchId(undefined)
+    setRentalAgreementConsent(false)
+  }
 
   const getStatusBadge = (status: string | null) => {
     switch (status) {
@@ -363,6 +504,164 @@ export default function DevicesPage() {
             </div>
           </Card>
         )}
+
+        {/* 待确认的租赁合同（管理端创建后推送） */}
+        {!isLoading && !isInitializing && !error && (pendingRentalsLoading || pendingRentals.length > 0) && (
+          <Card semanticLevel="system_hint" className="glass-breath mb-6 border-amber-500/30 bg-amber-500/5">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-amber-500" />
+                <h2 className="text-lg font-bold text-foreground">待确认的租赁合同</h2>
+                {pendingRentalsLoading && (
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                供应商已创建租赁记录，确认后即形成租赁关系
+              </p>
+            </CardHeader>
+            <CardContent>
+              {pendingRentalsLoading && pendingRentals.length === 0 ? (
+                <p className="text-sm text-muted-foreground">加载中...</p>
+              ) : (
+                <div className="space-y-4">
+                  {(() => {
+                    const byBatch = new Map<string | null, typeof pendingRentals>()
+                    pendingRentals.forEach((r) => {
+                      const key = r.rental_batch_id ?? r.id
+                      if (!byBatch.has(key)) byBatch.set(key, [])
+                      byBatch.get(key)!.push(r)
+                    })
+                    return Array.from(byBatch.entries()).map(([key, list]) => {
+                      const isBatch = list.length > 1 || (list[0]?.rental_batch_id != null)
+                      const first = list[0]!
+                      const totalValue = list.reduce((s, r) => s + (Number(r.total_asset_value) || 0), 0)
+                      const modelLabel = first.devices?.model ?? first.device_id
+                      return (
+                        <div
+                          key={key}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-amber-500/20 bg-background/50"
+                        >
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">
+                              {isBatch ? `共 ${list.length} 台设备` : modelLabel}
+                            </p>
+                            {!isBatch && first.devices?.model && (
+                              <p className="text-sm text-muted-foreground">设备: {first.devices.model}</p>
+                            )}
+                            {first.start_at && (
+                              <p className="text-xs text-muted-foreground">
+                                开始时间: {new Date(first.start_at).toLocaleDateString("zh-CN")}
+                              </p>
+                            )}
+                            {(first.unit_price != null && first.unit_price > 0) && (
+                              <p className="text-xs text-muted-foreground">
+                                单价: ¥{Number(first.unit_price).toFixed(2)}
+                              </p>
+                            )}
+                            {(totalValue > 0) && (
+                              <p className="text-sm text-foreground font-medium">
+                                合计资产总价: ¥{totalValue.toFixed(2)}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                            disabled={confirmingId !== null}
+                            onClick={() =>
+                              isBatch && first.rental_batch_id
+                                ? openConfirmRentalWithAgreement(undefined, first.rental_batch_id)
+                                : openConfirmRentalWithAgreement(first.id)
+                            }
+                          >
+                            {confirmingId === key ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4 mr-1" />
+                            )}
+                            确认租赁
+                          </Button>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 确认租赁前：租赁协议弹窗 */}
+        <Dialog open={rentalAgreementDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+            setRentalAgreementDialogOpen(false)
+            setPendingConfirmRentalId(undefined)
+            setPendingConfirmBatchId(undefined)
+            setRentalAgreementConsent(false)
+          }
+        }}>
+          <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col bg-background text-foreground">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-amber-500" />
+                {rentalAgreement ? rentalAgreement.title : "租赁协议"}
+              </DialogTitle>
+              <DialogDescription>
+                {rentalAgreement?.version ? `版本 ${rentalAgreement.version}` : "确认租赁前请阅读并同意租赁协议"}
+              </DialogDescription>
+            </DialogHeader>
+            {rentalAgreementLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : rentalAgreement ? (
+              <>
+                <div className="flex-1 overflow-y-auto rounded-md border border-border bg-muted/30 p-4 text-sm text-foreground min-h-[200px] max-h-[40vh]">
+                  {rentalAgreement.content_html ? (
+                    <div dangerouslySetInnerHTML={{ __html: rentalAgreement.content_html }} />
+                  ) : (
+                    <pre className="whitespace-pre-wrap font-sans">{rentalAgreement.content || "无正文"}</pre>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 pt-4">
+                  <input
+                    type="checkbox"
+                    id="rental-agreement-consent"
+                    checked={rentalAgreementConsent}
+                    onChange={(e) => setRentalAgreementConsent(e.target.checked)}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                  <Label htmlFor="rental-agreement-consent" className="text-sm cursor-pointer">
+                    已阅读并同意《{rentalAgreement.title}》
+                  </Label>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4">暂无生效的租赁协议，可直接确认。</p>
+            )}
+            <DialogFooter className="pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRentalAgreementDialogOpen(false)
+                  setPendingConfirmRentalId(undefined)
+                  setPendingConfirmBatchId(undefined)
+                }}
+              >
+                取消
+              </Button>
+              <Button
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={submitConfirmRentalAfterAgreement}
+                disabled={rentalAgreement ? !rentalAgreementConsent : false}
+              >
+                确认租赁
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* 设备列表 */}
         {!isLoading && !isInitializing && !error && (
@@ -553,6 +852,25 @@ export default function DevicesPage() {
                                       </>
                                     )}
                                   </Badge>
+                                </div>
+                              </div>
+                            )}
+
+                            {(device.lease_status.unit_price != null && device.lease_status.unit_price > 0) && (
+                              <div className="flex items-center gap-3">
+                                <DollarSign className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-muted-foreground mb-0.5">设备单价</p>
+                                  <p className="text-sm text-foreground">¥{Number(device.lease_status.unit_price).toFixed(2)}</p>
+                                </div>
+                              </div>
+                            )}
+                            {(device.lease_status.total_asset_value != null && device.lease_status.total_asset_value > 0) && (
+                              <div className="flex items-center gap-3">
+                                <DollarSign className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-muted-foreground mb-0.5">合计资产总价</p>
+                                  <p className="text-sm text-foreground font-medium">¥{Number(device.lease_status.total_asset_value).toFixed(2)}</p>
                                 </div>
                               </div>
                             )}
