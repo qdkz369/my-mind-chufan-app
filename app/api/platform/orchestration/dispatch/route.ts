@@ -43,8 +43,8 @@ export async function POST(request: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    const companyId =
-      userContext.role !== "super_admin" ? userContext.companyId : null
+    const companyId: string | null =
+      userContext.role !== "super_admin" ? (userContext.companyId ?? null) : null
 
     const flow = createDispatchFlow(
       () => supabase,
