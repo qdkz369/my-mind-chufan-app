@@ -73,7 +73,7 @@ export interface DashboardTabWithDataProps {
   restaurants: Restaurant[]
   orders: Order[]
   setRestaurants: (v: Restaurant[] | ((prev: Restaurant[]) => Restaurant[])) => void
-  supabase: ReturnType<typeof import("@/lib/supabase").supabase> | null
+  supabase: typeof supabase
   onNavigateToRepairs: (orderId: string) => void
   mapDashboardRef: React.RefObject<MapDashboardHandle | null>
 }
