@@ -349,7 +349,12 @@ export function AgreementManagement() {
                 <Label className="text-slate-300">协议类型 *</Label>
                 <Select
                   value={formData.type}
-                  onValueChange={(value) => setFormData({ ...formData, type: value })}
+                  onValueChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      type: value as "rental" | "payment" | "service" | "privacy" | "terms",
+                    })
+                  }
                 >
                   <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
                     <SelectValue />
