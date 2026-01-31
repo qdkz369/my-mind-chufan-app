@@ -8,6 +8,10 @@ import { createClient } from "@supabase/supabase-js"
 import { getUserContext } from "@/lib/auth/user-context"
 import { dispatchMatch } from "@/lib/platform/impl/dispatch-match"
 import { strategyEvaluate } from "@/lib/platform/impl/strategy-evaluate"
+import {
+  formatRecommendationForUI,
+  type PlatformRecommendation,
+} from "@/lib/platform/types/recommendation"
 
 export async function GET(request: Request) {
   try {
@@ -97,8 +101,7 @@ export async function GET(request: Request) {
 
     const takeoverMode = (process.env.PLATFORM_DISPATCH_TAKEOVER_MODE || "shadow").toLowerCase()
 
-    const { formatRecommendationForUI } = await import("@/lib/platform/types/recommendation")
-    const reason = formatRecommendationForUI(platform_recommendation)
+    const reason = formatRecommendationForUI(platform_recommendation as PlatformRecommendation)
 
     return NextResponse.json({
       success: true,
