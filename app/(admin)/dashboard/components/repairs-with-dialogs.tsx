@@ -284,7 +284,7 @@ export function RepairsWithDialogs({
     return () => {
       isSubscribed = false
       if (debounceTimer) clearTimeout(debounceTimer)
-      supabase.removeChannel(channel)
+      if (supabase) supabase.removeChannel(channel)
     }
   }, [supabase, loadRepairs])
 
