@@ -104,9 +104,13 @@ export function AgreementManagement() {
 
   const handleEdit = (agreement: Agreement) => {
     setEditingAgreement(agreement)
+    const validTypes = ["rental", "payment", "service", "privacy", "terms"] as const
+    const agreementType = validTypes.includes(agreement.type as typeof validTypes[number])
+      ? (agreement.type as typeof validTypes[number])
+      : "service"
     setFormData({
       title: agreement.title,
-      type: agreement.type,
+      type: agreementType,
       version: agreement.version,
       content: agreement.content,
       content_html: agreement.content_html || "",
