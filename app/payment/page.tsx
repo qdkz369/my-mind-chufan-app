@@ -1490,8 +1490,8 @@ function PaymentContent() {
           </div>
         </Card>
 
-        {/* 支付按钮 */}
-        <div className="sticky bottom-24 pb-4">
+        {/* 支付按钮 - 留足底部间距，避免遮挡下导航栏 */}
+        <div className="sticky bottom-28 pb-6">
           <Button
             onClick={handlePayment}
             disabled={isProcessingPayment}
