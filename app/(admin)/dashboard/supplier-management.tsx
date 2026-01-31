@@ -202,9 +202,14 @@ export function SupplierManagement() {
       alert("请输入公司名称")
       return
     }
+    if (!supabase) {
+      alert("系统未正确配置，无法创建公司")
+      return
+    }
+    const client = supabase
     setIsSubmitting(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await client.auth.getUser()
       const response = await fetchWithAuth("/api/admin/create-company", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -279,12 +284,13 @@ export function SupplierManagement() {
       }
 
       if (!userId || !supabase) {
-        alert("无法获取用户ID，请重试")
+        alert("无法获取用户ID或系统未配置，请重试")
         setIsSubmitting(false)
         return
       }
+      const client = supabase
 
-      const { data: existing } = await supabase
+      const { data: existing } = await client
         .from("user_companies")
         .select("id, role, is_primary")
         .eq("user_id", userId)
@@ -303,13 +309,13 @@ export function SupplierManagement() {
       }
 
       if (assignUserForm.is_primary) {
-        await supabase
+        await client
           .from("user_companies")
           .update({ is_primary: false })
           .eq("user_id", userId)
       }
 
-      const { error: assignError } = await supabase.from("user_companies").insert({
+      const { error: assignError } = await client.from("user_companies").insert({
         user_id: userId,
         company_id: selectedCompany.id,
         role: assignUserForm.role,
