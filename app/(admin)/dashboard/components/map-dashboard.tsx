@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHand
 import { MapPin, Activity } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { supabase } from "@/lib/supabase"
 import { logBusinessWarning } from "@/lib/utils/logger"
 import type { Restaurant, Order } from "../types/dashboard-types"
 
@@ -26,7 +27,7 @@ export interface MapDashboardProps {
   orders: Order[]
   servicePoints: ServicePointMap[]
   setRestaurants: React.Dispatch<React.SetStateAction<Restaurant[]>>
-  supabase: ReturnType<typeof import("@/lib/supabase")["supabase"]> | null
+  supabase: typeof supabase
 }
 
 export interface MapDashboardHandle {
