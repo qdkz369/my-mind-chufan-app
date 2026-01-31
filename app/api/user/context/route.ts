@@ -1,5 +1,9 @@
 // 获取用户上下文信息 API
 // 用于前端获取当前用户的基本信息和权限
+//
+// 鉴权方式：getUserContext 优先解析 Authorization: Bearer <access_token>，
+// 其次为 Cookie。Vercel 环境下 Cookie 可能因跨域失效，前端应使用 fetchWithAuth
+// 从 supabase.auth.getSession() 获取 access_token 并放入 Bearer 头。
 
 import { NextResponse, NextRequest } from "next/server"
 import { getUserContext } from "@/lib/auth/user-context"

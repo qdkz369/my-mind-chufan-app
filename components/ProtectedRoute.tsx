@@ -8,11 +8,15 @@
  * ⚠️ 重要：切勿在 JSX 中直接渲染 user 或 userContext 对象！
  * 错误示例：{user}、{userContext} 会触发 "Cannot convert object to primitive value"。
  * 正确示例：{userContext?.userId}、{user?.email} 等仅渲染原始值。
+ *
+ * 鉴权方式：使用 fetchWithAuth 显式传入 Bearer Token（supabase.auth.getSession），
+ * 解决 Vercel 环境下 Cookie 跨域鉴权失效问题。
  */
 
 import { useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -35,7 +39,7 @@ export function ProtectedRoute({
 
     async function checkAuth() {
       try {
-        const res = await fetch("/api/user/context", { credentials: "include" })
+        const res = await fetchWithAuth("/api/user/context", { credentials: "include" })
         const data = await res.json().catch(() => ({}))
 
         if (cancelled) return

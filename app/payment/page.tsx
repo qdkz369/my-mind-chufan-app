@@ -93,6 +93,14 @@ const paymentMethods = [
     shadowColor: "shadow-purple-500/30",
     description: "支持各大银行借记卡/信用卡",
   },
+  {
+    id: "corporate",
+    name: "对公支付",
+    icon: FileText,
+    color: "from-amber-500 to-orange-600",
+    shadowColor: "shadow-amber-500/30",
+    description: "银行转账、开票后付款，支持授信账期",
+  },
 ]
 
 // 主要城市到昆明的距离（公里）
@@ -235,6 +243,42 @@ function PaymentContent() {
   const [selectedAgreementType, setSelectedAgreementType] = useState<string | null>(null)
   const [serviceAgreement, setServiceAgreement] = useState<any>(null)
   const [paymentAgreement, setPaymentAgreement] = useState<any>(null)
+
+  // 对公支付：企业信息
+  const [corporateCompanyName, setCorporateCompanyName] = useState<string>("")
+  const [corporateTaxId, setCorporateTaxId] = useState<string>("")
+  const [invoiceRequested, setInvoiceRequested] = useState<boolean>(false)
+  const [corporateAccountReady, setCorporateAccountReady] = useState<boolean | null>(null)
+  const [corporateAccountMessage, setCorporateAccountMessage] = useState<string>("")
+
+  // 对公支付：选择时预检查供应商是否已配置收款账户
+  useEffect(() => {
+    if (selectedPayment !== "corporate" || typeof window === "undefined") {
+      setCorporateAccountReady(null)
+      return
+    }
+    const rid = localStorage.getItem("restaurantId")
+    if (!rid) {
+      setCorporateAccountReady(null)
+      return
+    }
+    setCorporateAccountReady(null)
+    fetch(`/api/orders/corporate-payment-account?restaurant_id=${rid}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          setCorporateAccountReady(true)
+          setCorporateAccountMessage("")
+        } else {
+          setCorporateAccountReady(false)
+          setCorporateAccountMessage(data.details || data.error || "供应商尚未配置收款账户")
+        }
+      })
+      .catch(() => {
+        setCorporateAccountReady(false)
+        setCorporateAccountMessage("无法获取支付信息，请稍后重试")
+      })
+  }, [selectedPayment])
 
   // 加载协议内容
   useEffect(() => {
@@ -639,22 +683,46 @@ function PaymentContent() {
       return
     }
 
+    const isCorporate = selectedPayment === "corporate"
+    if (isCorporate) {
+      if (corporateAccountReady === false) {
+        alert("对公支付暂不可用，请选择其他支付方式")
+        return
+      }
+      if (!corporateCompanyName?.trim()) {
+        alert("对公支付请填写公司名称")
+        return
+      }
+      if (!corporateTaxId?.trim()) {
+        alert("对公支付请填写纳税人识别号")
+        return
+      }
+    }
+
     setIsProcessingPayment(true)
 
     try {
-      // 第一步：创建订单
+      const createBody: Record<string, unknown> = {
+        restaurant_id: restaurantId,
+        product_type: selectedFuel === "lpg" ? "liquefied_gas" : selectedFuel === "alcohol" ? "methanol" : selectedFuel === "clean" ? "clean_fuel" : null,
+        service_type: `${fuelTypes.find((f) => f.id === selectedFuel)?.name || "燃料配送"} - ${actualQuantity}${fuelTypes.find((f) => f.id === selectedFuel)?.unitLabel || "kg"}`,
+        status: "processing",
+        amount: orderInfo.amount,
+      }
+      if (isCorporate) {
+        createBody.payment_method = "corporate"
+        createBody.corporate_company_name = corporateCompanyName.trim()
+        createBody.corporate_tax_id = corporateTaxId.trim()
+        createBody.invoice_requested = invoiceRequested
+      }
+
       const orderResponse = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-restaurant-id": restaurantId,
         },
-        body: JSON.stringify({
-          restaurant_id: restaurantId,
-          product_type: selectedFuel === "lpg" ? "liquefied_gas" : selectedFuel === "alcohol" ? "methanol" : selectedFuel === "clean" ? "clean_fuel" : null, // 添加产品类型
-          service_type: `${fuelTypes.find((f) => f.id === selectedFuel)?.name || "燃料配送"} - ${actualQuantity}${fuelTypes.find((f) => f.id === selectedFuel)?.unitLabel || "kg"}`,
-          status: "processing", // 使用新状态：processing（待派单）
-          amount: orderInfo.amount,
-        }),
+        body: JSON.stringify(createBody),
       })
 
       const orderResult = await orderResponse.json()
@@ -737,6 +805,10 @@ function PaymentContent() {
         // 银行卡支付：TODO - 实现银行卡支付流程
         alert(`订单已创建！银行卡支付功能开发中，订单号：${orderId}`)
         setIsProcessingPayment(false)
+      } else if (selectedPayment === "corporate") {
+        // 对公支付：跳转至结果页，展示收款账户与打款说明
+        window.location.href = `/payment/corporate-result?order_id=${orderId}&amount=${orderInfo.amount.toFixed(2)}&restaurant_id=${restaurantId}`
+        return
       } else {
         // 其他支付方式
         alert(`订单已创建！使用${paymentMethods.find((p) => p.id === selectedPayment)?.name}支付 ¥${orderInfo.amount.toFixed(2)}`)
@@ -1488,13 +1560,57 @@ function PaymentContent() {
               )
             })}
           </div>
+
+          {/* 对公支付：企业信息表单 / 空状态提示 */}
+          {selectedPayment === "corporate" && (
+            <div className="mt-4 space-y-3">
+              {corporateAccountReady === false ? (
+                <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10">
+                  <p className="text-amber-200 font-medium">暂无法使用对公支付</p>
+                  <p className="text-sm text-slate-400 mt-1">{corporateAccountMessage}</p>
+                  <p className="text-xs text-slate-500 mt-2">请选择微信/支付宝/银行卡支付，或联系您的供应商在后台完善收款账户后重试。</p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
+                  <h3 className="text-sm font-medium text-amber-200">企业信息（开票用）</h3>
+              <div>
+                <Label className="text-slate-300 text-sm">公司名称 *</Label>
+                <Input
+                  value={corporateCompanyName}
+                  onChange={(e) => setCorporateCompanyName(e.target.value)}
+                  placeholder="请输入公司全称"
+                  className="mt-1 bg-slate-800 border-slate-600 text-white"
+                />
+              </div>
+              <div>
+                <Label className="text-slate-300 text-sm">纳税人识别号 *</Label>
+                <Input
+                  value={corporateTaxId}
+                  onChange={(e) => setCorporateTaxId(e.target.value)}
+                  placeholder="统一社会信用代码"
+                  className="mt-1 bg-slate-800 border-slate-600 text-white"
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={invoiceRequested}
+                  onChange={(e) => setInvoiceRequested(e.target.checked)}
+                  className="rounded border-slate-600"
+                />
+                <span className="text-sm text-slate-400">需要开具发票</span>
+              </label>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
 
-        {/* 支付按钮 - 留足底部间距，避免遮挡下导航栏 */}
-        <div className="sticky bottom-28 pb-6">
+        {/* 支付按钮 - 协议文字与下导航栏上边缘对齐 */}
+        <div className="sticky bottom-16 pb-2">
           <Button
             onClick={handlePayment}
-            disabled={isProcessingPayment}
+            disabled={isProcessingPayment || (selectedPayment === "corporate" && corporateAccountReady === false)}
             className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white h-14 text-lg font-semibold shadow-lg shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isProcessingPayment ? (
@@ -1502,6 +1618,8 @@ function PaymentContent() {
                 <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                 处理中...
               </>
+            ) : selectedPayment === "corporate" ? (
+              `提交订单 ¥${orderInfo.amount.toFixed(2)}`
             ) : (
               `确认支付 ¥${orderInfo.amount.toFixed(2)}`
             )}

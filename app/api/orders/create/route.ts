@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const {
-      order_number, // 自动生成的订单号
+      order_number: orderNumberFromBody, // 可选，未提供时自动生成
       restaurant_id,
       worker_id,
       assigned_to, // 新字段：指派配送员ID
@@ -105,7 +105,15 @@ export async function POST(request: NextRequest) {
       contact_phone, // 联系电话
       delivery_address, // 配送地址
       notes, // 备注信息
+      payment_method, // online | corporate
+      corporate_company_name,
+      corporate_tax_id,
+      invoice_requested,
     } = body
+
+    const order_number =
+      orderNumberFromBody ||
+      `FUEL${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`
 
     // 如果是客户端用户，验证 restaurant_id 是否匹配
     if (clientRestaurantId) {
@@ -141,18 +149,6 @@ export async function POST(request: NextRequest) {
         { 
           error: "缺少必要参数：餐厅ID", 
           details: "请确保已正确获取餐厅信息后再提交"
-        },
-        { status: 400 }
-      )
-    }
-
-    // 验证订单号
-    if (!order_number) {
-      console.error('[创建订单API] ❌ 缺少 order_number')
-      return NextResponse.json(
-        { 
-          error: "缺少订单号", 
-          details: "请确保订单号已正确生成"
         },
         { status: 400 }
       )
@@ -200,7 +196,122 @@ export async function POST(request: NextRequest) {
       console.warn("[创建订单API] ⚠️ 如果 task_pool 触发器失败，订单创建将失败")
     }
 
-    // 创建配送订单（表已分离，固定为 delivery_orders）
+    const orderAmount = Number(total_amount ?? amount ?? 0) || 0
+    const isCorporate = payment_method === "corporate"
+
+    // 对公支付：使用数据库事务原子校验授信 + 插入，防止高并发下授信超支
+    if (isCorporate && orderAmount > 0) {
+      const { data: rpcRows, error: rpcError } = await supabase.rpc("create_corporate_delivery_order", {
+        p_restaurant_id: restaurant_id,
+        p_company_id: companyId || null,
+        p_service_type: service_type || "燃料配送",
+        p_amount: orderAmount,
+        p_product_type: product_type || null,
+        p_notes: notes || null,
+        p_corporate_company_name: corporate_company_name || null,
+        p_corporate_tax_id: corporate_tax_id || null,
+        p_invoice_requested: invoice_requested === true,
+        p_assigned_to: assigned_to || worker_id || null,
+        p_worker_id: assigned_to || worker_id || null,
+      })
+
+      if (rpcError) {
+        const msg = rpcError.message || ""
+        if (msg.includes("CREDIT_EXCEEDED")) {
+          const match = msg.match(/可用: ([\d.]+), 需要: ([\d.]+)/)
+          const available = match ? parseFloat(match[1]) : 0
+          return NextResponse.json(
+            {
+              error: "授信额度不足",
+              details: `订单金额 ¥${orderAmount.toFixed(2)} 超出可用授信 ¥${available.toFixed(2)}。请选择其他支付方式，或等待财务确认到账后再下单。`,
+            },
+            { status: 400 }
+          )
+        }
+        if (msg.includes("RESTAURANT_NOT_FOUND")) {
+          return NextResponse.json({ error: "餐厅不存在" }, { status: 404 })
+        }
+        console.error("[创建订单API] 对公订单 RPC 失败:", rpcError)
+        return NextResponse.json(
+          { error: "创建订单失败", details: rpcError.message },
+          { status: 500 }
+        )
+      }
+
+      const newOrderRow = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
+      if (!newOrderRow?.id) {
+        console.error("[创建订单API] 对公订单 RPC 未返回有效数据:", rpcRows)
+        return NextResponse.json(
+          { error: "创建订单失败", details: "未返回订单ID" },
+          { status: 500 }
+        )
+      }
+
+      // 对公订单已通过 RPC 创建，执行影子写入后直接返回
+      const newOrder = {
+        id: newOrderRow.id,
+        restaurant_id,
+        worker_id: assigned_to || worker_id,
+        assigned_to: assigned_to || worker_id,
+        product_type: product_type || null,
+        service_type: service_type || "燃料配送",
+        status: newOrderRow.status || "pending",
+        amount: newOrderRow.amount || orderAmount,
+        tracking_code: null,
+        proof_image: null,
+        customer_confirmed: false,
+        created_at: newOrderRow.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      let shadowWriteSuccess = false
+      let shadowWriteWarning: string | null = null
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        if (supabaseUrl && serviceRoleKey) {
+          const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          })
+          const orderNumber = order_number || `FUEL${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+          const { data: mainOrder, error: mainOrderError } = await adminClient
+            .from("order_main")
+            .insert({
+              order_number: orderNumber,
+              order_type: "fuel",
+              company_id: companyId || null,
+              status: newOrder.status,
+              total_amount: newOrder.amount,
+              fuel_order_id: newOrder.id,
+              rental_order_id: null,
+              restaurant_id,
+              user_id: userContext?.userId || null,
+              notes: notes || null,
+              created_at: newOrder.created_at,
+            })
+            .select("id")
+            .single()
+
+          if (mainOrder?.id) {
+            await adminClient.from("delivery_orders").update({ main_order_id: mainOrder.id }).eq("id", newOrder.id)
+            shadowWriteSuccess = true
+          } else if (mainOrderError) {
+            shadowWriteWarning = `订单已创建，但同步到订单主表失败：${mainOrderError.message}。`
+          }
+        }
+      } catch (shadowErr: unknown) {
+        shadowWriteWarning = `订单已创建，同步主表时异常：${shadowErr instanceof Error ? shadowErr.message : "未知"}。`
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: shadowWriteSuccess ? "订单创建成功" : "订单创建成功（同步主表失败，可能影响列表展示）",
+        data: newOrder,
+        warning: shadowWriteWarning || undefined,
+      })
+    }
+
+    // 非对公：创建配送订单（表已分离，固定为 delivery_orders）
     // 初始状态必须为 'pending'，不接受其他值
     const orderData: any = {
       restaurant_id: restaurant_id,
@@ -239,6 +350,18 @@ export async function POST(request: NextRequest) {
     if (deliveryWorkerId) {
       orderData.assigned_to = deliveryWorkerId
       orderData.worker_id = deliveryWorkerId // 兼容旧字段
+    }
+
+    // 对公支付相关字段
+    if (isCorporate) {
+      orderData.payment_method = "corporate"
+      orderData.payment_status = "pending_transfer"
+      if (corporate_company_name) orderData.corporate_company_name = corporate_company_name
+      if (corporate_tax_id) orderData.corporate_tax_id = corporate_tax_id
+      if (invoice_requested === true) orderData.invoice_requested = true
+    } else {
+      orderData.payment_method = orderData.payment_method || "online"
+      orderData.payment_status = orderData.payment_status || "pending"
     }
 
     // 插入订单并返回真实写入的 id（使用 .single() 确保只返回一条记录）

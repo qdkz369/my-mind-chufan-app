@@ -25,6 +25,12 @@
 | amount | DECIMAL | 金额 |
 | customer_confirmed | BOOLEAN | 客户确认 |
 | company_id | UUID | 多租户，FK → companies |
+| payment_method | TEXT | online \| corporate（对公支付） |
+| payment_status | TEXT | pending \| paid \| pending_transfer \| transfer_confirmed |
+| invoice_requested | BOOLEAN | 是否需要发票 |
+| corporate_company_name | TEXT | 对公：客户公司名称 |
+| corporate_tax_id | TEXT | 对公：客户纳税人识别号 |
+| payment_voucher_url | TEXT | 对公：转账凭证图片URL |
 | created_at, updated_at | TIMESTAMPTZ | |
 
 **RLS**: 多数查询使用 Service Role 绕过；应用层按 company_id/restaurant_id 过滤。
@@ -65,6 +71,8 @@
 | latitude, longitude | NUMERIC | 坐标 |
 | status | TEXT | 已激活等 |
 | qr_token | TEXT | 扫码入店 |
+| credit_line | DECIMAL | 授信额度（元），0 表示不授信 |
+| customer_type | TEXT | individual \| enterprise |
 | created_at, updated_at | TIMESTAMPTZ | |
 
 **RLS**: Service role 全访问；Users can access their own restaurant。
@@ -110,9 +118,13 @@
 | id | UUID | 主键 |
 | name | TEXT | 公司名 |
 | status | TEXT | |
+| bank_name | TEXT | 开户行名称（对公收款） |
+| bank_account | TEXT | 银行账号（对公收款） |
+| tax_id | TEXT | 纳税人识别号 |
 | created_at, updated_at | TIMESTAMPTZ | |
 
-**RLS**: Service role 全访问。
+**RLS**: Service role 全访问。  
+**对公支付**：客户下单时通过 restaurant → company 拉取收款账户，多租户白标化。
 
 ---
 
@@ -234,10 +246,10 @@
 |------|------|------|
 | id | UUID | 主键 |
 | actor_id | UUID | 操作人 |
-| action | TEXT | ORDER_ACCEPTED, PLATFORM_DISPATCH_ALLOCATE 等 |
+| action | TEXT | ORDER_ACCEPTED, PLATFORM_DISPATCH_ALLOCATE, VOUCHER_UPLOADED, CORPORATE_PAYMENT_CONFIRMED 等 |
 | target_type | TEXT | delivery_order, repair_order 等 |
 | target_id | UUID | |
-| metadata | JSONB | 扩展信息 |
+| metadata | JSONB | 扩展信息；对公凭证上传含 uploader_ip, uploader_lat, uploader_lon, uploaded_at |
 | created_at | TIMESTAMPTZ | |
 
 ---

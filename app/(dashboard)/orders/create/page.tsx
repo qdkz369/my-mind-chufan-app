@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import { ProductType, getProductTypeLabel, OrderStatus } from "@/lib/types/order"
 import Link from "next/link"
-import { getUserContext } from "@/lib/auth/user-context"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 
 // 产品类型配置
 const productTypes = [
@@ -124,15 +124,15 @@ export default function CreateOrderPage() {
         headers["x-restaurant-id"] = clientRestaurantId
       }
       
-      // 获取用户上下文
-      const userContext = await fetch('/api/user/context', {
+      // 获取用户上下文（使用 fetchWithAuth 传入 Bearer Token，解决 Vercel 跨域 Cookie 失效）
+      const userContext = await fetchWithAuth('/api/user/context', {
         credentials: 'include',
         headers
       }).then(res => res.json())
 
       if (userContext.success && userContext.data) {
         // 从餐厅表获取默认信息
-        const response = await fetch('/api/restaurants/current', {
+        const response = await fetchWithAuth('/api/restaurants/current', {
           credentials: 'include',
           headers
         })
@@ -268,7 +268,7 @@ export default function CreateOrderPage() {
             console.log('✅ 从 localStorage 获取 restaurantId:', currentRestaurantId)
           }
 
-          const userContextResponse = await fetch('/api/user/context', {
+          const userContextResponse = await fetchWithAuth('/api/user/context', {
             credentials: 'include',
             headers
           })
@@ -285,7 +285,7 @@ export default function CreateOrderPage() {
           }
           
           // 尝试重新获取餐厅信息
-          const restaurantResponse = await fetch('/api/restaurants/current', {
+          const restaurantResponse = await fetchWithAuth('/api/restaurants/current', {
             credentials: 'include',
             headers
           })
@@ -357,7 +357,7 @@ export default function CreateOrderPage() {
         headers["x-restaurant-id"] = clientRestaurantId
       }
 
-      const response = await fetch("/api/orders/create", {
+      const response = await fetchWithAuth("/api/orders/create", {
         method: "POST",
         headers,
         credentials: 'include',
@@ -375,7 +375,7 @@ export default function CreateOrderPage() {
       try {
         console.log('🔍 验证影子写入...')
         
-        const verifyResponse = await fetch(`/api/orders/main/list?order_number=${orderNumber}`, {
+        const verifyResponse = await fetchWithAuth(`/api/orders/main/list?order_number=${orderNumber}`, {
           credentials: 'include'
         })
         

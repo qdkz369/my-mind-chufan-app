@@ -98,7 +98,8 @@ async function resolveUserContextFromUserId(
  * 
  * @param req NextRequest 或 Request 对象
  * @returns UserContext 对象，包含 userId、role 和可选的 companyId，如果失败返回 null
- * @note 支持 Cookie 会话 或 Authorization: Bearer <access_token>（客户端 localStorage 会话时使用）
+ * @note 支持 Authorization: Bearer <access_token>（优先，Vercel 跨域下更可靠）
+ *       或 Cookie 会话。前端应使用 fetchWithAuth 从 getSession() 获取 token 并放入 Bearer。
  */
 export async function getUserContext(req: NextRequest | Request): Promise<UserContext | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

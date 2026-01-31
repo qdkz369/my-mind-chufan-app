@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -80,7 +81,7 @@ export default function OrdersPage() {
         headers["x-restaurant-id"] = restaurantId
       }
 
-      const response = await fetch(`/api/orders/main/list?${params.toString()}`, {
+      const response = await fetchWithAuth(`/api/orders/main/list?${params.toString()}`, {
         credentials: "include",
         headers,
       })
