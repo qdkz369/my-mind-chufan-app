@@ -172,8 +172,14 @@ export function DashboardTabWithData({
         return
       }
       const [repairResult, deliveryResult] = await Promise.all([
-        retryQuery(() => repairQuery),
-        retryQuery(() => deliveryQuery),
+        retryQuery(async () => {
+          const result = await repairQuery
+          return result as { data?: any; error?: any }
+        }),
+        retryQuery(async () => {
+          const result = await deliveryQuery
+          return result as { data?: any; error?: any }
+        }),
       ])
       const repairData = repairResult.data || []
       const deliveryData = deliveryResult.data || []
