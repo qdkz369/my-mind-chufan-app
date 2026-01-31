@@ -58,6 +58,12 @@ export async function POST(request: Request) {
     if (agreement_id) updatePayload.agreement_id = agreement_id
 
     if (rental_batch_id) {
+      if (!userContext) {
+        return NextResponse.json(
+          { success: false, error: "批量确认需要登录" },
+          { status: 401 }
+        )
+      }
       const { data: batchRows, error: fetchBatchError } = await supabase
         .from("device_rentals")
         .select("id, company_id")
