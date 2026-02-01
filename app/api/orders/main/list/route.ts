@@ -194,6 +194,34 @@ export async function GET(request: NextRequest) {
         .filter((id: any) => id !== null && id !== undefined)
     )]
 
+    const orderIds = (orders || []).map((o: any) => o.id).filter(Boolean)
+    let invoicedSet = new Set<string>()
+    if (orderIds.length > 0) {
+      const { data: invs } = await supabaseClient
+        .from("invoices")
+        .select("order_main_id")
+        .in("order_main_id", orderIds)
+      if (invs) invoicedSet = new Set(invs.map((i: any) => i.order_main_id))
+    }
+
+    // 燃料订单：批量查询 delivery_orders 获取 payment_method、corporate_company_name、corporate_tax_id
+    const fuelOrderIds = (orders || [])
+      .filter((o: any) => o.order_type === "fuel" && o.fuel_order_id)
+      .map((o: any) => o.fuel_order_id)
+    let deliveryMap: Record<string, any> = {}
+    if (fuelOrderIds.length > 0) {
+      const { data: deliveries } = await supabaseClient
+        .from("delivery_orders")
+        .select("id, payment_method, corporate_company_name, corporate_tax_id")
+        .in("id", fuelOrderIds)
+      if (deliveries) {
+        deliveryMap = deliveries.reduce((acc: any, d: any) => {
+          acc[d.id] = d
+          return acc
+        }, {})
+      }
+    }
+
     // 批量查询餐厅信息
     let restaurantsMap: Record<string, any> = {}
     if (restaurantIds.length > 0) {
@@ -213,7 +241,7 @@ export async function GET(request: NextRequest) {
     // 🛡️ 数据安全处理：确保所有字段都有默认值，避免空值导致前端错误
     const safeOrders = (orders || []).map((order: any) => {
       const restaurant = order.restaurant_id ? restaurantsMap[order.restaurant_id] : null
-      
+      const delivery = order.fuel_order_id ? deliveryMap[order.fuel_order_id] : null
       return {
         id: order.id || '',
         order_number: order.order_number || '未知订单号',
@@ -228,6 +256,10 @@ export async function GET(request: NextRequest) {
         restaurant_id: order.restaurant_id || null,
         user_id: order.user_id || null,
         notes: order.notes || null,
+        payment_method: delivery?.payment_method || null,
+        corporate_company_name: delivery?.corporate_company_name || null,
+        corporate_tax_id: delivery?.corporate_tax_id || null,
+        invoiced: invoicedSet.has(order.id),
         restaurants: restaurant ? {
           id: restaurant.id || '',
           name: restaurant.name || '未知餐厅',

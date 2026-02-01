@@ -98,7 +98,7 @@ export function MallContent() {
   const [cartCount, setCartCount] = useState(3)
 
   return (
-    <div className="container mx-auto px-4 py-6">
+    <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 min-w-0">
       {/* 搜索栏 */}
       <div className="mb-6">
         <div className="flex gap-3 mb-3">
@@ -133,38 +133,38 @@ export function MallContent() {
         </div>
       </div>
 
-      {/* 数据看板 */}
-      <Card semanticLevel="primary_fact" className="glass-breath border-0 p-4 mb-6 text-primary-foreground">
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <div className="text-xs opacity-90 mb-1">本月采购</div>
-            <div className="text-2xl font-bold">¥42,680</div>
-            <div className="text-xs opacity-75 flex items-center gap-1 mt-1">
-              <TrendingUp className="h-3 w-3" />
+      {/* 数据看板 - 手机端防挤压 */}
+      <Card semanticLevel="primary_fact" className="glass-breath border-0 p-3 sm:p-4 mb-6 text-primary-foreground min-w-0 overflow-hidden">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 min-w-0">
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-[10px] sm:text-xs opacity-90 mb-0.5 sm:mb-1 truncate">本月采购</div>
+            <div className="text-base sm:text-2xl font-bold truncate">¥42,680</div>
+            <div className="text-[10px] sm:text-xs opacity-75 flex items-center gap-1 mt-0.5 sm:mt-1 truncate">
+              <TrendingUp className="h-3 w-3 shrink-0" />
               节省18%
             </div>
           </div>
-          <div>
-            <div className="text-xs opacity-90 mb-1">本周订单</div>
-            <div className="text-2xl font-bold">23单</div>
-            <div className="text-xs opacity-75 mt-1">平均满意度98%</div>
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-[10px] sm:text-xs opacity-90 mb-0.5 sm:mb-1 truncate">本周订单</div>
+            <div className="text-base sm:text-2xl font-bold truncate">23单</div>
+            <div className="text-[10px] sm:text-xs opacity-75 mt-0.5 sm:mt-1 truncate">平均满意度98%</div>
           </div>
-          <div>
-            <div className="text-xs opacity-90 mb-1">配送准时率</div>
-            <div className="text-2xl font-bold">99.2%</div>
-            <div className="text-xs opacity-75 mt-1">24小时送达</div>
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-[10px] sm:text-xs opacity-90 mb-0.5 sm:mb-1 truncate">配送准时率</div>
+            <div className="text-base sm:text-2xl font-bold truncate">99.2%</div>
+            <div className="text-[10px] sm:text-xs opacity-75 mt-0.5 sm:mt-1 truncate">24小时送达</div>
           </div>
         </div>
       </Card>
 
       {/* 分类和商品 */}
       <Tabs defaultValue="fresh" className="w-full">
-        <TabsList className="w-full justify-start overflow-x-auto glass-breath mb-4 flex-nowrap">
+        <TabsList className="w-full justify-start overflow-x-auto glass-breath mb-4 flex-nowrap min-w-0 pb-1 -mx-1">
           {categories.map((cat) => (
             <TabsTrigger
               key={cat.id}
               value={cat.id}
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap shrink-0 text-xs sm:text-sm"
             >
               {cat.name}
               <Badge variant="secondary" className="ml-2 bg-secondary text-secondary-foreground text-xs">
@@ -176,14 +176,14 @@ export function MallContent() {
 
         {categories.map((cat) => (
           <TabsContent key={cat.id} value={cat.id} className="mt-0">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 min-w-0">
               {products
                 .filter((p) => p.category === cat.id)
                 .map((product) => (
                   <Card
                     key={product.id}
                     semanticLevel="secondary_fact"
-                    className="theme-card overflow-hidden hover:border-primary/50 transition-all cursor-pointer group"
+                    className="theme-card overflow-hidden hover:border-primary/50 transition-all cursor-pointer group min-w-0"
                   >
                     <div className="relative">
                       <img
@@ -195,9 +195,9 @@ export function MallContent() {
                         <Badge className="absolute top-2 left-2 bg-destructive text-destructive-foreground border-0">{product.tag}</Badge>
                       )}
                     </div>
-                    <div className="p-3">
-                      <h3 className="font-semibold text-foreground text-sm mb-1 line-clamp-1">{product.name}</h3>
-                      <p className="text-xs text-muted-foreground mb-2">{product.spec}</p>
+                    <div className="p-2 sm:p-3 min-w-0 overflow-hidden">
+                      <h3 className="font-semibold text-foreground text-xs sm:text-sm mb-0.5 sm:mb-1 line-clamp-1 truncate">{product.name}</h3>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground mb-1 sm:mb-2 truncate">{product.spec}</p>
                       <div className="flex items-end justify-between mb-3">
                         <div>
                           <div className="text-red-500 font-bold text-lg">

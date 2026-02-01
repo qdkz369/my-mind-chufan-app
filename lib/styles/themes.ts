@@ -198,8 +198,7 @@ export const BASE_THEME_TOKENS: BaseThemeTokens = {
 /**
  * Visual Theme 类型定义
  */
-export type VisualThemeName =
-  | 'industrial-dark'
+export type VisualThemeName = 'industrial-dark'
 
 export interface VisualThemeConfig {
   name: VisualThemeName
@@ -250,7 +249,7 @@ export const VISUAL_THEMES: Record<VisualThemeName, VisualThemeConfig> = {
         
         // 前景色（文字）- 高对比
         foreground: '#E5E8ED', // 主文字（高对比）
-        foregroundSecondary: '#8B94A6', // 次要文字
+        foregroundSecondary: '#A8B3C4', // 次要文字（提高对比度）
         
         // 主色 - 高对比蓝色
         primary: '#3B82F6', // 蓝色主色（高对比）
@@ -266,7 +265,7 @@ export const VISUAL_THEMES: Record<VisualThemeName, VisualThemeConfig> = {
         
         // 静音色
         muted: '#1E293B', // 静音背景（与分隔区同层）
-        mutedForeground: '#8B94A6',
+        mutedForeground: '#A8B3C4', // 提高对比度，确保深色背景下可读
         
         // 边框（分隔区层）
         border: '#1E293B', // 边框（与分隔区同层，保持层次）

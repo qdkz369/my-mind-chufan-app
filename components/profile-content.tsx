@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { MapPin, CreditCard, Settings, HelpCircle, FileText, Shield, ChevronRight, Star, User, Phone, Building2, Navigation, Loader2, CheckCircle2, AlertCircle, Locate, Package } from "lucide-react"
+import { MapPin, CreditCard, Settings, HelpCircle, FileText, Shield, ChevronRight, Star, User, Phone, Building2, Navigation, Loader2, CheckCircle2, AlertCircle, Locate, Package, Camera } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { ThemeSwitcher } from "@/components/theme-switcher"
-import { loadAMapOnce, isAMapAvailable } from "@/lib/amap-loader"
+import { loadAMapOnce } from "@/lib/amap-loader"
 import { getCachedAddress, cacheAddress } from "@/lib/geocoding-cache"
 import { logBusinessWarning } from "@/lib/utils/logger"
 import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
@@ -20,7 +20,7 @@ import { fetchWithAuth } from "@/lib/auth/fetch-with-auth"
 const menuItems = [
   { icon: Package, label: "我的设备", description: "查看已激活的设备", href: "/devices" },
   { icon: MapPin, label: "地址管理", description: "管理配送地址", href: "/addresses" },
-  { icon: CreditCard, label: "支付方式", description: "管理支付账户", href: "/payment" },
+  { icon: CreditCard, label: "支付方式", description: "管理支付账户", href: "/payment-methods" },
   { icon: FileText, label: "发票管理", description: "开具和查看发票", href: "/invoices" },
   { icon: Shield, label: "资质认证", description: "企业资质认证", href: "/certification" },
   { icon: Star, label: "会员权益", description: "查看会员特权", href: "/vip" },
@@ -62,7 +62,10 @@ export function ProfileContent() {
     latitude: number | null
     longitude: number | null
     status: string | null
+    avatar_url: string | null
   } | null>(null)
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   
   // 初始化状态：正在读取 localStorage
   const [isInitializing, setIsInitializing] = useState(true)
@@ -141,47 +144,19 @@ export function ProfileContent() {
   // 加载高德地图定位插件（使用全局单例加载器）
   useEffect(() => {
     const loadAMapPlugins = async () => {
-      // 确保只在客户端执行
       if (typeof window === 'undefined') return
-      
-      // 如果已经加载，直接返回
-      if (amapLoaded || isAMapAvailable()) {
-        if (!amapLoaded) {
-          setAmapLoaded(true)
-        }
-        // 初始化插件实例（如果还未初始化）
-        if (!geolocationRef.current || !geocoderRef.current) {
-          const AMap = (window as any).AMap
-          if (AMap) {
-            if (!geolocationRef.current) {
-              geolocationRef.current = new AMap.Geolocation({
-                enableHighAccuracy: true,
-                timeout: 20000,
-                maximumAge: 0,
-                convert: true,
-                showButton: false,
-                buttonOffset: new AMap.Pixel(10, 20),
-                zoomToAccuracy: true,
-                buttonPosition: 'RB',
-                useNative: true,
-                extensions: 'all',
-                noIpLocate: false,
-                noGeoLocation: false,
-              })
-            }
-            if (!geocoderRef.current) {
-              geocoderRef.current = new AMap.Geocoder({
-                city: '全国',
-              })
-            }
-          }
-        }
-        return
-      }
+      if (geolocationRef.current && geocoderRef.current) return
 
       try {
-        // 使用全局单例加载器，确保只加载一次
+        // 使用全局单例加载器（含插件），确保 Geolocation/Geocoder 可用
         const AMap = await loadAMapOnce()
+
+        if (!AMap.Geolocation || typeof AMap.Geolocation !== 'function') {
+          throw new Error('AMap.Geolocation 插件未加载')
+        }
+        if (!AMap.Geocoder || typeof AMap.Geocoder !== 'function') {
+          throw new Error('AMap.Geocoder 插件未加载')
+        }
 
         // 初始化定位插件
         geolocationRef.current = new AMap.Geolocation({
@@ -359,7 +334,7 @@ export function ProfileContent() {
       console.log('[加载餐厅信息] 从Supabase加载数据...')
       const { data, error } = await supabase
         .from("restaurants")
-        .select("id, name, contact_name, contact_phone, address, latitude, longitude, status")
+        .select("id, name, contact_name, contact_phone, address, latitude, longitude, status, avatar_url")
         .eq("id", restaurantId)
         .maybeSingle()
 
@@ -941,6 +916,7 @@ export function ProfileContent() {
                 latitude: hasLocation ? formData.latitude : null,
                 longitude: hasLocation ? formData.longitude : null,
                 status: registerResult.data.status || "unactivated",
+                avatar_url: null,
               }
               
               setRestaurantInfo(newRestaurantInfo)
@@ -1610,12 +1586,82 @@ export function ProfileContent() {
         <>
           <Card semanticLevel="primary_fact" className="glass-breath p-6">
             <div className="flex items-center gap-4">
-              <Avatar className="w-16 h-16">
-                <AvatarImage src="/placeholder.svg?height=64&width=64" />
-                <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-primary-foreground">
-                  {restaurantInfo.contact_name?.[0] || "用"}
-                </AvatarFallback>
-              </Avatar>
+              <div
+                className="relative group cursor-pointer"
+                onClick={() => avatarInputRef.current?.click()}
+                role="button"
+                aria-label="更换头像"
+              >
+                <Avatar className="w-16 h-16">
+                  <AvatarImage
+                    src={restaurantInfo.avatar_url || "/placeholder-user.jpg"}
+                    alt="用户头像"
+                  />
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-primary-foreground">
+                    {restaurantInfo.contact_name?.[0] || "用"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  {isAvatarUploading ? (
+                    <Loader2 className="h-6 w-6 text-white animate-spin" />
+                  ) : (
+                    <Camera className="h-6 w-6 text-white" />
+                  )}
+                </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file || !restaurantInfo?.id) return
+                    if (!file.type.startsWith("image/")) {
+                      alert("请选择图片文件（JPG、PNG 等）")
+                      return
+                    }
+                    if (file.size > 2 * 1024 * 1024) {
+                      alert("图片大小不能超过 2MB")
+                      return
+                    }
+                    setIsAvatarUploading(true)
+                    try {
+                      const formData = new FormData()
+                      formData.append("file", file)
+                      const res = await fetch("/api/restaurant/avatar", {
+                        method: "POST",
+                        headers: {
+                          "x-restaurant-id": restaurantInfo.id,
+                        },
+                        body: formData,
+                      })
+                      const result = await res.json()
+                      if (result.success && result.data?.url) {
+                        setRestaurantInfo((prev) =>
+                          prev ? { ...prev, avatar_url: result.data.url } : prev
+                        )
+                        if (typeof window !== "undefined") {
+                          const cached = localStorage.getItem(`restaurant_${restaurantInfo.id}`)
+                          if (cached) {
+                            const data = JSON.parse(cached)
+                            localStorage.setItem(
+                              `restaurant_${restaurantInfo.id}`,
+                              JSON.stringify({ ...data, avatar_url: result.data.url })
+                            )
+                          }
+                        }
+                      } else {
+                        alert(result.error || "上传失败")
+                      }
+                    } catch (err) {
+                      alert("上传失败，请重试")
+                    } finally {
+                      setIsAvatarUploading(false)
+                      e.target.value = ""
+                    }
+                  }}
+                />
+              </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <h2 className="text-xl font-bold text-foreground">{restaurantInfo.contact_name || "未设置"}</h2>

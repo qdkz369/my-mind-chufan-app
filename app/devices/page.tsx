@@ -211,13 +211,14 @@ export default function DevicesPage() {
           }
 
           // 2. 查询租赁合同信息（rental_contracts）和合同设备关系（rental_contract_devices）
-          // ⚠️ 权限检查：根据权限动态选择查询字段
-          // 权限不足时不请求金融字段，避免"闪一下钱"
+          // rental_contract_devices.device_id 为 UUID 类型，需过滤非 UUID（如 TEST-DEV-001）
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+          const deviceIdsAsUuid = deviceIds.filter((id) => uuidRegex.test(id))
+          
           const contractDevicesSelect = shouldQueryFinancialFields
             ? "device_id, rental_contract_id, agreed_daily_fee, agreed_monthly_fee, agreed_usage_metric"
             : "device_id, rental_contract_id, agreed_usage_metric"
           
-          // 定义类型以支持动态查询
           type ContractDeviceRow = {
             device_id: string
             rental_contract_id: string
@@ -226,14 +227,16 @@ export default function DevicesPage() {
             agreed_monthly_fee?: number | null
           }
           
-          const result = await supabaseClient
-            .from("rental_contract_devices")
-            .select(contractDevicesSelect)
-            .in("device_id", deviceIds)
+          let contractDevicesData: ContractDeviceRow[] | null = null
+          let contractDevicesError: any = null
+          if (deviceIdsAsUuid.length > 0) {
+            const result = await supabaseClient
+              .from("rental_contract_devices")
+              .select(contractDevicesSelect)
+              .in("device_id", deviceIdsAsUuid)
           
-          const { data: contractDevicesData, error: contractDevicesError } = {
-            data: result.data as ContractDeviceRow[] | null,
-            error: result.error
+            contractDevicesData = result.data as ContractDeviceRow[] | null
+            contractDevicesError = result.error
           }
 
           if (contractDevicesError) {

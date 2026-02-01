@@ -1,0 +1,18 @@
+-- ============================================
+-- 发票文件存储说明（存储隔离）
+-- ============================================
+-- Supabase Storage 桶需在 Dashboard 中创建。
+--
+-- 1. 创建私有桶（推荐生产环境）
+--    - 名称: invoice-files
+--    - 公开: 否 (Private)
+--    - 只有该订单的客户和供应商管理员有权通过鉴权 API 获取下载链接
+--
+-- 2. 存储路径: invoices/{invoice_id}/invoice_{timestamp}.{ext}
+--
+-- 3. 访问方式: 通过鉴权 API 获取临时签名 URL
+--    - 客户端: GET /api/invoices/download-url?invoice_id=xxx
+--    - 管理端: GET /api/admin/invoices/[id]/download-url
+--
+-- 4. 当前实现: 上传使用 delivery-proofs 桶（公开），下载 API 已实现鉴权校验。
+--    创建 invoice-files 私有桶后，需修改上传 API 使用该桶并存储路径而非公开 URL。

@@ -61,8 +61,8 @@ export function CoreServices() {
       icon: Truck,
       title: "燃料配送",
       description: "智能监控 · 自动补给 · 24小时送达",
-      color: "from-orange-500 to-red-600",
-      shadowColor: "shadow-orange-500/30",
+      color: "from-amber-500 to-amber-600",
+      shadowColor: "shadow-amber-500/20",
       iconBg: "bg-orange-500/10",
       iconColor: "text-orange-400",
       stats: [
@@ -75,8 +75,8 @@ export function CoreServices() {
       icon: Wrench,
       title: "设备租赁",
       description: "灵活租期 · 免费维护 · 随时升级",
-      color: "from-blue-500 to-cyan-600",
-      shadowColor: "shadow-blue-500/30",
+      color: "from-blue-600 to-cyan-700",
+      shadowColor: "shadow-blue-600/15",
       iconBg: "bg-blue-500/10",
       iconColor: "text-blue-400",
       stats: [
@@ -104,33 +104,33 @@ export function CoreServices() {
           <Card
             key={service.title}
             semanticLevel="primary_fact"
-            className="theme-card backdrop-blur-sm p-6 hover:scale-[1.01] transition-transform min-w-0 overflow-hidden"
+            className="theme-card backdrop-blur-sm p-4 sm:p-6 hover:scale-[1.01] transition-transform min-w-0 overflow-hidden"
           >
-            <div className="flex items-start gap-4 mb-4">
+            <div className="flex items-start gap-3 sm:gap-4 mb-3 sm:mb-4 min-w-0">
               <div
-                className={`w-14 h-14 shrink-0 bg-gradient-to-br ${service.color} rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor}`}
+                className={`w-12 h-12 sm:w-14 sm:h-14 shrink-0 bg-gradient-to-br ${service.color} rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor}`}
                 style={{ borderRadius: 'var(--radius-button)' }}
               >
-                <service.icon className="h-7 w-7 text-white" />
+                <service.icon className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
               </div>
               <div className="flex-1 min-w-0 overflow-hidden">
-                <h3 className="text-lg font-semibold text-foreground mb-1 truncate">{service.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 text-balance">{service.description}</p>
+                <h3 className="text-base sm:text-lg font-semibold text-foreground mb-0.5 sm:mb-1 truncate">{service.title}</h3>
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed line-clamp-2 text-balance">{service.description}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-3 sm:mb-4 min-w-0">
               {service.stats.map((stat) => (
-                <div key={stat.label} className="bg-muted/40 rounded-lg p-3 border border-border/50" style={{ borderRadius: 'var(--radius-small)' }}>
-                  <div className="text-xs text-muted-foreground mb-1">{stat.label}</div>
-                  <div className="text-xl font-bold text-foreground">{stat.value}</div>
+                <div key={stat.label} className="bg-muted/40 rounded-lg p-2 sm:p-3 border border-border/50 min-w-0 overflow-hidden" style={{ borderRadius: 'var(--radius-small)' }}>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground mb-0.5 sm:mb-1 truncate">{stat.label}</div>
+                  <div className="text-base sm:text-xl font-bold text-foreground truncate">{stat.value}</div>
                 </div>
               ))}
             </div>
 
             <Link href={service.href || "/services"}>
               <Button 
-                className={`w-full bg-gradient-to-r ${service.color} hover:opacity-90 text-white font-medium shadow-lg ${service.shadowColor}`}
+                className={`w-full bg-gradient-to-r ${service.color} hover:opacity-95 text-white font-medium shadow-md ${service.shadowColor}`}
                 style={{ borderRadius: 'var(--radius-button)' }}
               >
                 立即下单 →

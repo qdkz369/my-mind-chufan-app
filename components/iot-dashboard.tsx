@@ -151,6 +151,7 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
     let reconnectTimer: NodeJS.Timeout | null = null
     let isUnmounted = false
     let reconnectAttempts = 0
+    let hasLoggedMaxReconnect = false
     const MAX_RECONNECT_ATTEMPTS = 5
     const RECONNECT_DELAY = 3000 // 3秒
 
@@ -210,7 +211,9 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
               filter: `device_id=eq.${currentDeviceId}`,
             },
             (payload) => {
-              console.log('[IoT Dashboard] Realtime 更新:', payload)
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[IoT Dashboard] Realtime 更新:', payload)
+              }
               if (payload.new && 'percentage' in payload.new) {
                 setFuelLevel(payload.new.percentage as number)
                 setIsOnline(true)
@@ -231,26 +234,32 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
             }
           )
           .subscribe((status, err) => {
-            console.log('[IoT Dashboard] Realtime 订阅状态:', status, err)
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[IoT Dashboard] Realtime 订阅状态:', status, err)
+            }
             if (status === "SUBSCRIBED") {
               setIsOnline(true)
               reconnectAttempts = 0 // 重置重连计数
-              console.log('[IoT Dashboard] Realtime 订阅成功')
             } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
               setIsOnline(false)
-              logBusinessWarning('IoT Dashboard', 'Realtime 订阅失败', { status, err })
+              // 仅首次失败时提示，避免控制台刷屏
+              if (reconnectAttempts === 0) {
+                logBusinessWarning('IoT Dashboard', 'Realtime 连接失败，将使用定时轮询', { status })
+              }
               // 自动重连机制
               if (!isUnmounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++
-                console.log(`[IoT Dashboard] 尝试重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`)
                 if (reconnectTimer) clearTimeout(reconnectTimer)
                 reconnectTimer = setTimeout(() => {
                   if (!isUnmounted) {
                     setupRealtime()
                   }
                 }, RECONNECT_DELAY)
-              } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                logBusinessWarning('IoT Dashboard', '达到最大重连次数，停止重连')
+              } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS && !hasLoggedMaxReconnect) {
+                hasLoggedMaxReconnect = true
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('[IoT Dashboard] 达到最大重连次数，已切换为定时轮询')
+                }
               }
             }
           })
@@ -281,7 +290,9 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
         reconnectTimer = null
       }
       if (channel && supabase) {
-        console.log('[IoT Dashboard] 清理 Realtime 订阅')
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[IoT Dashboard] 清理 Realtime 订阅')
+        }
         supabase.removeChannel(channel).catch(err => {
           console.warn('[IoT Dashboard] 清理频道失败:', err)
         })
@@ -298,15 +309,15 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
   return (
     <div className="space-y-4">
       {/* 主要燃料监控卡片 */}
-      <Card semanticLevel="primary_fact" className="theme-card p-6" style={{ padding: '1.5rem' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-warning to-destructive rounded-xl flex items-center justify-center shadow-lg shadow-warning/30" style={{ borderRadius: 'var(--radius-button)' }}>
-              <Flame className="h-6 w-6 text-primary-foreground" />
+      <Card semanticLevel="primary_fact" className="theme-card p-4 sm:p-6 min-w-0 overflow-hidden">
+        <div className="flex items-center justify-between mb-3 sm:mb-4 gap-2 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-warning to-destructive rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg shadow-warning/30 shrink-0" style={{ borderRadius: 'var(--radius-button)' }}>
+              <Flame className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">燃料实时监控</h3>
-              <p className="text-xs text-muted-foreground">IoT智能传感器</p>
+            <div className="min-w-0">
+              <h3 className="text-base sm:text-lg font-semibold text-foreground truncate">燃料实时监控</h3>
+              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">IoT智能传感器</p>
             </div>
           </div>
           <Badge className={isOnline ? "bg-success/20 text-success border-success/30" : "bg-muted/20 text-muted-foreground border-muted/30"}>
@@ -326,9 +337,9 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
             <>
               <div className="flex justify-between items-end mb-2">
                 <span className="text-sm text-muted-foreground">当前剩余量</span>
-                <div className="text-right">
-                  <span className="text-4xl font-bold text-foreground data-value">{fuelLevel.toFixed(1)}</span>
-                  <span className="text-xl text-muted-foreground ml-1 data-unit">%</span>
+                <div className="text-right shrink-0">
+                  <span className="text-2xl sm:text-4xl font-bold text-foreground data-value">{fuelLevel.toFixed(1)}</span>
+                  <span className="text-base sm:text-xl text-muted-foreground ml-1 data-unit">%</span>
                 </div>
               </div>
               <Progress value={fuelLevel} />
@@ -346,68 +357,68 @@ export function IoTDashboard({ onDeviceClick }: IoTDashboardProps) {
           )}
         </div>
 
-        {/* 数据统计网格 */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-3 border border-border/30">
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              <span className="text-xs text-muted-foreground">累计加注</span>
+        {/* 数据统计网格 - 手机端防挤压 */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
+          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-2 sm:p-3 border border-border/30 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1 sm:gap-2 mb-0.5 sm:mb-1">
+              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-primary shrink-0" />
+              <span className="text-[10px] sm:text-xs text-muted-foreground truncate">累计加注</span>
             </div>
-            <div className="text-xl font-bold text-foreground data-value">{totalRefilled.toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground data-unit">kg</div>
+            <div className="text-base sm:text-xl font-bold text-foreground truncate">{totalRefilled.toLocaleString()}</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">kg</div>
           </div>
 
-          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-3 border border-border/30">
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingDown className="h-4 w-4 text-accent" />
-              <span className="text-xs text-muted-foreground">日均消耗</span>
+          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-2 sm:p-3 border border-border/30 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1 sm:gap-2 mb-0.5 sm:mb-1">
+              <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4 text-accent shrink-0" />
+              <span className="text-[10px] sm:text-xs text-muted-foreground truncate">日均消耗</span>
             </div>
-            <div className="text-xl font-bold text-foreground data-value">{dailyConsumption.toFixed(1)}</div>
-            <div className="text-xs text-muted-foreground data-unit">kg/天</div>
+            <div className="text-base sm:text-xl font-bold text-foreground truncate">{dailyConsumption.toFixed(1)}</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">kg/天</div>
           </div>
 
-          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-3 border border-border/30">
-            <div className="flex items-center gap-2 mb-1">
-              <Zap className="h-4 w-4 text-warning" />
-              <span className="text-xs text-muted-foreground">使用效率</span>
+          <div className="bg-muted/30 backdrop-blur-sm rounded-lg p-2 sm:p-3 border border-border/30 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1 sm:gap-2 mb-0.5 sm:mb-1">
+              <Zap className="h-3 w-3 sm:h-4 sm:w-4 text-warning shrink-0" />
+              <span className="text-[10px] sm:text-xs text-muted-foreground truncate">使用效率</span>
             </div>
-            <div className="text-xl font-bold text-foreground data-value">{Math.round(usageEfficiency)}</div>
-            <div className="text-xs text-muted-foreground data-unit">%</div>
+            <div className="text-base sm:text-xl font-bold text-foreground truncate">{Math.round(usageEfficiency)}</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">%</div>
           </div>
         </div>
       </Card>
 
-      {/* 设备状态监控 */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* 设备状态监控 - 手机端防挤压 */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 min-w-0">
         <Card 
           semanticLevel="primary_fact"
-          className="theme-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+          className="theme-card p-3 sm:p-4 cursor-pointer hover:border-primary/50 transition-colors min-w-0 overflow-hidden"
           onClick={onDeviceClick}
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-foreground">我的设备</span>
-            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs px-2 py-0.5">
+          <div className="flex items-center justify-between mb-2 sm:mb-3 gap-1 min-w-0">
+            <span className="text-xs sm:text-sm font-medium text-foreground truncate">我的设备</span>
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 shrink-0">
               {deviceCount > 0 ? `${deviceCount}台在用` : '0台在用'}
             </Badge>
           </div>
-          <div className="text-3xl font-bold text-foreground mb-1">{deviceRunningDays}</div>
-          <div className="text-xs text-success flex items-center gap-1">
-            <TrendingUp className="h-3 w-3" />
+          <div className="text-2xl sm:text-3xl font-bold text-foreground mb-0.5 sm:mb-1 truncate">{deviceRunningDays}</div>
+          <div className="text-[10px] sm:text-xs text-success flex items-center gap-1 truncate">
+            <TrendingUp className="h-3 w-3 shrink-0" />
             运行天数
           </div>
         </Card>
 
         <Card 
           semanticLevel="primary_fact"
-          className="theme-card repair-warning-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+          className="theme-card repair-warning-card p-3 sm:p-4 cursor-pointer min-w-0"
           onClick={handleQuickRepair}
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-foreground">一键报修</span>
-            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs px-2 py-0.5">快速报修</Badge>
+          <div className="flex items-center justify-between mb-2 sm:mb-3 gap-1 min-w-0">
+            <span className="text-xs sm:text-sm font-medium text-foreground truncate">一键报修</span>
+            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 shrink-0">快速报修</Badge>
           </div>
-          <div className="text-3xl font-bold text-foreground mb-1">{repairResponseRate.toFixed(1)}%</div>
-          <div className="text-xs text-muted-foreground">响应率</div>
+          <div className="text-2xl sm:text-3xl font-bold text-foreground mb-0.5 sm:mb-1 truncate">{repairResponseRate.toFixed(1)}%</div>
+          <div className="text-[10px] sm:text-xs text-muted-foreground truncate">响应率</div>
         </Card>
       </div>
 

@@ -840,13 +840,13 @@ function PaymentContent() {
           )}
         </div>
 
-        {/* 燃料选择 */}
-        <Card semanticLevel="action" className="glass-breath p-6">
+        {/* 燃料选择 - 手机端防挤压 */}
+        <Card semanticLevel="action" className="glass-breath p-4 sm:p-6 min-w-0 overflow-hidden">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Calculator className="h-5 w-5" />
             选择燃料类型
           </h2>
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 min-w-0">
             {fuelTypes.map((fuel) => {
               const isSelected = selectedFuel === fuel.id
               return (
@@ -865,17 +865,17 @@ function PaymentContent() {
                       setFuelQuantity(50) // 户外环保燃料默认50KG
                     }
                   }}
-                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                  className={`p-3 sm:p-4 rounded-xl border-2 transition-all text-left min-w-0 overflow-hidden ${
                     isSelected
                       ? "border-orange-500 bg-orange-500/10"
                       : "border-slate-700 bg-slate-800/50 hover:border-slate-600"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-white">{fuel.name}</h3>
+                  <div className="flex items-center justify-between mb-1 sm:mb-2 gap-1 min-w-0">
+                    <h3 className="font-semibold text-white text-sm sm:text-base truncate">{fuel.name}</h3>
                     {isSelected && <CheckCircle2 className="h-5 w-5 text-orange-400" />}
                   </div>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-xs sm:text-sm text-slate-400 truncate">
                     {fuel.basePrice}元/{fuel.unitLabel}
                   </p>
                 </button>
@@ -931,25 +931,25 @@ function PaymentContent() {
                 
                 return (
                   <>
-                    <div>
-                      <Label className="text-slate-300 mb-3 block">规格（公斤/瓶）</Label>
-                      <div className="grid grid-cols-3 gap-3">
+                    <div className="min-w-0">
+                      <Label className="text-slate-300 mb-2 sm:mb-3 block">规格（公斤/瓶）</Label>
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
                         {bottleSpecs.map((spec) => (
                           <button
                             key={spec}
                             onClick={() => {
                               setSelectedSpec(spec)
                             }}
-                            className={`p-3 rounded-xl border-2 transition-all ${
+                            className={`p-2 sm:p-3 rounded-xl border-2 transition-all min-w-0 overflow-hidden ${
                               selectedSpec === spec
                                 ? "border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/30"
                                 : "border-slate-700 bg-slate-800/50 text-slate-300 hover:border-blue-500/50 hover:bg-slate-700/50"
                             }`}
                           >
-                            <div className={`font-bold text-lg ${selectedSpec === spec ? "text-blue-400" : "text-slate-300"}`}>
+                            <div className={`font-bold text-base sm:text-lg truncate ${selectedSpec === spec ? "text-blue-400" : "text-slate-300"}`}>
                               {spec}KG
                             </div>
-                            <div className="text-xs text-slate-400 mt-1">瓶装</div>
+                            <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">瓶装</div>
                           </button>
                         ))}
                       </div>

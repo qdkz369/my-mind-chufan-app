@@ -3,12 +3,10 @@ import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/ui/toaster"
-// THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
-// import { ThemeProvider } from "@/lib/styles/theme-context"
+import { AppThemeProvider } from "@/lib/styles/theme-context"
 import { ErrorBoundary } from "@/components/error-boundary"
 // import { ThemeDebug } from "@/components/theme-debug"
 import { ForceVisibleWrapper } from "@/components/force-visible-wrapper"
-import { CanvasDebugOverlay } from "@/components/canvas-debug-overlay"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -18,6 +16,7 @@ export const metadata: Metadata = {
   description: "提供燃料配送、设备租赁、维修服务、供应链管理和金融服务的一站式餐饮后市场解决方案",
   generator: "v0.app",
   applicationName: "我的智能餐厅",
+  icons: { icon: "/icon.svg" },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -80,29 +79,18 @@ export default function RootLayout({
       <body 
         data-ui="midnight"
         className={`${inter.className} antialiased`}
-        style={{ 
-          // 使用 CSS radial-gradient 确保移动端和桌面端背景效果一致
-          // 移除 fixed，使用 scroll 确保移动端正常显示
-          background: 'radial-gradient(ellipse at 50% -20%, oklch(0.3 0.15 250), oklch(0.1 0.05 255) 75%)',
-          backgroundAttachment: 'scroll',
-          backgroundSize: 'cover',
-          backgroundRepeat: 'no-repeat',
-          minHeight: '100vh',
-          color: 'white'
-        }}
+        style={{ minHeight: '100vh' }}
       >
+        <AppThemeProvider>
         <ForceVisibleWrapper>
           <ErrorBoundary>
-            {/* THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式 */}
-            {/* <ThemeProvider> */}
               {children}
               <Toaster />
               <Analytics />
               {/* <ThemeDebug /> */}
-            {/* </ThemeProvider> */}
           </ErrorBoundary>
         </ForceVisibleWrapper>
-        <CanvasDebugOverlay />
+        </AppThemeProvider>
       </body>
     </html>
   )

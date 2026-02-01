@@ -6,7 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Fuel, Package, Loader2, RefreshCw, AlertCircle, Building2, ArrowLeft } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Fuel, Package, Loader2, RefreshCw, AlertCircle, Building2, ArrowLeft, FileText } from "lucide-react"
 import Link from "next/link"
 
 interface OrderMain {
@@ -18,6 +25,10 @@ interface OrderMain {
   total_amount: number
   created_at: string
   restaurant_id?: string
+  payment_method?: string | null
+  corporate_company_name?: string | null
+  corporate_tax_id?: string | null
+  invoiced?: boolean
   restaurants?: {
     id: string
     name: string
@@ -45,6 +56,8 @@ export default function OrdersPage() {
     total: 0,
     total_pages: 0,
   })
+  const [selectedOrder, setSelectedOrder] = useState<OrderMain | null>(null)
+  const [orderDetailOpen, setOrderDetailOpen] = useState(false)
 
   const loadOrders = async () => {
     try {
@@ -397,7 +410,15 @@ export default function OrdersPage() {
         <>
           <div className="grid gap-4">
             {orders.map((order) => (
-              <Card key={order.id} semanticLevel="secondary_fact" className="hover:shadow-md transition-shadow">
+              <Card
+                key={order.id}
+                semanticLevel="secondary_fact"
+                className="hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => {
+                  setSelectedOrder(order)
+                  setOrderDetailOpen(true)
+                }}
+              >
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -419,21 +440,71 @@ export default function OrdersPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground">订单金额：</span>
-                      <span className="font-semibold ml-2">{formatAmount(order.total_amount)}</span>
+                      <span className="font-semibold ml-2 text-foreground">{formatAmount(order.total_amount)}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">创建时间：</span>
-                      <span className="ml-2">{formatDate(order.created_at)}</span>
+                      <span className="ml-2 text-foreground">{formatDate(order.created_at)}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">订单ID：</span>
-                      <span className="ml-2 font-mono text-xs">{order.id.substring(0, 8)}...</span>
+                      <span className="ml-2 font-mono text-xs text-foreground">{order.id.substring(0, 8)}...</span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
+
+          {/* 订单详情弹窗 */}
+          <Dialog open={orderDetailOpen} onOpenChange={setOrderDetailOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>订单详情</DialogTitle>
+                <DialogDescription>
+                  {selectedOrder && getOrderTypeLabel(selectedOrder.order_type)} · {selectedOrder?.order_number}
+                </DialogDescription>
+              </DialogHeader>
+              {selectedOrder && (
+                <div className="space-y-4">
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">订单号</span>
+                      <span>{selectedOrder.order_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">金额</span>
+                      <span>{formatAmount(selectedOrder.total_amount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">状态</span>
+                      <Badge variant={getStatusBadgeVariant(selectedOrder.status)}>{selectedOrder.status}</Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">创建时间</span>
+                      <span>{formatDate(selectedOrder.created_at)}</span>
+                    </div>
+                    {selectedOrder.payment_method === "corporate" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">支付方式</span>
+                        <span>对公支付</span>
+                      </div>
+                    )}
+                  </div>
+                  {selectedOrder.payment_method === "corporate" &&
+                    (selectedOrder.status === "completed" || selectedOrder.status === "paid") &&
+                    !selectedOrder.invoiced && (
+                      <Link href={`/invoices?orderId=${selectedOrder.id}`}>
+                        <Button className="w-full" onClick={() => setOrderDetailOpen(false)}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          申请开票
+                        </Button>
+                      </Link>
+                    )}
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
 
           {/* 分页 */}
           {pagination.total_pages > 1 && (

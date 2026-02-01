@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
         contact_phone,
         address,
         company_id,
+        avatar_url,
         created_at
       `)
     

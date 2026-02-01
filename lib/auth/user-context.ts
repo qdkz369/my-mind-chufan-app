@@ -139,28 +139,24 @@ export async function getUserContext(req: NextRequest | Request): Promise<UserCo
   let cookieStore: Array<{ name: string; value: string }> = []
   let cookieSource = "unknown"
   
+  // 客户端用户（x-restaurant-id）无 Supabase cookie 属预期，提前跳过冗长 cookie 日志
+  const hasClientAuth = !!(req.headers.get("x-restaurant-id")?.trim())
+
   // 优先从 Next.js cookies() API 获取（在 Route Handler 中更可靠）
   try {
     const cookieStoreFromNext = await cookies()
     cookieStore = cookieStoreFromNext.getAll()
     cookieSource = "next-cookies-api"
-    console.log("[getUserContext] ✅ 使用 Next.js cookies() API，数量:", cookieStore.length)
-    
-    if (cookieStore.length > 0) {
-      const cookieNames = cookieStore.map(c => c.name).join(", ")
-      console.log("[getUserContext] Cookie 名称:", cookieNames)
+    if (!hasClientAuth && process.env.NODE_ENV === "development") {
+      console.log("[getUserContext] 使用 Next.js cookies() API，数量:", cookieStore.length)
+    }
+    if (cookieStore.length > 0 && !hasClientAuth) {
       const hasSupabaseCookie = cookieStore.some(c => c.name.startsWith("sb-") || c.name.includes("supabase"))
-      console.log("[getUserContext] 包含 Supabase cookie:", hasSupabaseCookie)
-      
       if (!hasSupabaseCookie && process.env.NODE_ENV === "development") {
-        console.warn("[getUserContext] ⚠️ 开发环境警告：未检测到 Supabase cookie")
-        console.warn("[getUserContext] 调试建议：")
-        console.warn("  1. 检查浏览器是否在无痕模式下运行（无痕模式会阻止 cookies）")
-        console.warn("  2. 检查前端请求是否设置了 credentials: 'include'")
-        console.warn("  3. 检查 Supabase Auth session 是否已过期，尝试重新登录")
-        console.warn("  4. 检查浏览器控制台是否有 Cookie 相关的错误")
+        console.warn("[getUserContext] 未检测到 Supabase cookie（客户端用户请忽略）")
       }
-    } else {
+    }
+    if (cookieStore.length === 0) {
       // 如果 cookies() API 为空，尝试从 NextRequest 获取
       if (req instanceof NextRequest) {
         console.log("[getUserContext] Next.js cookies() API 为空，尝试从 NextRequest 获取")
@@ -249,8 +245,9 @@ export async function getUserContext(req: NextRequest | Request): Promise<UserCo
     }
   }
   
-  // 记录 cookie 来源，便于调试
-  console.log("[getUserContext] Cookie 来源:", cookieSource, "，数量:", cookieStore.length)
+  if (!hasClientAuth && process.env.NODE_ENV === "development") {
+    console.log("[getUserContext] Cookie 来源:", cookieSource, "，数量:", cookieStore.length)
+  }
 
   // 使用 createServerClient 创建 Supabase 客户端（支持从 cookies 读取 session）
   // 这是 @supabase/ssr 包中用于 Route Handlers 的标准方法
@@ -290,6 +287,15 @@ export async function getUserContext(req: NextRequest | Request): Promise<UserCo
   } = await supabaseClient.auth.getUser()
 
   if (authError || !user) {
+    // 客户端用户（手机号注册）通过 x-restaurant-id 认证，无 Supabase 会话属预期，仅简洁日志
+    const clientRestaurantId = req.headers.get("x-restaurant-id")
+    if (clientRestaurantId && clientRestaurantId.trim() !== "") {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[getUserContext] 客户端用户（x-restaurant-id），无 Supabase 会话")
+      }
+      return null
+    }
+
     const errorDetails = {
       authError: authError?.message || "无错误",
       hasUser: !!user,
@@ -298,39 +304,11 @@ export async function getUserContext(req: NextRequest | Request): Promise<UserCo
       cookieSource: cookieSource,
       hasSupabaseCookies: cookieStore.some(c => c.name.startsWith("sb-") || c.name.includes("supabase"))
     }
-    
-    console.error("[getUserContext] 获取用户失败:", errorDetails)
-    
-    // 开发环境下提供详细的调试建议
+
+    // 无 Supabase 会话且非客户端用户时，才输出详细调试
     if (process.env.NODE_ENV === "development") {
-      console.error("[getUserContext] ❌ 开发环境调试信息：")
-      console.error("  Cookie 数量:", cookieStore.length)
-      console.error("  Cookie 名称:", cookieStore.map(c => c.name).join(", ") || "无")
-      console.error("  Cookie 来源:", cookieSource)
-      console.error("  包含 Supabase cookie:", errorDetails.hasSupabaseCookies)
-      console.error("  Auth 错误:", authError?.message || "无")
-      console.error("")
-      console.error("  调试建议：")
-      if (cookieStore.length === 0) {
-        console.error("  1. ❌ 请求中未包含任何 cookies")
-        console.error("     → 检查前端请求是否设置了 credentials: 'include'")
-        console.error("     → 检查浏览器是否在无痕模式下运行")
-        console.error("     → 检查浏览器控制台 Network 标签，查看请求头")
-      } else if (!errorDetails.hasSupabaseCookies) {
-        console.error("  2. ❌ 请求中未包含 Supabase 认证 cookies")
-        console.error("     → Supabase Auth session 可能已过期，请重新登录")
-        console.error("     → 检查浏览器是否清除了 cookies")
-        console.error("     → 检查 Supabase Auth 配置是否正确")
-      } else {
-        console.error("  3. ❌ 包含 Supabase cookies 但无法获取用户")
-        console.error("     → 可能是 Supabase Auth session 已过期")
-        console.error("     → 可能是 RLS 策略配置问题")
-        console.error("     → 尝试清除浏览器 cookies 并重新登录")
-      }
+      console.warn("[getUserContext] 用户未登录:", errorDetails.authError)
     }
-    
-    // ⚠️ 临时修复：改为 console.error 并返回 null，避免 500 崩溃
-    console.error("[getUserContext] 用户未登录")
     return null
   }
   

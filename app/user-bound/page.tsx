@@ -362,16 +362,16 @@ export default function UserBoundPage() {
                 <span className="text-sm">加载中...</span>
               </div>
             ) : restaurantOverview ? (
-              <div className="grid grid-cols-2 gap-4" style={{ backgroundColor: 'transparent' }}>
-                <div className="glass-card p-4" style={{ backgroundColor: 'transparent', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}>
-                  <div className="text-xs text-muted-foreground mb-1">活跃订单</div>
-                  <div className="text-2xl font-bold text-foreground">{restaurantOverview.active_orders ?? 0}</div>
-                  <div className="text-xs text-muted-foreground mt-1 opacity-60">accepted / delivering</div>
+              <div className="grid grid-cols-2 gap-2 sm:gap-4 min-w-0" style={{ backgroundColor: 'transparent' }}>
+                <div className="glass-card p-3 sm:p-4 min-w-0 overflow-hidden" style={{ backgroundColor: 'transparent', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground mb-0.5 sm:mb-1 truncate">活跃订单</div>
+                  <div className="text-xl sm:text-2xl font-bold text-foreground truncate">{restaurantOverview.active_orders ?? 0}</div>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 opacity-60 truncate">accepted / delivering</div>
                 </div>
-                <div className="glass-card p-4" style={{ backgroundColor: 'transparent', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}>
-                  <div className="text-xs text-muted-foreground mb-1">已完成订单</div>
-                  <div className="text-2xl font-bold text-foreground">{restaurantOverview.completed_orders ?? 0}</div>
-                  <div className="text-xs text-muted-foreground mt-1 opacity-60">completed</div>
+                <div className="glass-card p-3 sm:p-4 min-w-0 overflow-hidden" style={{ backgroundColor: 'transparent', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground mb-0.5 sm:mb-1 truncate">已完成订单</div>
+                  <div className="text-xl sm:text-2xl font-bold text-foreground truncate">{restaurantOverview.completed_orders ?? 0}</div>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 opacity-60 truncate">completed</div>
                 </div>
               </div>
             ) : (

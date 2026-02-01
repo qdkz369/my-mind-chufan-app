@@ -416,7 +416,7 @@ export async function PUT(request: Request) {
       .from("restaurants")
       .update(updateData)
       .eq("id", restaurant_id)
-      .select("id, name, qr_token, status, contact_name, contact_phone, latitude, longitude, address")
+      .select("id, name, qr_token, status, contact_name, contact_phone, latitude, longitude, address, avatar_url")
 
     if (updateError) {
       console.error("[更新API] 更新餐厅信息失败:", updateError)

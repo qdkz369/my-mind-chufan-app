@@ -62,18 +62,12 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
  * - 间距（spacing）→ 设计系统基础变量（不属于 Theme）
  * - 层级（z-index）→ 设计系统基础变量（不属于 Theme）
  */
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
+export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   // 初始状态：默认使用 Industrial Dark 主题
   const [theme, setThemeState] = useState<ThemeName>('industrial-dark')
 
-  // ============================================================================
-  // 软隔离：DOM 写入操作已禁用
-  // 以下代码块包含所有 document.documentElement.setAttribute 调用
-  // 已被注释包裹，但代码保留以便后续恢复
-  // ============================================================================
-  // THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
   // 初始化：应用保存的主题，如果没有保存的主题则使用默认主题（industrial-dark）
-  /* useEffect(() => {
+  useEffect(() => {
     if (typeof window === 'undefined') return
 
     const root = document.documentElement
@@ -139,16 +133,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setThemeState(defaultThemeName)
       localStorage.setItem(THEME_STORAGE_KEY, defaultThemeName)
     }
-  }, []) */
+  }, [])
 
-  // ============================================================================
-  // 软隔离：DOM 写入操作已禁用
-  // applyVisualTheme 函数包含 document.documentElement.setAttribute 调用
-  // 已被注释包裹，但代码保留以便后续恢复
-  // ============================================================================
-  // THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
   // 应用 Visual Theme（作为覆盖层叠加在 Base Theme 之上）
-  /* const applyVisualTheme = useCallback((themeName: VisualThemeName) => {
+  const applyVisualTheme = useCallback((themeName: VisualThemeName) => {
     if (typeof window === 'undefined') return
 
     const root = document.documentElement
@@ -180,41 +168,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     
     // 保存到 localStorage（仅用于 Visual Theme）
     localStorage.setItem(THEME_STORAGE_KEY, themeName)
-  }, []) */
+  }, [])
 
-  // THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
   // 主题变化时应用
-  /* useEffect(() => {
-    // 应用 Visual Theme
+  useEffect(() => {
     applyVisualTheme(theme as VisualThemeName)
-  }, [theme, applyVisualTheme]) */
+  }, [theme, applyVisualTheme])
 
-  // THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
   const setTheme = useCallback((themeName: ThemeName) => {
-    // 主题系统已禁用，不执行任何操作
-    console.warn('[ThemeProvider] 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式')
-    /* const previousTheme = theme
-    
-    // 只允许切换 Visual Themes（industrial-dark）
+    const previousTheme = theme
     if (SWITCHABLE_VISUAL_THEMES.includes(themeName as VisualThemeName)) {
       setThemeState(themeName)
-      // ⚠️ 主题切换日志（必须可追踪）
       logThemeChange(previousTheme, themeName, '切换主题', {
         source: 'setTheme',
       })
     } else {
       console.warn('[ThemeProvider] 无效的主题名称:', themeName)
-    } */
+    }
   }, [theme])
 
-  // THEME_SYSTEM_DISABLED: 主题系统已禁用，当前阶段 UI 只允许使用 CSS 旁路画布方式
   const value: ThemeContextType = {
     theme,
-    // themeConfig: VISUAL_THEMES[theme as VisualThemeName] || null,
-    themeConfig: null, // 主题系统已禁用
+    themeConfig: VISUAL_THEMES[theme as VisualThemeName] || null,
     setTheme,
-    // availableThemes: SWITCHABLE_VISUAL_THEMES,
-    availableThemes: [], // 主题系统已禁用
+    availableThemes: SWITCHABLE_VISUAL_THEMES,
   }
 
   // 始终提供 context，不控制组件显示/隐藏

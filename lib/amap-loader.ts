@@ -25,12 +25,8 @@ export async function loadAMapOnce(): Promise<any> {
   // 开始加载
   amapLoaderPromise = (async () => {
     try {
-      // 检查是否已经加载
-      if (typeof window !== 'undefined' && (window as any).AMap) {
-        amapInstance = (window as any).AMap
-        isAMapLoaded = true
-        return amapInstance
-      }
+      // 不直接复用已有的 window.AMap：可能由 script 标签加载，缺少 Geolocation/Geocoder 插件
+      // 统一通过 AMapLoader 加载，确保插件可用
 
       const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '21556e22648ec56beda3e6148a22937c'
       if (!amapKey) {

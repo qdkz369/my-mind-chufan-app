@@ -60,6 +60,7 @@ import {
   CreditCard,
   AlertTriangle,
   FileText,
+  Receipt,
   ChevronRight,
   Upload,
   Image as ImageIcon,
@@ -93,7 +94,6 @@ import { ProductApproval } from "./product-approval"
 import { SupplierManagement } from "./supplier-management"
 import { SendNotification } from "./send-notification"
 import { AgreementsSection } from "./components/agreements-section"
-import { BottomNavigation } from "@/components/bottom-navigation"
 import { DashboardTabWithData } from "./components/dashboard-tab-with-data"
 import { RestaurantsWithDialogs } from "./components/restaurants-with-dialogs"
 import { OrdersWithDialogs } from "./components/orders-with-dialogs"
@@ -108,6 +108,7 @@ import { FinanceReportWithData } from "./components/finance-report-with-data"
 import { ExceptionHandlingWithData } from "./components/exception-handling-with-data"
 import { EquipmentRentalWithDialogs } from "./components/equipment-rental-with-dialogs"
 import { RentalsDashboardWithDialogs } from "./components/rentals-dashboard-with-dialogs"
+import { InvoicesWithDialogs } from "./components/invoices-with-dialogs"
 import { type MapDashboardHandle } from "./components/map-dashboard"
 import {
   Restaurant,
@@ -133,6 +134,7 @@ const menuItems = [
   { icon: Truck, label: "工人管理", key: "workers" },
   { icon: DollarSign, label: "燃料实时价格监控", key: "fuelPricing" },
   { icon: FileText, label: "协议管理", key: "agreements" },
+  { icon: Receipt, label: "发票管理", key: "invoices" },
   { icon: Server, label: "API配置", key: "api" },
   { icon: BarChart3, label: "数据统计", key: "analytics" },
   { icon: DollarSign, label: "财务报表", key: "financeReport" },
@@ -1322,6 +1324,9 @@ export default function AdminDashboard() {
           {activeMenu === "financeReport" && <FinanceReportWithData />}
           {activeMenu === "exceptionHandling" && <ExceptionHandlingWithData />}
           {activeMenu === "agreements" && renderAgreements()}
+          {activeMenu === "invoices" && (
+            <InvoicesWithDialogs userRole={userRole} userCompanyId={userCompanyId} />
+          )}
           {activeMenu === "settings" && <SettingsWithDialogs />}
         </div>
       </div>
@@ -1331,8 +1336,7 @@ export default function AdminDashboard() {
       {/* 指派配送对话框已迁入 RestaurantsWithDialogs */}
       </div>
       
-      {/* 底部导航栏：双导航模式 - 手机端始终显示，电脑端且侧边栏开启时隐藏 */}
-      <BottomNavigation sidebarOpen={sidebarOpen} />
+      {/* 管理后台不使用客户端底部导航（首页/服务/商城/订单/我的），仅使用侧边栏 */}
     </div>
   )
 }

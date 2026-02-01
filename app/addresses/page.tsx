@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Header } from "@/components/header"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
-import { loadAMapOnce, isAMapAvailable } from "@/lib/amap-loader"
+import { loadAMapOnce } from "@/lib/amap-loader"
 import { getCachedAddress, cacheAddress } from "@/lib/geocoding-cache"
 import { logBusinessWarning } from "@/lib/utils/logger"
 
@@ -44,39 +44,16 @@ export default function AddressesPage() {
   useEffect(() => {
     const loadAMapPlugins = async () => {
       if (typeof window === 'undefined') return
-      
-      // 如果已经加载，直接返回
-      if (amapLoaded || isAMapAvailable()) {
-        if (!amapLoaded) {
-          setAmapLoaded(true)
-        }
-        // 初始化插件实例（如果还未初始化）
-        if (!geolocationRef.current || !geocoderRef.current) {
-          const AMap = (window as any).AMap
-          if (AMap) {
-            if (!geolocationRef.current) {
-              geolocationRef.current = new AMap.Geolocation({
-                enableHighAccuracy: true,
-                timeout: 20000,
-                maximumAge: 0,
-                convert: true,
-                showButton: false,
-                zoomToAccuracy: true,
-              })
-            }
-            if (!geocoderRef.current) {
-              geocoderRef.current = new AMap.Geocoder({
-                city: '全国',
-              })
-            }
-          }
-        }
-        return
-      }
+      if (geolocationRef.current && geocoderRef.current) return
 
       try {
-        // 使用全局单例加载器，确保只加载一次
         const AMap = await loadAMapOnce()
+        if (!AMap?.Geolocation || typeof AMap.Geolocation !== 'function') {
+          throw new Error('AMap.Geolocation 插件未加载')
+        }
+        if (!AMap?.Geocoder || typeof AMap.Geocoder !== 'function') {
+          throw new Error('AMap.Geocoder 插件未加载')
+        }
 
         geolocationRef.current = new AMap.Geolocation({
           enableHighAccuracy: true,
