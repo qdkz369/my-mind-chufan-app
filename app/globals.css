@@ -1,6 +1,8 @@
 /* === UI CANVAS: MIDNIGHT (Single Source of Truth) === */
 
 :root {
+  /* 多端画布对齐：逻辑基准宽度（手机端 414px） */
+  --canvas-base-width: 414;
   --background: oklch(0.12 0.03 250);
   --foreground: oklch(0.98 0.01 250);
   --card: oklch(0.1 0.08 250 / 0.3);

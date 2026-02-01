@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { ErrorBoundary } from "@/components/error-boundary"
 // import { ThemeDebug } from "@/components/theme-debug"
 import { ForceVisibleWrapper } from "@/components/force-visible-wrapper"
+import { CanvasDebugOverlay } from "@/components/canvas-debug-overlay"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -101,6 +102,7 @@ export default function RootLayout({
             {/* </ThemeProvider> */}
           </ErrorBoundary>
         </ForceVisibleWrapper>
+        <CanvasDebugOverlay />
       </body>
     </html>
   )

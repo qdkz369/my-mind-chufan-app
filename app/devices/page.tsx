@@ -469,7 +469,7 @@ export default function DevicesPage() {
       <Header />
 
       {/* 页面标题 */}
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center gap-3 mb-6">
           <Link href="/profile">
             <Button variant="ghost" size="icon" className="text-foreground hover:bg-muted/50">
@@ -696,7 +696,7 @@ export default function DevicesPage() {
                     {/* ========================================
                         层级 1: Device Facts（设备事实）
                         ======================================== */}
-                    <Card semanticLevel="primary_fact" className="glass-breath">
+                    <Card semanticLevel="primary_fact" className="glass-breath min-w-0 overflow-hidden">
                       <CardHeader>
                         <div className="flex items-start gap-4">
                           <div className="w-12 h-12 bg-primary/20 flex items-center justify-center border border-primary/30 flex-shrink-0" style={{ borderRadius: 'var(--radius-button)' }}>

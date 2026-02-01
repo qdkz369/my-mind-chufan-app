@@ -824,7 +824,7 @@ function PaymentContent() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
       <Header />
-      <div className="container mx-auto px-4 py-6 space-y-6">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* 返回按钮和记忆提示 */}
         <div className="flex items-center justify-between mb-4">
           <Link href="/">
@@ -1712,7 +1712,7 @@ export default function PaymentPage() {
     <Suspense fallback={
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 pb-20">
         <Header />
-        <div className="container mx-auto px-4 py-6">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center text-white">加载中...</div>
         </div>
         <BottomNavigation />

@@ -295,7 +295,7 @@ export default function UserBoundPage() {
     return (
       <main className="min-h-screen pb-20" style={{ backgroundColor: 'transparent' }}>
         <Header />
-        <div className="container mx-auto px-4 py-6 space-y-6 bg-transparent">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6 bg-transparent flex flex-col md:flex-col">
           <Card semanticLevel="primary_fact" cardEffect="glow-soft" className="glass-card p-6">
             <div className="flex flex-col items-center justify-center py-12 text-center" style={{ backgroundColor: 'transparent' }}>
               <Package className="w-12 h-12 text-muted-foreground mb-4" />
@@ -317,7 +317,7 @@ export default function UserBoundPage() {
     return (
       <main className="min-h-screen pb-20" style={{ backgroundColor: 'transparent' }}>
         <Header />
-        <div className="container mx-auto px-4 py-6 space-y-6 bg-transparent">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6 bg-transparent flex flex-col md:flex-col">
           <Card semanticLevel="primary_fact" cardEffect="glow-soft" className="glass-card p-6">
             <div className="flex flex-col items-center justify-center py-12 text-center" style={{ backgroundColor: 'transparent' }}>
               <Activity className="w-12 h-12 text-muted-foreground mb-4" />
@@ -335,7 +335,7 @@ export default function UserBoundPage() {
   return (
     <main className="min-h-screen pb-20" style={{ backgroundColor: 'transparent' }}>
       <Header />
-      <div className="container mx-auto px-4 py-6 space-y-6 bg-transparent">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6 bg-transparent flex flex-col md:flex-col">
         {/* 完整IoT Dashboard - 实时数据 */}
         <IoTDashboard onDeviceClick={() => setIsDevicesDialogOpen(true)} />
 

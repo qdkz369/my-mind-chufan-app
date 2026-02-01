@@ -2736,23 +2736,42 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
       ctx.lineJoin = "round"
     }, [])
 
+    // 物理坐标 → 画布逻辑坐标（适配 CSS 缩放）
+    const getLogicalCoords = (
+      e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+    ): { x: number; y: number } | null => {
+      const canvas = canvasRef.current
+      if (!canvas) return null
+      const rect = canvas.getBoundingClientRect()
+      const clientX = "touches" in e ? e.touches[0]?.clientX : e.clientX
+      const clientY = "touches" in e ? e.touches[0]?.clientY : e.clientY
+      if (clientX == null || clientY == null) return null
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
+      }
+    }
+
     const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+      if ("touches" in e) e.preventDefault()
       const canvas = canvasRef.current
       if (!canvas) return
 
       const ctx = canvas.getContext("2d")
       if (!ctx) return
 
-      setIsDrawing(true)
-      const rect = canvas.getBoundingClientRect()
-      const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
-      const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+      const coords = getLogicalCoords(e)
+      if (!coords) return
 
+      setIsDrawing(true)
       ctx.beginPath()
-      ctx.moveTo(x, y)
+      ctx.moveTo(coords.x, coords.y)
     }
 
     const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+      if ("touches" in e) e.preventDefault()
       if (!isDrawing) return
 
       const canvas = canvasRef.current
@@ -2761,11 +2780,10 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
       const ctx = canvas.getContext("2d")
       if (!ctx) return
 
-      const rect = canvas.getBoundingClientRect()
-      const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
-      const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+      const coords = getLogicalCoords(e)
+      if (!coords) return
 
-      ctx.lineTo(x, y)
+      ctx.lineTo(coords.x, coords.y)
       ctx.stroke()
     }
 
@@ -2789,23 +2807,44 @@ function RentalDeliveryAssistant({ workerId, onBack }: { workerId: string | null
       setSignatureData(null)
     }
 
+    // 触摸事件需 passive: false 才能 preventDefault，用 ref 挂载
+    const containerRef = useRef<HTMLDivElement>(null)
+    useEffect(() => {
+      const el = containerRef.current
+      if (!el) return
+      const preventTouch = (e: TouchEvent) => e.preventDefault()
+      el.addEventListener("touchstart", preventTouch, { passive: false })
+      el.addEventListener("touchmove", preventTouch, { passive: false })
+      return () => {
+        el.removeEventListener("touchstart", preventTouch)
+        el.removeEventListener("touchmove", preventTouch)
+      }
+    }, [])
+
     return (
       <div className="space-y-3">
         <Label className="text-slate-300">客户电子签名 *</Label>
         <Card semanticLevel="action" className="bg-slate-800/50 border-slate-700 p-4">
-          <canvas
-            ref={canvasRef}
-            width={400}
-            height={200}
-            className="w-full border border-slate-600 rounded-lg bg-white cursor-crosshair touch-none"
-            onMouseDown={startDrawing}
-            onMouseMove={draw}
-            onMouseUp={stopDrawing}
-            onMouseLeave={stopDrawing}
-            onTouchStart={startDrawing}
-            onTouchMove={draw}
-            onTouchEnd={stopDrawing}
-          />
+          <div
+            ref={containerRef}
+            className="w-full touch-none overflow-hidden"
+            style={{ aspectRatio: "2/1", touchAction: "none", overscrollBehavior: "contain" }}
+          >
+            <canvas
+              ref={canvasRef}
+              width={400}
+              height={200}
+              className="w-full h-full border border-slate-600 rounded-lg bg-white cursor-crosshair"
+              style={{ touchAction: "none" }}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+              onTouchStart={startDrawing}
+              onTouchMove={draw}
+              onTouchEnd={stopDrawing}
+            />
+          </div>
           <div className="flex items-center gap-2 mt-3">
             <Button
               size="sm"

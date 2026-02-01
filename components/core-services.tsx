@@ -99,23 +99,23 @@ export function CoreServices() {
         </Link>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4">
         {services.map((service) => (
           <Card
             key={service.title}
             semanticLevel="primary_fact"
-            className="theme-card backdrop-blur-sm p-6 hover:scale-[1.01] transition-transform"
+            className="theme-card backdrop-blur-sm p-6 hover:scale-[1.01] transition-transform min-w-0 overflow-hidden"
           >
             <div className="flex items-start gap-4 mb-4">
               <div
-                className={`w-14 h-14 bg-gradient-to-br ${service.color} rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor}`}
+                className={`w-14 h-14 shrink-0 bg-gradient-to-br ${service.color} rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor}`}
                 style={{ borderRadius: 'var(--radius-button)' }}
               >
                 <service.icon className="h-7 w-7 text-white" />
               </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-foreground mb-1">{service.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{service.description}</p>
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <h3 className="text-lg font-semibold text-foreground mb-1 truncate">{service.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 text-balance">{service.description}</p>
               </div>
             </div>
 

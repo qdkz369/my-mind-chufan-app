@@ -139,10 +139,10 @@ export function GuestServices() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 md:flex md:flex-col">
       {/* Hero区域 - 醒目标题 */}
       <div className="text-center mb-6 md:mb-8 py-4 md:py-6 lg:py-8 px-2 md:px-4">
-        <h1 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-3 md:mb-4 leading-tight break-words">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-3 sm:mb-4 leading-tight break-words text-balance">
           智慧餐饮数字化服务平台
         </h1>
         <p className="text-base md:text-lg text-slate-300 mb-2">
@@ -154,32 +154,32 @@ export function GuestServices() {
       </div>
 
       {/* 业务矩阵 - iOS风格Grid宫格卡片（毛玻璃、大圆角） */}
-      <div className="grid grid-cols-3 gap-3 md:gap-4 lg:gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
         {guestServices.map((service) => (
           <button
             key={service.label}
             onClick={(e) => handleServiceClick(e, service)}
-            className="text-left w-full"
+            className="text-left w-full min-w-0"
           >
-            <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4 md:p-5 lg:p-6 hover:scale-[1.02] hover:border-blue-500/30 transition-all cursor-pointer group h-full rounded-xl md:rounded-2xl">
-              <div className="flex items-start gap-3 md:gap-4 mb-3 md:mb-4">
+            <Card semanticLevel="action" className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 border-slate-700/50 backdrop-blur-sm p-4 sm:p-5 lg:p-6 hover:scale-[1.02] hover:border-blue-500/30 transition-all cursor-pointer group h-full rounded-xl sm:rounded-2xl min-w-0 overflow-hidden">
+              <div className="flex items-start gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <div
-                  className={`w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br ${service.color} rounded-lg md:rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor} group-hover:scale-110 transition-transform flex-shrink-0`}
+                  className={`w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br ${service.color} rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg ${service.shadowColor} group-hover:scale-110 transition-transform flex-shrink-0`}
                 >
-                  <service.icon className="h-6 w-6 md:h-7 md:w-7 text-white" />
+                  <service.icon className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <h3 className="text-base md:text-lg font-semibold text-white">{service.label}</h3>
+                    <h3 className="text-base sm:text-lg font-semibold text-white truncate">{service.label}</h3>
                     {service.badge && (
-                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs max-w-full truncate shrink-0">
                         {service.badge}
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs md:text-sm text-slate-400 leading-relaxed mb-2">{service.description}</p>
+                  <p className="text-xs sm:text-sm text-slate-400 leading-relaxed mb-2 line-clamp-2 text-balance">{service.description}</p>
                   {/* 营销文案 */}
-                  <p className="text-xs text-blue-400 font-medium leading-relaxed">{service.marketingText}</p>
+                  <p className="text-xs text-blue-400 font-medium leading-relaxed line-clamp-2 text-balance">{service.marketingText}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between mt-3 md:mt-4 pt-3 md:pt-4 border-t border-slate-700/50">
