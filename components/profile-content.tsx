@@ -1019,6 +1019,7 @@ export function ProfileContent() {
               latitude: hasLocation ? formData.latitude : null,
               longitude: hasLocation ? formData.longitude : null,
               status: result.data.status || "unactivated",
+              avatar_url: result.data.avatar_url ?? null,
             }
             
             // 立即设置状态，确保UI更新
@@ -1102,9 +1103,10 @@ export function ProfileContent() {
           contact_name: result.data.contact_name || "",
           contact_phone: result.data.contact_phone || "",
           address: result.data.address || null,
-          latitude: result.data.latitude || null,
-          longitude: result.data.longitude || null,
+          latitude: result.data.latitude ?? null,
+          longitude: result.data.longitude ?? null,
           status: result.data.status || "unactivated",
+          avatar_url: result.data.avatar_url ?? null,
         }
         
             setRestaurantInfo(loginRestaurantInfo)
