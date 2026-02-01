@@ -209,7 +209,7 @@ export function InvoicesWithDialogs({ userRole, userCompanyId }: InvoicesWithDia
         </div>
       </div>
 
-      <Card className="bg-slate-800/50 border-slate-700">
+      <Card semanticLevel="secondary_fact" className="bg-slate-800/50 border-slate-700">
         <CardContent className="p-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
