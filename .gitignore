@@ -22,6 +22,14 @@ yarn-error.log*
 # vercel
 .vercel
 
+# turbo & cache (slimming: do not commit)
+.turbo
+.cache
+
+# Platform runtime artifacts (slimming: prevent future bloat)
+replay-output/
+decision-samples-local/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
